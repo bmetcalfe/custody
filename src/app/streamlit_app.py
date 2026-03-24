@@ -11,7 +11,7 @@ from custody.compounds import compounds_for_timeline, evaluate_compounds
 from custody.decision_trace import DecisionTrace, traces_to_rows
 from custody.simulate import run_simulation
 from custody.config import ZONES
-from custody.sensors import get_sensor_opportunities
+from custody.sensors import get_sensor_opportunities, next_pass_window
 from custody.whatif import run_comparison
 from compound_panels import (
     aggregate_compound_history,
@@ -360,21 +360,66 @@ if history_compounds:
 else:
     st.markdown("<span style='color:#666;'>No compound history for this target.</span>", unsafe_allow_html=True)
 
-# ── Available sensors ─────────────────────────────────────────────────────────
-available_sensors = get_sensor_opportunities(
-    current["time"], float(current["lat"]), float(current["lon"])
-)
-if available_sensors:
-    st.markdown("<div class='section-label'>Available Sensors</div>", unsafe_allow_html=True)
-    st.markdown(
-        " &nbsp;|&nbsp; ".join(
-            f"<code>{s.sensor_id}</code> {s.sensor_type} · {s.resolution}"
-            for s in available_sensors
-        ),
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown("<span style='color:#666; font-size:0.8rem;'>No Available Sensors</span>", unsafe_allow_html=True)
+# ── Available capabilities ────────────────────────────────────────────────────
+st.markdown("<div class='section-label'>Available Capabilities</div>", unsafe_allow_html=True)
+
+_cap_lat  = float(current["lat"])
+_cap_lon  = float(current["lon"])
+_cap_now  = current["time"]
+
+_CAP_SATELLITES = {
+    "OPTICAL": ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"],
+    "SAR":     ["SAR-1", "SAR-2"],
+}
+
+_cap_rows = []
+for _sensor in ("OPTICAL", "SAR", "AIS", "MONITOR"):
+    if _sensor in _CAP_SATELLITES:
+        _best = None
+        for _sat in _CAP_SATELLITES[_sensor]:
+            _pw = next_pass_window(_sat, _cap_lat, _cap_lon, _cap_now)
+            if _pw is not None:
+                if _best is None or _pw.time_to_start_seconds < _best.time_to_start_seconds:
+                    _best = _pw
+        if _best is None:
+            _status, _window, _tts = "No Pass", "—", "—"
+        elif _best.time_to_start_seconds <= 0:
+            _status = "Available"
+            _window = _best.start_time.strftime("%H:%Mz")
+            _tts    = "Now"
+        else:
+            _tts_min = int(_best.time_to_start_seconds / 60)
+            _status  = "Delayed"
+            _window  = _best.start_time.strftime("%H:%Mz")
+            _tts     = f"{_tts_min} min"
+    else:
+        _status = "Continuous"
+        _window = "—"
+        _tts    = "—"
+    _cap_rows.append({"Capability": _sensor, "Status": _status,
+                      "Next Window": _window, "TTS": _tts})
+
+_STATUS_COLOR = {"Available": "#2ea043", "Delayed": "#b08000",
+                 "Continuous": "#1f78b4", "No Pass": "#555"}
+
+_cap_cols = st.columns(len(_cap_rows))
+for _col, _row in zip(_cap_cols, _cap_rows):
+    _sc = _STATUS_COLOR.get(_row["Status"], "#555")
+    with _col:
+        st.markdown(
+            f"<div style='border:1px solid #2d2d2d;border-radius:6px;"
+            f"padding:8px 12px;text-align:center;'>"
+            f"<div style='font-family:monospace;font-weight:700;"
+            f"font-size:0.9rem;margin-bottom:4px;'>{_row['Capability']}</div>"
+            f"<div style='display:inline-block;background:{_sc};color:#fff;"
+            f"border-radius:4px;padding:1px 8px;font-size:0.72rem;"
+            f"font-weight:600;margin-bottom:4px;'>{_row['Status']}</div>"
+            f"<div style='color:#aaa;font-size:0.75rem;'>"
+            f"{_row['Next Window']}"
+            f"{'&nbsp;&nbsp;<span style=\"color:#666\">TTS ' + _row['TTS'] + '</span>' if _row['TTS'] not in ('—', 'Now') else ''}"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
 
 # ── Next Orbital Passes ───────────────────────────────────────────────────────
 _orbital_rows = build_orbital_passes_rows(
