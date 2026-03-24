@@ -116,6 +116,8 @@ The system explains every transition. At 17:00z the Decision panel reads:
 > **Task queue:** SAR EV=0.82 (TTS 67 min) → OPTICAL EV=0.77 (TTS 21 min) → MONITOR EV=0.75
 > **Next best actions:** TASK_OPTICAL → ELEVATE → ESCALATE
 
+![Entity detail panel at 17:00z — TASK SAR decision with full reasoning chain](docs/screenshot.png)
+
 ---
 
 ## Sensor model
