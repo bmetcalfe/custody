@@ -3,7 +3,7 @@ Mission reasoning layer for custody.
 
 Turns a FusionAssessment plus current mission/context state into a
 human-readable operational judgment.  This is Layer 5 of the
-SENTIENT-inspired architecture: the step that answers "so what, and
+seven-layer reasoning architecture: the step that answers "so what, and
 what should happen next?" before the orchestration layer asks "which
 asset and when?"
 

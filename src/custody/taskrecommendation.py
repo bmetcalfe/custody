@@ -2,7 +2,7 @@
 Collection orchestration layer for custody.
 
 Turns a Decision into a ranked queue of concrete sensing/task options.
-This is Layer 6 of the SENTIENT-inspired architecture: the step that
+This is Layer 6 of the seven-layer reasoning architecture: the step that
 answers "which asset, in which window, and why?" after the mission
 reasoning layer has determined what kind of action is warranted.
 

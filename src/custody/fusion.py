@@ -3,7 +3,7 @@ Fusion and belief layer for custody.
 
 Combines track state, behavioural signals, and contextual evidence into a
 unified FusionAssessment per entity per timestep.  This is Layer 4 of the
-SENTIENT-inspired architecture: the step that answers "what do we actually
+seven-layer reasoning architecture: the step that answers "what do we actually
 believe, and how sure are we?" before the decision engine asks "so what?"
 
 FusionAssessment summarises fused belief state only.  It must not decide

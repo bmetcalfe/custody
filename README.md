@@ -1,6 +1,6 @@
 # Custody
 
-**An ISR collection-management reasoning engine built on a SENTIENT-inspired architecture.**
+**An ISR collection-management reasoning engine with a layered reasoning architecture.**
 
 Custody models the full intelligence loop from raw observation to ranked collection recommendation: multi-source evidence fusion, mission-level decision-making with explainability, and collection orchestration against real orbital pass windows. The system tells an analyst not just *what* to do but *why*, *in what window*, and *what the alternatives are if it fails*.
 
