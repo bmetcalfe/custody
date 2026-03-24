@@ -5,6 +5,11 @@ This module provides:
   - Alert              : immutable record describing a single triggered alert
   - evaluate_alerts    : evaluate all alert rules against one timeline record
 
+Design: alerts are sparse, event-style notifications that fire at a state
+transition (e.g. first entry into a sensitive zone, a collection failure).
+They do not carry a continuous confidence score.  For scored, multi-signal
+behavioral patterns see custody.compounds.
+
 Conventions:
   - Alerts are derived purely from timeline record dicts; no pipeline state
     is mutated.
@@ -53,6 +58,7 @@ class Alert:
 # ---------------------------------------------------------------------------
 
 def _check_critical_anomaly(record: dict) -> Optional[Alert]:
+    """Fire CRITICAL when anomaly_score exceeds the critical threshold."""
     score = float(record["anomaly_score"])
     if score > CRITICAL_ANOMALY_THRESHOLD:
         return Alert(
@@ -67,6 +73,7 @@ def _check_critical_anomaly(record: dict) -> Optional[Alert]:
 
 
 def _check_high_anomaly(record: dict) -> Optional[Alert]:
+    """Fire WARNING when anomaly_score is above the high threshold but below critical."""
     score = float(record["anomaly_score"])
     # Only fire WARNING if strictly below the CRITICAL threshold
     if HIGH_ANOMALY_THRESHOLD < score < CRITICAL_ANOMALY_THRESHOLD:
@@ -84,6 +91,7 @@ def _check_high_anomaly(record: dict) -> Optional[Alert]:
 def _check_sensitive_zone_entry(
     record: dict, prev_record: Optional[dict]
 ) -> Optional[Alert]:
+    """Fire WARNING on the first step where sensitive_zone transitions from 0 to > 0."""
     if prev_record is None:
         return None
     was_outside = float(prev_record["sensitive_zone"]) == 0.0
@@ -105,6 +113,7 @@ def _check_sensitive_zone_entry(
 
 
 def _check_collection_failed(record: dict) -> Optional[Alert]:
+    """Fire WARNING when a TASK action produced a FAILED collection result."""
     if record["action"] == "TASK" and record["collection_result"] == "FAILED":
         return Alert(
             vessel_id=record["target_id"],
@@ -124,6 +133,14 @@ def _check_collection_failed(record: dict) -> Optional[Alert]:
 
 
 def _check_no_sensor_available(record: dict) -> Optional[Alert]:
+    """Fire WARNING when tasking was needed but no sensor was globally available.
+
+    Only fires for action="NO_SENSOR" (no sensors scheduled at this time).
+    action="PREEMPTED" is intentionally excluded: PREEMPTED means sensors
+    *did* exist but were claimed by higher-priority vessels in the same
+    timestep.  That is an arbitration outcome, not a sensor-availability gap,
+    and does not warrant a NO_SENSOR_AVAILABLE alert.
+    """
     if record["action"] == "NO_SENSOR":
         return Alert(
             vessel_id=record["target_id"],
@@ -140,6 +157,7 @@ def _check_no_sensor_available(record: dict) -> Optional[Alert]:
 
 
 def _check_low_custody(record: dict) -> Optional[Alert]:
+    """Fire WARNING when custody_confidence falls below the low-custody threshold."""
     confidence = float(record["custody_confidence"])
     if confidence < LOW_CUSTODY_THRESHOLD:
         return Alert(
@@ -160,6 +178,7 @@ def _check_low_custody(record: dict) -> Optional[Alert]:
 def _check_vessel_proximity(
     record: dict, prev_record: Optional[dict]
 ) -> Optional[Alert]:
+    """Fire WARNING on the first step where vessel_proximity_score transitions from 0 to > 0."""
     if prev_record is None:
         return None
     prev_score = float(prev_record.get("vessel_proximity_score", 0.0))
@@ -191,6 +210,7 @@ def _check_vessel_proximity(
 
 
 def _check_loitering_confirmed(record: dict) -> Optional[Alert]:
+    """Fire INFO when behavior_state is 'loiter' with high state_confidence (≥ 0.85)."""
     if (
         record["behavior_state"] == "loiter"
         and float(record["state_confidence"]) >= 0.85

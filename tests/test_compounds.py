@@ -1,5 +1,5 @@
 """
-Tests for custody/compounds.py — Steps 15a and 15b.
+Tests for custody/compounds.py.
 
 Covers:
   - CompoundSignal dataclass construction, immutability, timestamp field
@@ -7,7 +7,8 @@ Covers:
   - HIGH_ANOMALY_LOW_CUSTODY: fires, does not fire, boundary conditions
   - PROXIMITY_NEAR_ZONE: fires, does not fire, missing key safety
   - LOITERING_WITH_PROXIMITY: fires, does not fire, missing key safety
-  - evaluate_compounds: return type, missing keys, both rules in one record
+  - REPEATED_ZONE_ENTRY: fires, entry counting, window size guards
+  - evaluate_compounds: return type, missing keys, multiple rules in one record
   - compounds_for_timeline: empty, single record, multi-record, ordering
   - confidence invariants: always in [0, 1]
   - simulation-style records (no proximity field) never crash or spuriously fire

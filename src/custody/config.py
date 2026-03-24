@@ -42,6 +42,44 @@ SLOW_SPEED_KMH = 5.0   # below → vessel may be loitering
 # Anomaly score above which tasking is considered, regardless of confidence.
 ANOMALY_THRESHOLD = 0.5
 
+# Custody confidence below which tasking is considered, regardless of anomaly score.
+CUSTODY_TASK_CONFIDENCE_THRESHOLD = 0.7
+
+# Freshness-decay task-value model for revisit suppression.
+# See custody.planner.compute_task_value for the full formula.
+REVISIT_DECAY_HOURS = 3.0      # exponential decay time constant (hours)
+FRESHNESS_SUPPRESSION = 0.5    # peak freshness suppression applied immediately after collection
+WORSENING_BOOST = 0.5          # task-value increase per unit of anomaly worsening since last collection
+TASK_VALUE_THRESHOLD = 0.2     # minimum task value to proceed past HOLD
+
+# Orbital-pass lookahead bias for HOLD decisions.
+# When no sensor is available and the nearest upcoming orbital pass starts
+# within HOLD_LOOKAHEAD_THRESHOLD_SECONDS, HOLD_LOOKAHEAD_BOOST is added to
+# the effective task value.  This converts NO_SENSOR → HOLD when an orbital
+# window is imminent, signalling that waiting is preferable to declaring no
+# sensor available.
+HOLD_LOOKAHEAD_THRESHOLD_SECONDS = 1800.0  # 30 min: boost fires if pass ≤ 30 min away
+HOLD_LOOKAHEAD_BOOST = 0.15               # added to task-value total when boost fires
+
+# Minimum satellite elevation above the observer's horizon for orbital sensor access.
+# Sensors below this angle are considered out of view (degrees).
+SENSOR_MIN_ELEVATION_DEG = 10.0
+
+# ---------------------------------------------------------------------------
+# AIS staleness confidence decay
+# ---------------------------------------------------------------------------
+
+# Observation gaps shorter than this are treated as normal; no penalty applied.
+AIS_STALE_GAP_SECONDS = 3600.0
+
+# Exponential decay rate (per second) applied to confidence for gaps that
+# exceed AIS_STALE_GAP_SECONDS.  At 1e-4/s: a 1-hour excess ≈ 70% of base,
+# 3-hour excess ≈ 34% of base, 7-hour excess ≈ 8% of base (hits floor).
+AIS_STALE_CONFIDENCE_DECAY_RATE = 1e-4
+
+# Confidence floor — decay never pushes custody confidence below this value.
+AIS_MIN_STALE_CONFIDENCE = 0.1
+
 # ---------------------------------------------------------------------------
 # Alerting thresholds
 # ---------------------------------------------------------------------------

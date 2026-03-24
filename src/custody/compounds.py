@@ -233,11 +233,12 @@ def evaluate_compounds(
     """Evaluate all compound rules against one timeline record.
 
     Args:
-        record: One timeline record dict.  Missing fields are treated as
-                zero/safe defaults — never raises on absent keys.
-        window: Ordered list of prior records from the same vessel timeline.
-                Used by window-based rules such as REPEATED_ZONE_ENTRY.
-                None is treated identically to an empty list.
+        record: One timeline record dict.  Missing fields default to zero
+                — this function never raises on absent keys.
+        window: Ordered list of *prior* records from the same vessel timeline,
+                i.e. all records that precede ``record`` in chronological order.
+                Window-based rules (e.g. REPEATED_ZONE_ENTRY) use this history
+                to detect multi-step patterns.  None is treated as an empty list.
 
     Returns:
         List of CompoundSignal objects whose conditions are satisfied.
@@ -257,8 +258,9 @@ def evaluate_compounds(
 def compounds_for_timeline(timeline: list[dict]) -> list[CompoundSignal]:
     """Evaluate compound rules across an entire single-vessel timeline.
 
-    Passes a growing prefix window to each call so window-based rules
-    (introduced in Step 15c) will have access to prior records.
+    Passes a growing prefix window to each ``evaluate_compounds`` call so
+    window-based rules (e.g. REPEATED_ZONE_ENTRY) have access to all
+    records that precede the current position.
 
     Args:
         timeline: Ordered list of record dicts.  Must belong to the same

@@ -1,5 +1,5 @@
 """
-Tests for the alerting layer (Steps 12a and 15d).
+Tests for the alerting layer.
 
 Each rule is tested in isolation:
   - fires when its condition is exactly met

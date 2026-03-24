@@ -1,16 +1,19 @@
 [project]
 name = "custody"
 version = "0.1.0"
-description = "Add your description here"
+description = "Anomaly-aware target custody and collection-planning prototype"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "altair==4.2.2",
-    "matplotlib>=3.10.8",
     "numpy>=2.4.3",
     "pandas>=3.0.1",
+    "pydeck>=0.9.0",
+    "sgp4>=2.23",
     "streamlit>=1.19.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/bmetcalfe/custody"
 
 [dependency-groups]
 dev = [
@@ -18,4 +21,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "src/app"]

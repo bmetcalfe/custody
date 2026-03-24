@@ -4,12 +4,22 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 
+import custody.config as config
 from custody.ais import replay_ais_file
 from custody.alerts import alerts_for_timeline
-from custody.compounds import compounds_for_timeline
+from custody.compounds import compounds_for_timeline, evaluate_compounds
+from custody.decision_trace import DecisionTrace, traces_to_rows
 from custody.simulate import run_simulation
 from custody.config import ZONES
 from custody.sensors import get_sensor_opportunities
+from custody.whatif import run_comparison
+from compound_panels import (
+    aggregate_compound_history,
+    build_active_compounds_df,
+    build_compound_history_df,
+)
+from orbital_passes_panel import build_orbital_passes_rows
+from whatif_panel import build_variants, build_whatif_results_df
 
 
 def _coerce_strings(df: pd.DataFrame) -> pd.DataFrame:
@@ -30,8 +40,6 @@ st.set_page_config(page_title="Custody", layout="wide")
 
 st.markdown("""
 <style>
-html, body, [class*='css'] { font-size: 90% !important; }
-
 /* Tighten main container */
 .block-container { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
 
@@ -109,19 +117,131 @@ else:  # AIS Replay
 
 if "playback_idx" not in st.session_state:
     st.session_state.playback_idx = 0
-
-autoplay = st.sidebar.checkbox("Autoplay", value=False)
+if "playing" not in st.session_state:
+    st.session_state.playing = False
 
 max_idx = len(target_df) - 1
-default_idx = st.session_state.playback_idx if st.session_state.playback_idx <= max_idx else 0
+if st.session_state.playback_idx > max_idx:
+    st.session_state.playback_idx = 0
+
+# ── Playback transport controls ───────────────────────────────────────────────
+_tc = st.sidebar.columns(5)
+with _tc[0]:
+    if st.button("⏮", key="btn_to_start", help="Skip to start"):
+        st.session_state.playback_idx = 0
+        st.session_state.playing = False
+with _tc[1]:
+    if st.button("⏪", key="btn_step_back", help="Step back one frame"):
+        st.session_state.playback_idx = max(0, st.session_state.playback_idx - 1)
+        st.session_state.playing = False
+with _tc[2]:
+    _play_icon = "⏸" if st.session_state.playing else "▶"
+    if st.button(_play_icon, key="btn_play_pause", help="Play / Pause"):
+        st.session_state.playing = not st.session_state.playing
+with _tc[3]:
+    if st.button("⏩", key="btn_step_fwd", help="Step forward one frame"):
+        st.session_state.playback_idx = min(max_idx, st.session_state.playback_idx + 1)
+        st.session_state.playing = False
+with _tc[4]:
+    if st.button("⏭", key="btn_to_end", help="Skip to end"):
+        st.session_state.playback_idx = max_idx
+        st.session_state.playing = False
 
 selected_idx = st.sidebar.slider(
     "Timeline step",
     min_value=0,
     max_value=max_idx,
-    value=default_idx,
-    key="timeline_slider",
+    value=st.session_state.playback_idx,
 )
+
+min_compound_conf = st.sidebar.slider(
+    "Min compound confidence",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.0,
+    step=0.05,
+    key="min_compound_conf",
+    help="Hide compound signals below this confidence. Default 0.0 shows all.",
+)
+
+# ── What-If Analysis ──────────────────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.header("What-If Analysis")
+st.sidebar.caption("Compare planner behavior across config variants. Baseline always runs with current config.")
+
+st.sidebar.markdown("**Variant A**")
+_wf_a_threshold = st.sidebar.number_input(
+    "Lookahead Threshold (s)", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
+    min_value=0.0, step=60.0, key="wf_a_threshold",
+)
+_wf_a_boost = st.sidebar.number_input(
+    "Lookahead Boost", value=config.HOLD_LOOKAHEAD_BOOST,
+    min_value=0.0, max_value=2.0, step=0.05, key="wf_a_boost",
+)
+_wf_a_stale_gap = st.sidebar.number_input(
+    "AIS Stale Gap (s)", value=config.AIS_STALE_GAP_SECONDS,
+    min_value=0.0, step=60.0, key="wf_a_stale_gap",
+)
+_wf_a_decay_rate = st.sidebar.number_input(
+    "AIS Decay Rate (1/s)", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
+    min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_a_decay_rate",
+)
+_wf_a_min_conf = st.sidebar.number_input(
+    "AIS Min Confidence", value=config.AIS_MIN_STALE_CONFIDENCE,
+    min_value=0.0, max_value=1.0, step=0.05, key="wf_a_min_conf",
+)
+
+_include_b = st.sidebar.checkbox("Include Variant B", value=False, key="wf_include_b")
+if _include_b:
+    st.sidebar.markdown("**Variant B**")
+    _wf_b_threshold = st.sidebar.number_input(
+        "Lookahead Threshold (s) ", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
+        min_value=0.0, step=60.0, key="wf_b_threshold",
+    )
+    _wf_b_boost = st.sidebar.number_input(
+        "Lookahead Boost ", value=config.HOLD_LOOKAHEAD_BOOST,
+        min_value=0.0, max_value=2.0, step=0.05, key="wf_b_boost",
+    )
+    _wf_b_stale_gap = st.sidebar.number_input(
+        "AIS Stale Gap (s) ", value=config.AIS_STALE_GAP_SECONDS,
+        min_value=0.0, step=60.0, key="wf_b_stale_gap",
+    )
+    _wf_b_decay_rate = st.sidebar.number_input(
+        "AIS Decay Rate (1/s) ", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
+        min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_b_decay_rate",
+    )
+    _wf_b_min_conf = st.sidebar.number_input(
+        "AIS Min Confidence ", value=config.AIS_MIN_STALE_CONFIDENCE,
+        min_value=0.0, max_value=1.0, step=0.05, key="wf_b_min_conf",
+    )
+
+if st.sidebar.button("Run What-If", key="btn_whatif"):
+    _variant_a_overrides = {
+        "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_a_threshold,
+        "HOLD_LOOKAHEAD_BOOST": _wf_a_boost,
+        "AIS_STALE_GAP_SECONDS": _wf_a_stale_gap,
+        "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_a_decay_rate,
+        "AIS_MIN_STALE_CONFIDENCE": _wf_a_min_conf,
+    }
+    _variant_b_overrides = None
+    if _include_b:
+        _variant_b_overrides = {
+            "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_b_threshold,
+            "HOLD_LOOKAHEAD_BOOST": _wf_b_boost,
+            "AIS_STALE_GAP_SECONDS": _wf_b_stale_gap,
+            "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_b_decay_rate,
+            "AIS_MIN_STALE_CONFIDENCE": _wf_b_min_conf,
+        }
+
+    _wf_variants = build_variants(_variant_a_overrides, _variant_b_overrides)
+
+    if mode == "Simulation":
+        _wf_scenario = run_simulation
+    else:
+        _wf_csv = csv_source  # capture for closure
+        _wf_scenario = lambda: [r for tl in replay_ais_file(_wf_csv).values() for r in tl]
+
+    st.session_state.whatif_results = run_comparison(_wf_scenario, _wf_variants)
 
 st.session_state.playback_idx = selected_idx
 current = target_df.iloc[selected_idx]
@@ -210,30 +330,46 @@ else:
     st.markdown("<span style='color:#666;'>No alerts for this target.</span>", unsafe_allow_html=True)
 
 # ── Compound signals ──────────────────────────────────────────────────────────
+# Shows only rules that fire at the selected step (not accumulated history).
 st.markdown("<div class='section-label'>Compound Signals</div>", unsafe_allow_html=True)
-compounds = compounds_for_timeline(target_df.iloc[: selected_idx + 1].to_dict("records"))
-if compounds:
-    compounds_df = pd.DataFrame([
-        {
-            "Time": str(c.timestamp).split("+")[0],
-            "Code": c.code,
-            "Conf": f"{c.confidence:.2f}",
-            "Evidence": c.evidence,
-            "Components": ", ".join(
-                f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
-                for k, v in c.components.items()
-            ),
-        }
-        for c in compounds
-    ])
+st.caption("Active at selected step only. Adjust 'Min compound confidence' in the sidebar to filter.")
+prefix_window = target_df.iloc[:selected_idx].to_dict("records")
+current_record = target_df.iloc[selected_idx].to_dict()
+active_compounds = sorted(
+    [s for s in evaluate_compounds(current_record, window=prefix_window)
+     if s.confidence >= min_compound_conf],
+    key=lambda s: s.confidence,
+    reverse=True,
+)
+if active_compounds:
+    compounds_df = build_active_compounds_df(active_compounds)
     st.dataframe(_coerce_strings(compounds_df.reset_index(drop=True)), use_container_width=True)
 else:
-    st.markdown("<span style='color:#666;'>No compound signals for this target.</span>", unsafe_allow_html=True)
+    st.markdown("<span style='color:#666;'>No active compound signals at this step.</span>", unsafe_allow_html=True)
+
+# ── Compound history ──────────────────────────────────────────────────────────
+# Aggregates all compound firings from step 0 through the selected step.
+# Each code appears once; count, first/last seen, and peak confidence are shown.
+st.markdown("<div class='section-label'>Compound History</div>", unsafe_allow_html=True)
+st.caption("All compound firings from step 0 through the selected step, grouped by code.")
+prefix_timeline = target_df.iloc[: selected_idx + 1].to_dict("records")
+history_compounds = [
+    c for c in compounds_for_timeline(prefix_timeline)
+    if c.confidence >= min_compound_conf
+]
+if history_compounds:
+    agg = aggregate_compound_history(history_compounds)
+    history_df = build_compound_history_df(agg)
+    st.dataframe(_coerce_strings(history_df.reset_index(drop=True)), use_container_width=True)
+else:
+    st.markdown("<span style='color:#666;'>No compound history for this target.</span>", unsafe_allow_html=True)
 
 # ── Available sensors ─────────────────────────────────────────────────────────
-st.markdown("<div class='section-label'>Available Sensors</div>", unsafe_allow_html=True)
-available_sensors = get_sensor_opportunities(current["time"])
+available_sensors = get_sensor_opportunities(
+    current["time"], float(current["lat"]), float(current["lon"])
+)
 if available_sensors:
+    st.markdown("<div class='section-label'>Available Sensors</div>", unsafe_allow_html=True)
     st.markdown(
         " &nbsp;|&nbsp; ".join(
             f"<code>{s.sensor_id}</code> {s.sensor_type} · {s.resolution}"
@@ -242,7 +378,28 @@ if available_sensors:
         unsafe_allow_html=True,
     )
 else:
-    st.markdown("<span style='color:#666;'>No sensors currently available</span>", unsafe_allow_html=True)
+    st.markdown("<span style='color:#666; font-size:0.8rem;'>No Available Sensors</span>", unsafe_allow_html=True)
+
+# ── Next Orbital Passes ───────────────────────────────────────────────────────
+_orbital_rows = build_orbital_passes_rows(
+    float(current["lat"]), float(current["lon"]), current["time"]
+)
+_orbital_rows_visible = [r for r in _orbital_rows if r["Status"] != "No Pass In Horizon"]
+if _orbital_rows_visible:
+    st.markdown("<div class='section-label'>Next Orbital Passes</div>", unsafe_allow_html=True)
+    _orbital_df = pd.DataFrame(_orbital_rows_visible)
+    for _col in ("Start", "End"):
+        _orbital_df[_col] = _orbital_df[_col].apply(
+            lambda v: str(v).split("+")[0] if v is not None else "—"
+        )
+    for _col in ("Duration (min)", "Time to Start (min)"):
+        _orbital_df[_col] = _orbital_df[_col].apply(lambda v: v if v is not None else "—")
+    _orbital_df["Within Threshold"] = _orbital_df["Within Threshold"].apply(
+        lambda v: "✓" if v else "—"
+    )
+    st.dataframe(_coerce_strings(_orbital_df), use_container_width=True)
+else:
+    st.markdown("<span style='color:#666; font-size:0.8rem;'>No Orbital Passes In Horizon</span>", unsafe_allow_html=True)
 
 # ── Track map ─────────────────────────────────────────────────────────────────
 st.markdown("<div class='section-label'>Track Map</div>", unsafe_allow_html=True)
@@ -376,10 +533,36 @@ timeline_df.columns = ["Time", "Lat", "Lon", "Unc (km)", "Confidence",
                         "State", "St.Conf"]
 st.dataframe(_coerce_strings(timeline_df.reset_index(drop=True)), use_container_width=True)
 
-if autoplay:
-    time.sleep(0.8)
-    if st.session_state.playback_idx < len(target_df) - 1:
+# ── Decision Traces ───────────────────────────────────────────────────────────
+# Available in both Simulation and AIS Replay modes when traces are present.
+st.markdown("<div class='section-label'>Decision Traces</div>", unsafe_allow_html=True)
+st.caption("Structured breakdown of each planner decision up to the selected step.")
+_trace_display_cols = [
+    "Time", "Vessel", "Action", "Hold Reason", "Chosen Sensor",
+    "Priority", "Task Value",
+    "Accessible Sensors", "Claimed Higher", "Final Pool",
+]
+_trace_records = visible_df.to_dict("records")
+_traces = [r["decision_trace"] for r in _trace_records if isinstance(r.get("decision_trace"), DecisionTrace)]
+if _traces:
+    _trace_rows = traces_to_rows(_traces)
+    _traces_df = pd.DataFrame(_trace_rows)[_trace_display_cols].copy()
+    _traces_df["Time"] = _traces_df["Time"].astype(str).str.split("+").str[0]
+    st.dataframe(_coerce_strings(_traces_df.reset_index(drop=True)), use_container_width=True)
+else:
+    st.markdown("<span style='color:#666;'>No traces available.</span>", unsafe_allow_html=True)
+
+# ── What-If Results ───────────────────────────────────────────────────────────
+if st.session_state.get("whatif_results"):
+    st.markdown("<div class='section-label'>What-If Results</div>", unsafe_allow_html=True)
+    st.caption("Comparison across variants. Baseline uses current config; variants use sidebar overrides.")
+    _wf_df = build_whatif_results_df(st.session_state.whatif_results)
+    st.dataframe(_coerce_strings(_wf_df.reset_index(drop=True)), use_container_width=True)
+
+if st.session_state.playing:
+    time.sleep(2.5)
+    if st.session_state.playback_idx < max_idx:
         st.session_state.playback_idx += 1
     else:
-        st.session_state.playback_idx = 0
+        st.session_state.playing = False   # stop at end rather than looping
     st.experimental_rerun()

@@ -22,20 +22,49 @@ Conventions:
 """
 import csv
 import io
+import math
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import custody.config as config
 from custody.anomalies import anomaly_breakdown, anomaly_score
 from custody.behavior.detectors import vessel_proximity
 from custody.behavior.state_machine import infer_state
+from custody.decision_trace import build_decision_trace
 from custody.features.proximity_features import group_records_by_time, nearest_vessel_from_records
 from custody.models import BehaviorState, HistoryEntry, TrackState, Vessel
 from custody.planner import plan_collection
+from custody.sensors import get_sensor_opportunities
 from custody.tracks import update_uncertainty
 
 
 _REQUIRED_COLUMNS = {"vessel_id", "timestamp", "lat", "lon", "speed_knots", "heading_deg"}
+
+
+def _stale_confidence(base_confidence: float, gap_seconds: float) -> float:
+    """Apply AIS staleness decay to a custody confidence value.
+
+    Gaps up to AIS_STALE_GAP_SECONDS are normal AIS reporting intervals and
+    return base_confidence unchanged.  Beyond that, confidence decays
+    exponentially with the excess gap time, floored at AIS_MIN_STALE_CONFIDENCE.
+
+    This reflects the operational reality that a vessel which has gone quiet
+    for an extended period is harder to maintain in custody than one reporting
+    regularly — independent of how uncertain its position has become.
+
+    Args:
+        base_confidence: Custody confidence derived from TrackState (0–1).
+        gap_seconds:     Elapsed seconds since the previous AIS observation.
+
+    Returns:
+        Adjusted confidence in [AIS_MIN_STALE_CONFIDENCE, base_confidence].
+    """
+    if gap_seconds <= config.AIS_STALE_GAP_SECONDS:
+        return base_confidence
+    excess = gap_seconds - config.AIS_STALE_GAP_SECONDS
+    decay = math.exp(-config.AIS_STALE_CONFIDENCE_DECAY_RATE * excess)
+    return max(base_confidence * decay, config.AIS_MIN_STALE_CONFIDENCE)
 
 
 @dataclass(frozen=True)
@@ -152,11 +181,14 @@ def parse_ais_csv(source: str) -> list[AISObservation]:
     return observations
 
 
-def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
+def ingest_ais_track(
+    observations: list[AISObservation],
+    observer_position_from_obs: bool = False,
+) -> list[dict]:
     """Replay a single vessel's AIS observations through the custody pipeline.
 
     Produces a timeline list whose records match the simulation output schema
-    (same column names and semantics as simulate_target).  The key differences
+    (same column names and semantics as run_simulation).  The key differences
     from simulation:
 
       - Position and kinematics come from observations, not dead-reckoning.
@@ -169,6 +201,12 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
     Args:
         observations: AIS observations for exactly one vessel.  Mixed vessel_ids
                       raise ValueError.  Input is sorted by timestamp internally.
+        observer_position_from_obs: When True, each observation's lat/lon is
+                      passed as the observer position to get_sensor_opportunities
+                      and plan_collection, allowing orbital sensors (SAT-A/SAT-B)
+                      to be considered based on actual vessel geometry.  When False
+                      (default), observer position is omitted and orbital sensors
+                      are excluded — preserving the original AIS replay behavior.
 
     Returns:
         List of timeline dicts, one per observation, in timestamp order.
@@ -196,6 +234,23 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
     first_breakdown = anomaly_breakdown(vessel)
     first_score = anomaly_score(vessel)
 
+    _first_lat = first.lat if observer_position_from_obs else None
+    _first_lon = first.lon if observer_position_from_obs else None
+    first_opps = get_sensor_opportunities(first.timestamp, _first_lat, _first_lon)
+    first_trace = build_decision_trace(
+        timestamp=first.timestamp,
+        vessel_id=vessel.id,
+        score=first_score,
+        confidence=track.confidence,
+        compound_boost=0.0,
+        track=track,
+        accessible_opportunities=first_opps,
+        claimed_sensor_ids=set(),
+        remaining_opportunities=first_opps,
+        decision_action="NONE",
+        decision_sensor_id=None,
+    )
+
     timeline: list[dict] = [
         {
             "target_id": vessel.id,
@@ -218,6 +273,7 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
             "route_deviation": first_breakdown["route_deviation"].score,
             "behavior_state": BehaviorState.UNKNOWN.value,
             "state_confidence": 0.2,
+            "decision_trace": first_trace,
         }
     ]
 
@@ -230,7 +286,8 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
         vessel.history.append(observation_to_history_entry(prev_obs))
 
         # Elapsed time drives uncertainty growth — never assume a fixed interval.
-        hours_elapsed = (curr_obs.timestamp - prev_obs.timestamp).total_seconds() / 3600
+        gap_seconds = (curr_obs.timestamp - prev_obs.timestamp).total_seconds()
+        hours_elapsed = gap_seconds / 3600
         track.uncertainty_km = update_uncertainty(track.uncertainty_km, hours_elapsed)
 
         # Update vessel fields from incoming observation.
@@ -244,7 +301,34 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
         score = anomaly_score(vessel)
         inferred_state, state_confidence = infer_state(vessel, vessel.history)
 
-        decision = plan_collection(track, score, track.confidence, breakdown, curr_obs.timestamp)
+        _obs_lat = curr_obs.lat if observer_position_from_obs else None
+        _obs_lon = curr_obs.lon if observer_position_from_obs else None
+        opps = get_sensor_opportunities(curr_obs.timestamp, _obs_lat, _obs_lon)
+        # Apply staleness decay: long observation gaps reduce confidence beyond
+        # what position-uncertainty growth alone captures.
+        confidence = _stale_confidence(track.confidence, gap_seconds)
+        decision = plan_collection(
+            track, score, confidence, breakdown, curr_obs.timestamp, opps,
+            compound_boost=0.0,
+            observer_lat=_obs_lat,
+            observer_lon=_obs_lon,
+        )
+        trace = build_decision_trace(
+            timestamp=curr_obs.timestamp,
+            vessel_id=vessel.id,
+            score=score,
+            confidence=confidence,
+            compound_boost=0.0,
+            track=track,
+            accessible_opportunities=opps,
+            claimed_sensor_ids=set(),
+            remaining_opportunities=opps,
+            decision_action=decision.action,
+            decision_sensor_id=decision.sensor_id,
+            lookahead_boost=decision.lookahead_boost,
+            nearest_pass_tts=decision.nearest_pass_tts,
+            hold_reason=decision.hold_reason,
+        )
 
         timeline.append(
             {
@@ -253,7 +337,7 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
                 "lat": vessel.lat,
                 "lon": vessel.lon,
                 "uncertainty_km": track.uncertainty_km,
-                "custody_confidence": track.confidence,
+                "custody_confidence": confidence,
                 "anomaly_score": score,
                 "speed_kmh": vessel.speed_kmh,
                 "heading_deg": vessel.heading_deg,
@@ -268,6 +352,7 @@ def ingest_ais_track(observations: list[AISObservation]) -> list[dict]:
                 "route_deviation": breakdown["route_deviation"].score,
                 "behavior_state": inferred_state.value,
                 "state_confidence": state_confidence,
+                "decision_trace": trace,
             }
         )
 
@@ -316,7 +401,10 @@ def _add_proximity_scores(results: dict[str, list[dict]]) -> None:
                 record["nearest_vessel_km"] = None
 
 
-def replay_ais_file(source: str) -> dict[str, list[dict]]:
+def replay_ais_file(
+    source: str,
+    observer_position_from_obs: bool = False,
+) -> dict[str, list[dict]]:
     """Replay all vessels from an AIS CSV source through the custody pipeline.
 
     Groups observations by vessel_id and calls ingest_ais_track() for each
@@ -325,6 +413,10 @@ def replay_ais_file(source: str) -> dict[str, list[dict]]:
 
     Args:
         source: File path or raw CSV string — passed directly to parse_ais_csv.
+        observer_position_from_obs: Forwarded to ingest_ais_track for every
+                      vessel.  When True, each vessel's own lat/lon is used as
+                      the observer position so orbital sensors are considered.
+                      Defaults to False to preserve original behavior.
 
     Returns:
         Dict keyed by vessel_id; each value is the timeline list returned by
@@ -338,6 +430,9 @@ def replay_ais_file(source: str) -> dict[str, list[dict]]:
     groups: dict[str, list[AISObservation]] = {}
     for obs in observations:
         groups.setdefault(obs.vessel_id, []).append(obs)
-    results = {vid: ingest_ais_track(group) for vid, group in groups.items()}
+    results = {
+        vid: ingest_ais_track(group, observer_position_from_obs=observer_position_from_obs)
+        for vid, group in groups.items()
+    }
     _add_proximity_scores(results)
     return results
