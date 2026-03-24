@@ -20,6 +20,7 @@ from compound_panels import (
 )
 from orbital_passes_panel import build_orbital_passes_rows
 from whatif_panel import build_variants, build_whatif_results_df
+from entity_detail_panel import render_entity_detail_panel
 
 
 def _coerce_strings(df: pd.DataFrame) -> pd.DataFrame:
@@ -277,14 +278,6 @@ with c4: st.metric("Uncertainty (km)", f'{current["uncertainty_km"]:.2f}')
 with c5: st.metric("Action", current["action"])
 with c6: st.metric("Collection Result", collection_result)
 
-# ── Decision ──────────────────────────────────────────────────────────────────
-st.markdown("<div class='section-label'>Decision</div>", unsafe_allow_html=True)
-d1, d2 = st.columns(2)
-with d1:
-    st.markdown(f"<span style='color:#999;font-size:0.75rem;'>Reason</span><br>{action_reason}", unsafe_allow_html=True)
-with d2:
-    st.markdown(f"<span style='color:#999;font-size:0.75rem;'>Sensor</span><br>{sensor_id} ({sensor_type})", unsafe_allow_html=True)
-
 # ── Mission summary ───────────────────────────────────────────────────────────
 st.markdown("<div class='section-label'>Mission Summary</div>", unsafe_allow_html=True)
 task_count = int((target_df["action"] == "TASK").sum())
@@ -316,6 +309,11 @@ i1, i2 = st.columns(2)
 with i1: st.metric("Behavior State", str(current["behavior_state"]).upper())
 with i2: st.metric("State Confidence", f'{current["state_confidence"]:.2f}')
 
+# ── Reasoning stack: Fusion Assessment → Decision → Task Queue ────────────────
+prefix_window  = target_df.iloc[:selected_idx].to_dict("records")
+current_record = target_df.iloc[selected_idx].to_dict()
+render_entity_detail_panel(current_record, prefix_window)
+
 # ── Alerts ────────────────────────────────────────────────────────────────────
 st.markdown("<div class='section-label'>Alerts</div>", unsafe_allow_html=True)
 alerts = alerts_for_timeline(target_df.iloc[: selected_idx + 1].to_dict("records"))
@@ -333,8 +331,6 @@ else:
 # Shows only rules that fire at the selected step (not accumulated history).
 st.markdown("<div class='section-label'>Compound Signals</div>", unsafe_allow_html=True)
 st.caption("Active at selected step only. Adjust 'Min compound confidence' in the sidebar to filter.")
-prefix_window = target_df.iloc[:selected_idx].to_dict("records")
-current_record = target_df.iloc[selected_idx].to_dict()
 active_compounds = sorted(
     [s for s in evaluate_compounds(current_record, window=prefix_window)
      if s.confidence >= min_compound_conf],
