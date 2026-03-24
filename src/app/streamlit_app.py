@@ -10,6 +10,7 @@ from custody.alerts import alerts_for_timeline
 from custody.compounds import compounds_for_timeline, evaluate_compounds
 from custody.decision_trace import DecisionTrace, traces_to_rows
 from custody.simulate import run_simulation
+from custody.simulation import run_multi_target_simulation
 from custody.config import ZONES
 from custody.sensors import get_sensor_opportunities, next_pass_window
 from custody.whatif import run_comparison
@@ -83,7 +84,17 @@ st.sidebar.header("Playback")
 mode = st.sidebar.radio("Mode", ["Simulation", "AIS Replay"])
 
 if mode == "Simulation":
-    records = run_simulation()
+    scenario_mode = st.sidebar.radio(
+        "Scenario",
+        ["Demo (2 vessels)", "Multi-Target (30 vessels)"],
+        index=0,
+    )
+
+if mode == "Simulation":
+    if scenario_mode == "Multi-Target (30 vessels)":
+        records = run_multi_target_simulation()
+    else:
+        records = run_simulation()
     all_df = pd.DataFrame(records)
     all_df["time_str"] = all_df["time"].astype(str)
     target_ids = sorted(all_df["target_id"].unique().tolist())
