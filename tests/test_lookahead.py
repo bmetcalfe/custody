@@ -291,8 +291,9 @@ class TestNearestPassSelection:
             duration_seconds=420.0,
             time_to_start_seconds=1500.0,
         )
-        # Both within threshold — nearest should be returned
-        with patch("custody.sensors.next_pass_window", side_effect=[near, far]):
+        # Both within threshold — nearest should be returned.
+        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
+        with patch("custody.sensors.next_pass_window", side_effect=[near, None, None, far, None, None]):
             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
         assert result is not None
         assert result.satellite_id == "SAT-A"
@@ -307,7 +308,8 @@ class TestNearestPassSelection:
             duration_seconds=420.0,
             time_to_start_seconds=1200.0,
         )
-        with patch("custody.sensors.next_pass_window", side_effect=[None, far]):
+        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
+        with patch("custody.sensors.next_pass_window", side_effect=[None, None, None, far, None, None]):
             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
         assert result is not None
         assert result.satellite_id == "SAT-B"

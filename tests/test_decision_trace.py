@@ -337,7 +337,7 @@ class TestSimulationTraces:
     def test_task_value_total_equals_base_minus_decay_plus_worsening(self):
         for r in self.records:
             tv = r["decision_trace"].task_value
-            expected = tv.base - tv.freshness_decay + tv.worsening_boost
+            expected = tv.base - tv.freshness_decay + tv.worsening_boost + tv.lookahead_boost
             assert tv.total == pytest.approx(expected, abs=1e-9)
 
 

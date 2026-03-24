@@ -62,10 +62,11 @@ from custody.sensors import PassWindow, next_pass_window
 # Sensor catalog mappings
 # ---------------------------------------------------------------------------
 
-# Abstract sensor label → satellite id for orbital window lookup
-_SAT_FOR_SENSOR: dict[str, str] = {
-    "OPTICAL": "SAT-A",
-    "SAR":     "SAT-B",
+# Abstract sensor label → ordered list of satellite ids for orbital window lookup.
+# All satellites of a type are searched; the nearest upcoming pass is selected.
+_SAT_FOR_SENSOR: dict[str, list[str]] = {
+    "OPTICAL": ["SAT-A", "SAT-A2", "SAT-A3"],
+    "SAR":     ["SAT-B", "SAT-B2", "SAT-B3"],
 }
 
 # Candidate sensor ordering per decision action
@@ -201,12 +202,18 @@ def _select_window(
     lon = record.get("lon")
 
     if sensor in _SAT_FOR_SENSOR:
-        sat_id = _SAT_FOR_SENSOR[sensor]
+        sat_ids = _SAT_FOR_SENSOR[sensor]
         if lat is not None and lon is not None:
-            pw: Optional[PassWindow] = next_pass_window(sat_id, lat, lon, now)
-            if pw is None:
-                return None   # No pass in horizon — sensor unavailable
-            return pw.start_time, pw.end_time, pw.time_to_start_seconds
+            # Search all satellites of this type; keep the nearest upcoming pass.
+            best: Optional[PassWindow] = None
+            for sat_id in sat_ids:
+                pw: Optional[PassWindow] = next_pass_window(sat_id, lat, lon, now)
+                if pw is not None:
+                    if best is None or pw.time_to_start_seconds < best.time_to_start_seconds:
+                        best = pw
+            if best is None:
+                return None   # No pass in horizon for any satellite of this type
+            return best.start_time, best.end_time, best.time_to_start_seconds
         # No position — fall back to planner context TTS if available
         if isinstance(planner_context, DecisionTrace):
             tts = planner_context.task_value.nearest_pass_time_to_start_seconds
