@@ -7,8 +7,9 @@ of display-ready dicts that streamlit_app.py renders as a dataframe.
 Public API
 ----------
 build_orbital_passes_rows : (lat, lon, timestamp) -> list[dict]
-    Returns one row per orbital satellite (SAT-A, SAT-B) describing the
-    next pass window from the given observer position and time.
+    Returns one row per orbital satellite (EO-MIO-1, EO-MIO-2, EO-SSO-1,
+    EO-SSO-2, SAR-1, SAR-2) describing the next pass window from the given
+    observer position and time.
 """
 from datetime import datetime
 
@@ -17,7 +18,7 @@ from custody.sensors import next_pass_window
 
 # Orbital satellites exposed in the panel — schedule-based sensors (A1, B1, C1)
 # are intentionally excluded because they have no orbital geometry.
-_ORBITAL_SATELLITES = ["SAT-A", "SAT-B"]
+_ORBITAL_SATELLITES = ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2", "SAR-1", "SAR-2"]
 
 # Sort key constants (lower = more actionable)
 _SORT_IN_VIEW = 0
@@ -47,7 +48,7 @@ def build_orbital_passes_rows(
     Returns:
         List of dicts — one entry per satellite in _ORBITAL_SATELLITES — with keys:
 
-            Satellite           – satellite identifier ("SAT-A" or "SAT-B")
+            Satellite           – satellite identifier (e.g. "EO-MIO-1", "SAR-1")
             Start               – datetime of pass start, or None if no pass found
             End                 – datetime of pass end, or None if no pass found
             Duration (min)      – pass duration in minutes (float), or None

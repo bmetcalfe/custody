@@ -15,22 +15,29 @@ Two kinds of sensor are supported:
     is given, orbital sensors are omitted entirely so that the returned
     list matches the pre-Step-20 result exactly.
 
-Prototype satellite catalog
----------------------------
-Two synthetic prototype orbital assets are bundled; no live TLE fetch is
-performed.  Their orbital parameters were chosen to give meaningfully
-different coverage patterns:
+Satellite catalog
+-----------------
+Six synthetic orbital assets are bundled; no live TLE fetch is performed.
+Their orbital parameters were chosen to give meaningfully different coverage
+patterns over the default simulation date (2026-03-23):
 
-  SAT-A  ISS-like LEO orbit (inclination 51.6°, ~400 km altitude).
-         Sensor type: high_resolution.  Covers mid-latitude ground tracks.
-         TLE epoch: 2026-03-23 (day 82), RAAN 220°.
+  EO-MIO-1  Medium-inclination LEO (51.6°, ~400 km).  High-resolution optical.
+             RAAN 0°.  Passes equatorial observers ~11:33z.
 
-  SAT-B  Sun-synchronous LEO orbit (inclination 97.8°, ~700 km altitude).
-         Sensor type: all_weather (SAR-like — complements SAT-A's optical).
-         TLE epoch: 2026-03-23 (day 82), RAAN 40° (~180° offset from SAT-A),
-         ensuring the two satellites occupy different parts of the sky and
-         produce non-overlapping visibility windows over the default
-         simulation date.
+  EO-MIO-2  Medium-inclination LEO (51.6°, ~400 km).  High-resolution optical.
+             RAAN 220°.  Passes equatorial observers ~13:51z.
+
+  EO-SSO-1  Sun-synchronous LEO (97.8°, ~600 km).  High-resolution optical.
+             RAAN 320°.  Passes equatorial observers ~10:00z.
+
+  EO-SSO-2  Sun-synchronous LEO (97.8°, ~600 km).  High-resolution optical.
+             RAAN 100°.  Passes equatorial observers ~18:00z.
+
+  SAR-1     Sun-synchronous LEO (97.8°, ~700 km).  All-weather (SAR).
+             RAAN 200°.  Two passes: ~12:21z and ~13:59z.
+
+  SAR-2     Sun-synchronous LEO (97.8°, ~700 km).  All-weather (SAR).
+             RAAN 80°.  Two passes: ~16:29z and ~18:08z.
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -43,74 +50,72 @@ from custody.orbit import is_in_view, load_tle
 
 
 # ---------------------------------------------------------------------------
-# Prototype satellite TLE catalog
+# Satellite TLE catalog
 # ---------------------------------------------------------------------------
 
-# SAT-A: ISS-like LEO asset (epoch 2026-03-23, NORAD 25544).
-# Prototype high-resolution optical LEO asset; inclination 51.6°, ~400 km.
-# RAAN 220° places visible passes over equatorial observers at ~14:16-14:21 UTC
-# on the default simulation date (2026-03-23).
-_TLE_SAT_A = (
-    "SAT-A",
-    "1 25544U 98067A   26082.50000000  .00001764  00000-0  38792-4 0  0007",
-    "2 25544  51.6000 220.0000 0001000  90.0000 270.0000 15.50103472000016",
+# EO-MIO-1: Medium-inclination optical asset (NORAD 99910).
+# High-resolution optical LEO; inclination 51.6°, ~400 km.  RAAN 0°.
+# Passes equatorial observers at ~11:33z on 2026-03-23.
+_TLE_EO_MIO_1 = (
+    "EO-MIO-1",
+    "1 99910U 98067B   26082.50000000  .00000034  00000-0  25000-4 0  0002",
+    "2 99910 51.6000   0.0000 0001000  90.0000   0.0000 15.50103472000000",
 )
 
-# SAT-A2: Second optical LEO asset (NORAD 25545, RAAN 0°).
-# Same orbital plane family as SAT-A but RAAN offset to produce passes over
-# equatorial observers at ~11:57-12:04 UTC on 2026-03-23, filling the morning
-# gap in the simulation window.
-_TLE_SAT_A2 = (
-    "SAT-A2",
-    "1 25545U 98067B   26082.50000000  .00001764  00000-0  38792-4 0  0008",
-    "2 25545  51.6000   0.0000 0001000  90.0000 270.0000 15.50103472000013",
+# EO-MIO-2: Second medium-inclination optical asset (NORAD 99911).
+# High-resolution optical LEO; inclination 51.6°, ~400 km.  RAAN 220°.
+# Passes equatorial observers at ~13:51z on 2026-03-23.
+_TLE_EO_MIO_2 = (
+    "EO-MIO-2",
+    "1 99911U 98067C   26082.50000000  .00000034  00000-0  25000-4 0  0003",
+    "2 99911 51.6000 220.0000 0001000  90.0000   0.0000 15.50103472000005",
 )
 
-# SAT-A3: Third optical LEO asset (NORAD 25546, RAAN 280°).
-# RAAN 280° produces passes over equatorial observers at ~18:56-19:02 UTC
-# on 2026-03-23, covering the evening portion of the simulation window.
-_TLE_SAT_A3 = (
-    "SAT-A3",
-    "1 25546U 98067C   26082.50000000  .00001764  00000-0  38792-4 0  0009",
-    "2 25546  51.6000 280.0000 0001000  90.0000 270.0000 15.50103472000014",
+# EO-SSO-1: First sun-synchronous optical asset (NORAD 99920).
+# High-resolution optical LEO; inclination 97.8°, ~600 km.  RAAN 320°.
+# Passes equatorial observers at ~10:00z on 2026-03-23.
+_TLE_EO_SSO_1 = (
+    "EO-SSO-1",
+    "1 99920U 26010A   26082.50000000  .00000034  00000-0  25000-4 0  0002",
+    "2 99920 97.8000 320.0000 0001000  90.0000   0.0000 14.88000000000001",
 )
 
-# SAT-B: Synthetic sun-synchronous orbit (epoch 2026-03-23, NORAD 99901).
-# Prototype all-weather (SAR-like) asset; inclination 97.8°, ~700 km.
-# RAAN 40° produces passes at ~14:49-14:57 UTC on 2026-03-23.
-_TLE_SAT_B = (
-    "SAT-B",
-    "1 99901U 26001A   26082.50000000  .00000034  00000-0  25000-4 0  0001",
-    "2 99901  97.8000  40.0000 0001000  90.0000   0.0000 14.57650000000017",
+# EO-SSO-2: Second sun-synchronous optical asset (NORAD 99921).
+# High-resolution optical LEO; inclination 97.8°, ~600 km.  RAAN 100°.
+# Passes equatorial observers at ~18:00z on 2026-03-23.
+_TLE_EO_SSO_2 = (
+    "EO-SSO-2",
+    "1 99921U 26010B   26082.50000000  .00000034  00000-0  25000-4 0  0003",
+    "2 99921 97.8000 100.0000 0001000  90.0000   0.0000 14.88000000000008",
 )
 
-# SAT-B2: Second SAR asset (NORAD 99902, RAAN 200°).
-# Produces two passes over equatorial observers on 2026-03-23: ~12:22-12:29 UTC
-# and ~14:00-14:07 UTC, covering the late-morning portion of the window.
-_TLE_SAT_B2 = (
-    "SAT-B2",
-    "1 99902U 26002A   26082.50000000  .00000034  00000-0  25000-4 0  0003",
-    "2 99902  97.8000 200.0000 0001000  90.0000   0.0000 14.57650000000016",
+# SAR-1: First SAR asset (NORAD 99930).
+# All-weather SSO LEO; inclination 97.8°, ~700 km.  RAAN 200°.
+# Two passes over equatorial observers on 2026-03-23: ~12:21z and ~13:59z.
+_TLE_SAR_1 = (
+    "SAR-1",
+    "1 99930U 26002A   26082.50000000  .00000034  00000-0  25000-4 0  0004",
+    "2 99930 97.8000 200.0000 0001000  90.0000   0.0000 14.57650000000006",
 )
 
-# SAT-B3: Third SAR asset (NORAD 99903, RAAN 80°).
-# Produces two passes over equatorial observers on 2026-03-23: ~16:29-16:37 UTC
-# and ~18:08-18:13 UTC, covering the afternoon/evening portion of the window.
-_TLE_SAT_B3 = (
-    "SAT-B3",
-    "1 99903U 26003A   26082.50000000  .00000034  00000-0  25000-4 0  0005",
-    "2 99903  97.8000  80.0000 0001000  90.0000   0.0000 14.57650000000013",
+# SAR-2: Second SAR asset (NORAD 99931).
+# All-weather SSO LEO; inclination 97.8°, ~700 km.  RAAN 80°.
+# Two passes over equatorial observers on 2026-03-23: ~16:29z and ~18:08z.
+_TLE_SAR_2 = (
+    "SAR-2",
+    "1 99931U 26003A   26082.50000000  .00000034  00000-0  25000-4 0  0006",
+    "2 99931 97.8000  80.0000 0001000  90.0000   0.0000 14.57650000000003",
 )
 
 # Parse TLEs once at import time.  Satrec objects are immutable and safe to
 # share across threads.
 _SATREC_CACHE: dict[str, Satrec] = {
-    "SAT-A":  load_tle(*_TLE_SAT_A),
-    "SAT-A2": load_tle(*_TLE_SAT_A2),
-    "SAT-A3": load_tle(*_TLE_SAT_A3),
-    "SAT-B":  load_tle(*_TLE_SAT_B),
-    "SAT-B2": load_tle(*_TLE_SAT_B2),
-    "SAT-B3": load_tle(*_TLE_SAT_B3),
+    "EO-MIO-1": load_tle(*_TLE_EO_MIO_1),
+    "EO-MIO-2": load_tle(*_TLE_EO_MIO_2),
+    "EO-SSO-1": load_tle(*_TLE_EO_SSO_1),
+    "EO-SSO-2": load_tle(*_TLE_EO_SSO_2),
+    "SAR-1":    load_tle(*_TLE_SAR_1),
+    "SAR-2":    load_tle(*_TLE_SAR_2),
 }
 
 
@@ -276,36 +281,95 @@ def get_sensor_opportunities(
 
     if observer_lat is not None and observer_lon is not None:
 
-        # SAT-A: prototype LEO high-resolution optical asset (~400 km, 51.6° inc.)
-        if _satellite_in_view("SAT-A", observer_lat, observer_lon, current_time):
+        # EO-MIO-1: medium-inclination optical asset (~400 km, 51.6° inc., RAAN 0°).
+        if _satellite_in_view("EO-MIO-1", observer_lat, observer_lon, current_time):
             opportunities.append(
                 SensorOpportunity(
-                    sensor_id="SAT-A",
+                    sensor_id="EO-MIO-1",
                     sensor_type="high_resolution",
                     success_prob=0.70,
                     resolution="high",
                     cost=2.5,
                     available_from=current_time,
                     available_to=current_time,
-                    satellite_id="SAT-A",
+                    satellite_id="EO-MIO-1",
                 )
             )
 
-        # SAT-B: prototype sun-synchronous all-weather (SAR-like) asset
-        # (~700 km, 97.8° inc., RAAN ~138° offset from SAT-A).
-        # Complements SAT-A: visible from different ground tracks at the
-        # same time, and usable regardless of cloud cover.
-        if _satellite_in_view("SAT-B", observer_lat, observer_lon, current_time):
+        # EO-MIO-2: medium-inclination optical asset (~400 km, 51.6° inc., RAAN 220°).
+        if _satellite_in_view("EO-MIO-2", observer_lat, observer_lon, current_time):
             opportunities.append(
                 SensorOpportunity(
-                    sensor_id="SAT-B",
+                    sensor_id="EO-MIO-2",
+                    sensor_type="high_resolution",
+                    success_prob=0.70,
+                    resolution="high",
+                    cost=2.5,
+                    available_from=current_time,
+                    available_to=current_time,
+                    satellite_id="EO-MIO-2",
+                )
+            )
+
+        # EO-SSO-1: sun-synchronous optical asset (~600 km, 97.8° inc., RAAN 320°).
+        if _satellite_in_view("EO-SSO-1", observer_lat, observer_lon, current_time):
+            opportunities.append(
+                SensorOpportunity(
+                    sensor_id="EO-SSO-1",
+                    sensor_type="high_resolution",
+                    success_prob=0.68,
+                    resolution="high",
+                    cost=2.8,
+                    available_from=current_time,
+                    available_to=current_time,
+                    satellite_id="EO-SSO-1",
+                )
+            )
+
+        # EO-SSO-2: sun-synchronous optical asset (~600 km, 97.8° inc., RAAN 100°).
+        if _satellite_in_view("EO-SSO-2", observer_lat, observer_lon, current_time):
+            opportunities.append(
+                SensorOpportunity(
+                    sensor_id="EO-SSO-2",
+                    sensor_type="high_resolution",
+                    success_prob=0.68,
+                    resolution="high",
+                    cost=2.8,
+                    available_from=current_time,
+                    available_to=current_time,
+                    satellite_id="EO-SSO-2",
+                )
+            )
+
+        # SAR-1: all-weather SSO asset (~700 km, 97.8° inc., RAAN 200°).
+        # Complements EO assets: usable regardless of cloud cover.
+        if _satellite_in_view("SAR-1", observer_lat, observer_lon, current_time):
+            opportunities.append(
+                SensorOpportunity(
+                    sensor_id="SAR-1",
                     sensor_type="all_weather",
                     success_prob=0.80,
                     resolution="medium",
                     cost=2.0,
                     available_from=current_time,
                     available_to=current_time,
-                    satellite_id="SAT-B",
+                    satellite_id="SAR-1",
+                )
+            )
+
+        # SAR-2: all-weather SSO asset (~700 km, 97.8° inc., RAAN 80°).
+        # Provides afternoon/evening coverage complementing SAR-1.
+        if _satellite_in_view("SAR-2", observer_lat, observer_lon, current_time):
+            opportunities.append(
+                SensorOpportunity(
+                    sensor_id="SAR-2",
+                    sensor_type="all_weather",
+                    success_prob=0.80,
+                    resolution="medium",
+                    cost=2.0,
+                    available_from=current_time,
+                    available_to=current_time,
+                    satellite_id="SAR-2",
                 )
             )
 
@@ -331,7 +395,7 @@ def next_pass_window(
     to the first step at which the satellite drops below the elevation mask.
 
     Args:
-        satellite_id:     Catalog identifier ("SAT-A" or "SAT-B").
+        satellite_id:     Catalog identifier (e.g. "EO-MIO-1", "SAR-1").
                           Returns None for unknown identifiers.
         observer_lat:     Observer geodetic latitude in degrees (+N).
         observer_lon:     Observer geodetic longitude in degrees (+E).
@@ -397,8 +461,9 @@ def nearest_orbital_pass(
 ) -> Optional[PassWindow]:
     """Return the soonest upcoming pass across all orbital satellites, or None.
 
-    Inspects only orbital assets registered in _SATREC_CACHE (SAT-A and
-    SAT-B).  Schedule-based sensors (A1, B1, C1) are not considered — they
+    Inspects only orbital assets registered in _SATREC_CACHE (EO-MIO-1,
+    EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).  Schedule-based sensors
+    (A1, B1, C1) are not considered — they
     have no orbital geometry and are always available on a fixed timetable.
 
     Args:

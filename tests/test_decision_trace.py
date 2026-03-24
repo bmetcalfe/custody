@@ -210,7 +210,7 @@ class TestTaskValueBreakdown:
 
 class TestArbitrationBreakdown:
     def test_final_pool_is_accessible_minus_claimed(self):
-        accessible = ("A1", "B1", "SAT-A")
+        accessible = ("A1", "B1", "EO-MIO-1")
         claimed = ("A1",)
         final = tuple(s for s in accessible if s not in claimed)
         t = _make_trace(accessible=accessible, claimed=claimed, final_pool=final)

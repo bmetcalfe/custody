@@ -26,8 +26,9 @@ Layer boundary
 
 Sensor vocabulary
 -----------------
-  OPTICAL    → SAT-A (high-resolution, ISS-like LEO, 51.6°)
-  SAR        → SAT-B (all-weather, sun-synchronous, 97.8°)
+  OPTICAL    → EO-MIO-1, EO-MIO-2 (high-resolution, MIO 51.6°, ~400 km)
+               EO-SSO-1, EO-SSO-2 (high-resolution, SSO 97.8°, ~600 km)
+  SAR        → SAR-1, SAR-2 (all-weather, SSO 97.8°, ~700 km)
   AIS_REFRESH → immediate AIS reacquisition window
   MONITOR    → passive monitoring (always available)
 
@@ -65,8 +66,8 @@ from custody.sensors import PassWindow, next_pass_window
 # Abstract sensor label → ordered list of satellite ids for orbital window lookup.
 # All satellites of a type are searched; the nearest upcoming pass is selected.
 _SAT_FOR_SENSOR: dict[str, list[str]] = {
-    "OPTICAL": ["SAT-A", "SAT-A2", "SAT-A3"],
-    "SAR":     ["SAT-B", "SAT-B2", "SAT-B3"],
+    "OPTICAL": ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"],
+    "SAR":     ["SAR-1", "SAR-2"],
 }
 
 # Candidate sensor ordering per decision action

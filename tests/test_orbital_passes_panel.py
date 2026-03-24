@@ -2,7 +2,7 @@
 Tests for orbital_passes_panel.build_orbital_passes_rows.
 
 Coverage:
-  1. Returns exactly two rows — one for SAT-A, one for SAT-B
+  1. Returns exactly six rows — one per satellite in the new constellation
   2. Output row keys match the expected column schema
   3. "In View Now" status when satellite is already overhead
   4. "Upcoming" status for a near-future pass
@@ -42,8 +42,11 @@ EXPECTED_COLUMNS = {
     "Within Threshold",
 }
 
+# New constellation: 6 satellites
+_ALL_SATS = ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2", "SAR-1", "SAR-2"]
+
 _PASS_IN_VIEW = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=T0,
     end_time=T0 + timedelta(minutes=7),
     duration_seconds=420.0,
@@ -51,7 +54,7 @@ _PASS_IN_VIEW = PassWindow(
 )
 
 _PASS_UPCOMING_NEAR = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=T0 + timedelta(minutes=20),
     end_time=T0 + timedelta(minutes=27),
     duration_seconds=420.0,
@@ -59,7 +62,7 @@ _PASS_UPCOMING_NEAR = PassWindow(
 )
 
 _PASS_UPCOMING_FAR = PassWindow(
-    satellite_id="SAT-B",
+    satellite_id="SAR-1",
     start_time=T0 + timedelta(minutes=60),
     end_time=T0 + timedelta(minutes=67),
     duration_seconds=420.0,
@@ -68,7 +71,7 @@ _PASS_UPCOMING_FAR = PassWindow(
 
 # Exactly at the threshold boundary (1800 s == HOLD_LOOKAHEAD_THRESHOLD_SECONDS)
 _PASS_AT_THRESHOLD = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS),
     end_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 420),
     duration_seconds=420.0,
@@ -77,7 +80,7 @@ _PASS_AT_THRESHOLD = PassWindow(
 
 # One second past the threshold
 _PASS_JUST_OVER_THRESHOLD = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 1),
     end_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 421),
     duration_seconds=420.0,
@@ -85,27 +88,33 @@ _PASS_JUST_OVER_THRESHOLD = PassWindow(
 )
 
 
-def _make_rows(sat_a_pw, sat_b_pw):
-    """Return rows with controlled PassWindow returns for both satellites."""
+def _make_rows(eo_mio_1_pw, eo_mio_2_pw, eo_sso_1_pw=None, eo_sso_2_pw=None,
+               sar_1_pw=None, sar_2_pw=None):
+    """Return rows with controlled PassWindow returns for all six satellites."""
+    pw_map = {
+        "EO-MIO-1": eo_mio_1_pw,
+        "EO-MIO-2": eo_mio_2_pw,
+        "EO-SSO-1": eo_sso_1_pw,
+        "EO-SSO-2": eo_sso_2_pw,
+        "SAR-1":    sar_1_pw,
+        "SAR-2":    sar_2_pw,
+    }
+
     def fake_next_pass(sat_id, lat, lon, from_time, horizon_minutes=180):
-        if sat_id == "SAT-A":
-            return sat_a_pw
-        if sat_id == "SAT-B":
-            return sat_b_pw
-        return None
+        return pw_map.get(sat_id)
 
     with patch("orbital_passes_panel.next_pass_window", side_effect=fake_next_pass):
         return build_orbital_passes_rows(_LAT, _LON, T0)
 
 
 # ---------------------------------------------------------------------------
-# 1 & 2. Structure: two rows, correct columns
+# 1 & 2. Structure: six rows, correct columns
 # ---------------------------------------------------------------------------
 
 class TestOutputSchema:
-    def test_returns_two_rows(self):
+    def test_returns_six_rows(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
-        assert len(rows) == 2
+        assert len(rows) == 6
 
     def test_row_keys_match_expected_columns(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
@@ -116,10 +125,10 @@ class TestOutputSchema:
         rows = _make_rows(None, None)
         assert isinstance(rows, list)
 
-    def test_both_satellites_present(self):
+    def test_all_satellites_present(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
         satellites = {r["Satellite"] for r in rows}
-        assert satellites == {"SAT-A", "SAT-B"}
+        assert satellites == set(_ALL_SATS)
 
 
 # ---------------------------------------------------------------------------
@@ -129,23 +138,23 @@ class TestOutputSchema:
 class TestInViewNow:
     def test_status_is_in_view_now(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Status"] == "In View Now"
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Status"] == "In View Now"
 
     def test_time_to_start_is_zero(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Time to Start (min)"] == 0.0
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Time to Start (min)"] == 0.0
 
     def test_start_equals_from_time(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Start"] == T0
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Start"] == T0
 
     def test_duration_is_positive(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Duration (min)"] > 0
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Duration (min)"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -155,23 +164,23 @@ class TestInViewNow:
 class TestUpcoming:
     def test_status_is_upcoming(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Status"] == "Upcoming"
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Status"] == "Upcoming"
 
     def test_time_to_start_is_correct(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Time to Start (min)"] == pytest.approx(20.0, abs=0.1)
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Time to Start (min)"] == pytest.approx(20.0, abs=0.1)
 
     def test_start_is_datetime(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert isinstance(sat_a["Start"], datetime)
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert isinstance(sat["Start"], datetime)
 
     def test_end_is_after_start(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["End"] > sat_a["Start"]
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["End"] > sat["Start"]
 
 
 # ---------------------------------------------------------------------------
@@ -206,16 +215,16 @@ class TestNoPassInHorizon:
 
 
 # ---------------------------------------------------------------------------
-# Mixed: one satellite in view, one no pass
+# Mixed: one satellite in view, others no pass
 # ---------------------------------------------------------------------------
 
 class TestMixedStatuses:
     def test_independent_per_satellite(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        sat_b = next(r for r in rows if r["Satellite"] == "SAT-B")
-        assert sat_a["Status"] == "In View Now"
-        assert sat_b["Status"] == "No Pass In Horizon"
+        sat_eo = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        sat_sar = next(r for r in rows if r["Satellite"] == "SAR-1")
+        assert sat_eo["Status"] == "In View Now"
+        assert sat_sar["Status"] == "No Pass In Horizon"
 
 
 # ---------------------------------------------------------------------------
@@ -226,20 +235,20 @@ class TestWithinThreshold:
     def test_within_threshold_true_for_near_upcoming(self):
         """20-min pass is inside the 30-min lookahead threshold."""
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Within Threshold"] is True
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Within Threshold"] is True
 
     def test_within_threshold_false_for_far_upcoming(self):
         """60-min pass is outside the 30-min lookahead threshold."""
         rows = _make_rows(_PASS_UPCOMING_FAR, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Within Threshold"] is False
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Within Threshold"] is False
 
     def test_within_threshold_false_for_in_view(self):
         """Already-in-view satellite: tts == 0, not a future pass → False."""
         rows = _make_rows(_PASS_IN_VIEW, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Within Threshold"] is False
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Within Threshold"] is False
 
     def test_within_threshold_false_for_no_pass(self):
         rows = _make_rows(None, None)
@@ -249,24 +258,24 @@ class TestWithinThreshold:
     def test_within_threshold_true_at_exact_boundary(self):
         """tts == HOLD_LOOKAHEAD_THRESHOLD_SECONDS (≤) → True."""
         rows = _make_rows(_PASS_AT_THRESHOLD, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Within Threshold"] is True
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Within Threshold"] is True
 
     def test_within_threshold_false_one_second_over(self):
         """tts == HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 1 (>) → False."""
         rows = _make_rows(_PASS_JUST_OVER_THRESHOLD, None)
-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
-        assert sat_a["Within Threshold"] is False
+        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
+        assert sat["Within Threshold"] is False
 
     def test_within_threshold_uses_config_constant(self):
         """Flag uses HOLD_LOOKAHEAD_THRESHOLD_SECONDS, not a hardcoded value."""
         # Verify: at threshold → True, one second past → False.
         rows_at = _make_rows(_PASS_AT_THRESHOLD, None)
         rows_over = _make_rows(_PASS_JUST_OVER_THRESHOLD, None)
-        sat_a_at = next(r for r in rows_at if r["Satellite"] == "SAT-A")
-        sat_a_over = next(r for r in rows_over if r["Satellite"] == "SAT-A")
-        assert sat_a_at["Within Threshold"] is True
-        assert sat_a_over["Within Threshold"] is False
+        sat_at = next(r for r in rows_at if r["Satellite"] == "EO-MIO-1")
+        sat_over = next(r for r in rows_over if r["Satellite"] == "EO-MIO-1")
+        assert sat_at["Within Threshold"] is True
+        assert sat_over["Within Threshold"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -282,32 +291,34 @@ class TestSortOrder:
     def test_in_view_comes_before_no_pass(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
         assert rows[0]["Status"] == "In View Now"
-        assert rows[1]["Status"] == "No Pass In Horizon"
+        # All others are "No Pass In Horizon"
+        assert rows[-1]["Status"] == "No Pass In Horizon"
 
     def test_upcoming_comes_before_no_pass(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
         assert rows[0]["Status"] == "Upcoming"
-        assert rows[1]["Status"] == "No Pass In Horizon"
+        assert rows[-1]["Status"] == "No Pass In Horizon"
 
     def test_nearer_upcoming_comes_first(self):
-        """SAT-B is 60 min away, SAT-A is 20 min away → SAT-A first."""
+        """EO-MIO-2 is 60 min away, EO-MIO-1 is 20 min away → EO-MIO-1 first."""
         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
-        assert rows[0]["Satellite"] == "SAT-A"
-        assert rows[1]["Satellite"] == "SAT-B"
+        assert rows[0]["Satellite"] == "EO-MIO-1"
+        assert rows[1]["Satellite"] in ("EO-MIO-2", "SAR-1")
 
     def test_farther_upcoming_comes_second(self):
         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
+        # First row is the near upcoming, second is far upcoming
         assert rows[1]["Time to Start (min)"] > rows[0]["Time to Start (min)"]
 
     def test_no_pass_last_when_mixed(self):
         rows = _make_rows(_PASS_IN_VIEW, None)
         assert rows[-1]["Status"] == "No Pass In Horizon"
 
-    def test_both_no_pass_stable_order(self):
-        """When both are No Pass In Horizon, both satellites still present."""
+    def test_all_no_pass_returns_all_satellites(self):
+        """When all are No Pass In Horizon, all six satellites still present."""
         rows = _make_rows(None, None)
-        satellites = [r["Satellite"] for r in rows]
-        assert set(satellites) == {"SAT-A", "SAT-B"}
+        satellites = {r["Satellite"] for r in rows}
+        assert satellites == set(_ALL_SATS)
 
 
 # ---------------------------------------------------------------------------

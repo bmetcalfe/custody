@@ -130,8 +130,9 @@ Three abstract sensor types are resolved against real orbital pass windows using
 
 | Abstract label | Satellites | Orbit | Passes on 2026-03-23 |
 |---|---|---|---|
-| `OPTICAL` | SAT-A, SAT-A2, SAT-A3 | 51.6° LEO ~400 km | 11:57z, 14:16z, 18:56z |
-| `SAR` | SAT-B, SAT-B2, SAT-B3 | 97.8° SSO ~700 km | 12:22z, 14:00z, 14:49z, 16:29z, 18:08z |
+| `OPTICAL` | EO-MIO-1, EO-MIO-2 | 51.6° MIO ~400 km | 11:33z, 13:51z |
+| `OPTICAL` | EO-SSO-1, EO-SSO-2 | 97.8° SSO ~600 km | 10:00z, 18:00z |
+| `SAR` | SAR-1, SAR-2 | 97.8° SSO ~700 km | 12:21z, 13:59z (SAR-1) · 16:29z, 18:08z (SAR-2) |
 | `AIS_REFRESH` | — | Immediate | Always (synthetic 30-min window) |
 | `MONITOR` | — | Passive | Always (synthetic 2-hr window) |
 

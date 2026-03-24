@@ -39,15 +39,16 @@ import custody.config as config
 # ---------------------------------------------------------------------------
 
 # (0.5, 0.5) is the observer from test_orbit_forecast:
-#   SAT-A visible ~14:15–14:22 UTC on 2026-03-23  (tts from 13:00 ≈ 75 min)
-#   SAT-A tts from 14:00 ≈ 15 min  → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS=1800s
+#   EO-MIO-2 visible ~13:52–13:57 UTC on 2026-03-23  (tts from 13:00 ≈ 52 min)
+#   SAR-1    visible ~13:59–14:06 UTC on 2026-03-23  (tts from 13:00 ≈ 59.5 min)
+#   SAR-1 tts from 14:00 = 0 (already in view)  → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS=1800s
 _OBS_LAT = 0.5
 _OBS_LON = 0.5
 
-# 13:00 — both passes are > 30 min away (SAT-A ~75 min, SAT-B ~115 min)
+# 13:00 — all passes are > 30 min away (EO-MIO-2 ~52 min, SAR-1 ~59.5 min)
 _T_FAR = datetime(2026, 3, 23, 13, 0, tzinfo=UTC)
 
-# 14:00 — SAT-A pass is ~15 min away → within 30-min threshold
+# 14:00 — SAR-1 is already in view (tts=0) → within 30-min threshold
 _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
 
 _NOMINAL_BD = {
@@ -70,7 +71,7 @@ _ONE_SENSOR = [
 
 # A fake near pass (15 min away) for mock-based tests
 _FAKE_NEAR_PASS = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=_T_NEAR + timedelta(minutes=15),
     end_time=_T_NEAR + timedelta(minutes=22),
     duration_seconds=420.0,
@@ -79,7 +80,7 @@ _FAKE_NEAR_PASS = PassWindow(
 
 # A fake far pass (45 min away) for mock-based tests
 _FAKE_FAR_PASS = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=_T_FAR + timedelta(minutes=45),
     end_time=_T_FAR + timedelta(minutes=52),
     duration_seconds=420.0,
@@ -164,7 +165,7 @@ class TestNoPassWithinThreshold:
         assert decision.action == "NO_SENSOR"
 
     def test_real_orbital_timing_far_is_no_sensor(self):
-        """Integration: at 13:00, both orbital passes are >30 min away → NO_SENSOR."""
+        """Integration: at 13:00, all orbital passes are >30 min away → NO_SENSOR."""
         decision = plan_collection(
             _fresh_track(), score=1.0, confidence=0.4,
             breakdown=_NOMINAL_BD, current_time=_T_FAR,
@@ -204,7 +205,7 @@ class TestHoldBiasApplies:
         assert "orbital" in decision.action_reason.lower()
 
     def test_real_orbital_timing_near_is_hold(self):
-        """Integration: at 14:00, SAT-A pass is ~15 min away → HOLD."""
+        """Integration: at 14:00, SAR-1 is already in view (tts=0) → HOLD."""
         decision = plan_collection(
             _fresh_track(), score=1.0, confidence=0.4,
             breakdown=_NOMINAL_BD, current_time=_T_NEAR,
@@ -234,7 +235,7 @@ class TestHoldBiasDoesNotApply:
     def test_no_sensor_at_threshold_boundary(self):
         """A pass just beyond the threshold (threshold + 1s) → NO_SENSOR."""
         just_outside = PassWindow(
-            satellite_id="SAT-A",
+            satellite_id="EO-MIO-1",
             start_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 60),
             end_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 480),
             duration_seconds=420.0,
@@ -253,7 +254,7 @@ class TestHoldBiasDoesNotApply:
     def test_hold_fires_at_threshold_boundary(self):
         """A pass exactly at the threshold → HOLD (condition is <=)."""
         at_threshold = PassWindow(
-            satellite_id="SAT-A",
+            satellite_id="EO-MIO-1",
             start_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS),
             end_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 420),
             duration_seconds=420.0,
@@ -278,41 +279,41 @@ class TestNearestPassSelection:
     def test_nearest_orbital_pass_returns_soonest(self):
         """nearest_orbital_pass returns the satellite with the smallest tts."""
         near = PassWindow(
-            satellite_id="SAT-A",
+            satellite_id="EO-MIO-1",
             start_time=_T_FAR + timedelta(minutes=10),
             end_time=_T_FAR + timedelta(minutes=17),
             duration_seconds=420.0,
             time_to_start_seconds=600.0,
         )
         far = PassWindow(
-            satellite_id="SAT-B",
+            satellite_id="SAR-1",
             start_time=_T_FAR + timedelta(minutes=25),
             end_time=_T_FAR + timedelta(minutes=32),
             duration_seconds=420.0,
             time_to_start_seconds=1500.0,
         )
         # Both within threshold — nearest should be returned.
-        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
+        # side_effect covers all 6 catalog entries (EO-MIO-1, EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).
         with patch("custody.sensors.next_pass_window", side_effect=[near, None, None, far, None, None]):
             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
         assert result is not None
-        assert result.satellite_id == "SAT-A"
+        assert result.satellite_id == "EO-MIO-1"
         assert result.time_to_start_seconds == 600.0
 
     def test_nearest_orbital_pass_ignores_none(self):
         """If one satellite has no upcoming pass, the other's window is used."""
         far = PassWindow(
-            satellite_id="SAT-B",
+            satellite_id="SAR-1",
             start_time=_T_FAR + timedelta(minutes=20),
             end_time=_T_FAR + timedelta(minutes=27),
             duration_seconds=420.0,
             time_to_start_seconds=1200.0,
         )
-        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
+        # side_effect covers all 6 catalog entries (EO-MIO-1, EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).
         with patch("custody.sensors.next_pass_window", side_effect=[None, None, None, far, None, None]):
             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
         assert result is not None
-        assert result.satellite_id == "SAT-B"
+        assert result.satellite_id == "SAR-1"
 
     def test_nearest_orbital_pass_returns_none_when_all_none(self):
         """nearest_orbital_pass returns None when no satellite has an upcoming pass."""

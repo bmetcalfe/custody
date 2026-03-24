@@ -3,7 +3,7 @@ Tests for opt-in orbital sensor access during AIS replay.
 
 observer_position_from_obs=False (default):
   - current behavior preserved exactly
-  - orbital sensors (SAT-A / SAT-B) never appear
+  - orbital sensors (EO-MIO-1 / SAR-1 etc.) never appear
   - lookahead fields remain 0.0 / None
 
 observer_position_from_obs=True:
@@ -38,7 +38,7 @@ from custody.sensors import PassWindow, SensorOpportunity
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-# 14:00 on 2026-03-23 — near the known SAT-A window (~14:15 UTC at lat/lon ~0.5)
+# 14:00 on 2026-03-23 — near a known orbital window (SAR-1 in view at ~14:00 UTC at lat/lon ~0.5)
 _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
 # 10:00 — outside any orbital window
 _T_FAR = datetime(2026, 3, 23, 10, 0, tzinfo=UTC)
@@ -68,20 +68,20 @@ def _two_obs(t0=_T_FAR, lat=_LAT, lon=_LON, vid="V001"):
     ]
 
 
-# A fake SAT-A opportunity that get_sensor_opportunities would return when in view.
+# A fake EO-MIO-1 opportunity that get_sensor_opportunities would return when in view.
 _FAKE_SAT_A_OPP = SensorOpportunity(
-    sensor_id="SAT-A",
+    sensor_id="EO-MIO-1",
     sensor_type="high_resolution",
     success_prob=0.70,
     resolution="high",
     cost=2.5,
     available_from=_T_NEAR,
     available_to=_T_NEAR,
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
 )
 
 _FAKE_NEAR_PASS = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=_T_NEAR + timedelta(minutes=15),
     end_time=_T_NEAR + timedelta(minutes=22),
     duration_seconds=420.0,
@@ -133,12 +133,12 @@ class TestDefaultModeNoOrbitalSensors:
     def test_sat_a_never_assigned_in_default_mode(self):
         obs = _two_obs(t0=_T_NEAR)
         records = ingest_ais_track(obs, observer_position_from_obs=False)
-        assert "SAT-A" not in self._all_sensor_ids(records)
+        assert "EO-MIO-1" not in self._all_sensor_ids(records)
 
     def test_sat_b_never_assigned_in_default_mode(self):
         obs = _two_obs(t0=_T_NEAR)
         records = ingest_ais_track(obs, observer_position_from_obs=False)
-        assert "SAT-B" not in self._all_sensor_ids(records)
+        assert "SAR-1" not in self._all_sensor_ids(records)
 
     def test_default_mode_uses_no_observer_position(self):
         """In default mode, get_sensor_opportunities is called without lat/lon."""
@@ -161,7 +161,7 @@ class TestDefaultModeNoOrbitalSensors:
 
 class TestOptInOrbitalAccess:
     def test_sat_a_can_appear_in_opt_in_mode(self):
-        """When SAT-A is in view and opt-in is enabled, it can be assigned."""
+        """When EO-MIO-1 is in view and opt-in is enabled, it can be assigned."""
         obs = _two_obs(t0=_T_NEAR)
 
         def fake_opps(t, lat=None, lon=None):
@@ -173,11 +173,11 @@ class TestOptInOrbitalAccess:
             records = ingest_ais_track(obs, observer_position_from_obs=True)
 
         sensor_ids = {r["sensor_id"] for r in records if r["sensor_id"] is not None}
-        # SAT-A must appear in the opportunity pool; whether it's assigned depends
+        # EO-MIO-1 must appear in the opportunity pool; whether it's assigned depends
         # on planner thresholds — check the trace instead of the action directly.
         traces = [r["decision_trace"] for r in records if isinstance(r.get("decision_trace"), DecisionTrace)]
         accessible = {sid for t in traces for sid in t.arbitration.accessible_sensor_ids}
-        assert "SAT-A" in accessible
+        assert "EO-MIO-1" in accessible
 
     def test_opt_in_passes_observer_position_to_get_sensor_opportunities(self):
         """With opt-in, lat/lon are forwarded (not None) for non-first records."""
@@ -229,8 +229,8 @@ class TestOptInNoFalsePositives:
             records = ingest_ais_track(obs, observer_position_from_obs=True)
 
         sensor_ids = {r["sensor_id"] for r in records if r["sensor_id"] is not None}
-        assert "SAT-A" not in sensor_ids
-        assert "SAT-B" not in sensor_ids
+        assert "EO-MIO-1" not in sensor_ids
+        assert "SAR-1" not in sensor_ids
 
 
 # ---------------------------------------------------------------------------

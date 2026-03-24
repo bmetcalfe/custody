@@ -36,7 +36,7 @@ import custody.config as config
 
 T0 = datetime(2026, 3, 23, 10, 0, tzinfo=UTC)
 
-# 14:00 — SAT-A pass ~15 min away → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS
+# 14:00 — SAR-1 already in view (tts=0) → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS
 _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
 _OBS_LAT, _OBS_LON = 0.5, 0.5
 
@@ -55,7 +55,7 @@ _ONE_SENSOR = [
 ]
 
 _FAKE_NEAR_PASS = PassWindow(
-    satellite_id="SAT-A",
+    satellite_id="EO-MIO-1",
     start_time=_T_NEAR + timedelta(minutes=15),
     end_time=_T_NEAR + timedelta(minutes=22),
     duration_seconds=420.0,
@@ -116,7 +116,7 @@ class TestLookaheadHold:
         assert d.hold_reason == "lookahead"
 
     def test_real_orbital_timing_lookahead_hold_reason(self):
-        """Integration: at 14:00, SAT-A pass ~15 min away → hold_reason='lookahead'."""
+        """Integration: at 14:00, SAR-1 is already in view (tts=0) → hold_reason='lookahead'."""
         d = plan_collection(
             _fresh_track(), score=1.0, confidence=0.4,
             breakdown=_NOMINAL_BD, current_time=_T_NEAR,

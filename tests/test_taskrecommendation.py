@@ -128,7 +128,7 @@ def _track(**kwargs) -> TrackState:
     return TrackState(**defaults)
 
 
-def _pass_window(sat_id="SAT-B", tts=300.0, duration=600.0) -> PassWindow:
+def _pass_window(sat_id="SAR-1", tts=300.0, duration=600.0) -> PassWindow:
     start = _T0 + timedelta(seconds=tts)
     end   = start + timedelta(seconds=duration)
     return PassWindow(
@@ -177,7 +177,7 @@ class TestTaskRecommendationSchema:
 class TestCandidateSelection:
     def test_task_sar_yields_sar_as_rank1_when_window_exists(self):
         def fake_pass(sat_id, lat, lon, from_time, *args, **kwargs):
-            return _pass_window(sat_id=sat_id, tts=300) if sat_id == "SAT-B" else None
+            return _pass_window(sat_id=sat_id, tts=300) if sat_id in ("SAR-1", "SAR-2") else None
 
         with patch("custody.taskrecommendation.next_pass_window", side_effect=fake_pass):
             recs = _build(decision=_decision(action=TASK_SAR))
@@ -186,7 +186,7 @@ class TestCandidateSelection:
 
     def test_task_optical_yields_optical_as_rank1_when_window_exists(self):
         def fake_pass(sat_id, lat, lon, from_time, *args, **kwargs):
-            return _pass_window(sat_id=sat_id, tts=300) if sat_id == "SAT-A" else None
+            return _pass_window(sat_id=sat_id, tts=300) if sat_id in ("EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2") else None
 
         with patch("custody.taskrecommendation.next_pass_window", side_effect=fake_pass):
             recs = _build(decision=_decision(action=TASK_OPTICAL),
@@ -264,10 +264,10 @@ class TestTimingScore:
 
     def test_earlier_window_beats_later_window(self):
         def fake_pass_early_sar(sat_id, lat, lon, from_time, *args, **kwargs):
-            if sat_id == "SAT-B":
-                return _pass_window(sat_id="SAT-B", tts=300)    # 5 min
-            if sat_id == "SAT-A":
-                return _pass_window(sat_id="SAT-A", tts=5400)   # 90 min
+            if sat_id in ("SAR-1", "SAR-2"):
+                return _pass_window(sat_id=sat_id, tts=300)    # 5 min
+            if sat_id in ("EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"):
+                return _pass_window(sat_id=sat_id, tts=5400)   # 90 min
             return None
 
         with patch("custody.taskrecommendation.next_pass_window",

@@ -8,7 +8,7 @@ Covers:
   - start_time < end_time for every returned window
   - duration_seconds == (end_time - start_time).total_seconds()
   - time_to_start_seconds == (start_time - from_time).total_seconds()
-  - SAT-A and SAT-B return different windows from the same observer/time
+  - EO-MIO-2 and SAR-1 return different windows from the same observer/time
   - Unknown satellite_id returns None
   - Observer-location sensitivity: same satellite, different positions → different windows
   - PassWindow.satellite_id matches the requested satellite_id
@@ -23,8 +23,8 @@ from custody.sensors import PassWindow, next_pass_window
 # Observer and time constants
 #
 # The 2026-epoch TLEs were tuned so that from observer (0.5, 0.5):
-#   SAT-A: visible ~14:15–14:22 UTC on 2026-03-23  (step-quantised to 30s)
-#   SAT-B: visible ~14:49–14:57 UTC on 2026-03-23
+#   EO-MIO-2: visible ~13:52–13:57 UTC on 2026-03-23  (step-quantised to 30s)
+#   SAR-1:    visible ~13:59–14:06 UTC on 2026-03-23
 #
 # All tests that check exact timestamps allow ±60 seconds of tolerance
 # (two scan steps) to stay robust against minor TLE-propagation differences.
@@ -33,19 +33,19 @@ from custody.sensors import PassWindow, next_pass_window
 _OBS_LAT = 0.5
 _OBS_LON = 0.5
 _T13 = datetime(2026, 3, 23, 13, 0, tzinfo=UTC)  # search start, before both passes
-_T_IN_VIEW = datetime(2026, 3, 23, 14, 52, tzinfo=UTC)  # mid-pass for SAT-B
+_T_IN_VIEW = datetime(2026, 3, 23, 14, 3, tzinfo=UTC)  # mid-pass for SAR-1
 
 _TOL = timedelta(seconds=60)  # ±1 step tolerance for timestamp assertions
 
 
 # ---------------------------------------------------------------------------
-# Pass found — SAT-A
+# Pass found — EO-MIO-2 and SAR-1
 # ---------------------------------------------------------------------------
 
 class TestPassFound:
     def setup_method(self):
-        self.w_a = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
-        self.w_b = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
+        self.w_a = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+        self.w_b = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
 
     def test_sat_a_returns_pass_window(self):
         assert self.w_a is not None
@@ -56,8 +56,8 @@ class TestPassFound:
         assert isinstance(self.w_b, PassWindow)
 
     def test_satellite_id_matches_request(self):
-        assert self.w_a.satellite_id == "SAT-A"
-        assert self.w_b.satellite_id == "SAT-B"
+        assert self.w_a.satellite_id == "EO-MIO-2"
+        assert self.w_b.satellite_id == "SAR-1"
 
     def test_start_before_end(self):
         assert self.w_a.start_time < self.w_a.end_time
@@ -75,16 +75,16 @@ class TestPassFound:
         expected_b = (self.w_b.start_time - _T13).total_seconds()
         assert self.w_b.time_to_start_seconds == pytest.approx(expected_b)
 
-    def test_sat_a_starts_around_1415_utc(self):
-        expected = datetime(2026, 3, 23, 14, 15, tzinfo=UTC)
+    def test_sat_a_starts_around_1352_utc(self):
+        expected = datetime(2026, 3, 23, 13, 52, tzinfo=UTC)
         assert abs(self.w_a.start_time - expected) <= _TOL, (
-            f"SAT-A start {self.w_a.start_time} not within {_TOL} of {expected}"
+            f"EO-MIO-2 start {self.w_a.start_time} not within {_TOL} of {expected}"
         )
 
-    def test_sat_b_starts_around_1448_utc(self):
-        expected = datetime(2026, 3, 23, 14, 48, tzinfo=UTC)
+    def test_sat_b_starts_around_1400_utc(self):
+        expected = datetime(2026, 3, 23, 13, 59, tzinfo=UTC)
         assert abs(self.w_b.start_time - expected) <= _TOL, (
-            f"SAT-B start {self.w_b.start_time} not within {_TOL} of {expected}"
+            f"SAR-1 start {self.w_b.start_time} not within {_TOL} of {expected}"
         )
 
     def test_duration_is_positive(self):
@@ -107,18 +107,18 @@ class TestPassFound:
 
 class TestNoPass:
     def test_short_horizon_returns_none_for_sat_a(self):
-        # SAT-A pass is ~75 min away; a 60-min horizon must miss it.
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=60)
+        # EO-MIO-2 pass is ~52 min away; a 45-min horizon must miss it.
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=45)
         assert w is None
 
     def test_short_horizon_returns_none_for_sat_b(self):
-        # SAT-B pass is ~115 min away; a 60-min horizon must miss it.
-        w = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=60)
+        # SAR-1 pass is ~59.5 min away; a 55-min horizon must miss it.
+        w = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=55)
         assert w is None
 
     def test_zero_horizon_returns_none_when_not_in_view(self):
         # at 13:00 neither satellite is overhead; horizon=0 → no scan at all
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=0)
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=0)
         assert w is None
 
     def test_unknown_satellite_id_returns_none(self):
@@ -134,8 +134,8 @@ class TestNoPass:
 
 class TestAlreadyInView:
     def setup_method(self):
-        # _T_IN_VIEW (14:52 UTC) is mid-pass for SAT-B from (0.5, 0.5)
-        self.w = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T_IN_VIEW,
+        # _T_IN_VIEW (14:03 UTC) is mid-pass for SAR-1 from (0.5, 0.5)
+        self.w = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T_IN_VIEW,
                                    horizon_minutes=30)
 
     def test_returns_pass_window(self):
@@ -151,23 +151,23 @@ class TestAlreadyInView:
         assert self.w.end_time > self.w.start_time
 
     def test_satellite_id_correct(self):
-        assert self.w.satellite_id == "SAT-B"
+        assert self.w.satellite_id == "SAR-1"
 
 
 # ---------------------------------------------------------------------------
-# SAT-A and SAT-B produce distinct windows
+# EO-MIO-2 and SAR-1 produce distinct windows
 # ---------------------------------------------------------------------------
 
 class TestSatABDistinct:
     def setup_method(self):
-        self.w_a = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
-        self.w_b = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
+        self.w_a = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+        self.w_b = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
 
     def test_different_start_times(self):
         assert self.w_a.start_time != self.w_b.start_time
 
     def test_sat_a_pass_earlier_than_sat_b(self):
-        # From (0.5, 0.5) on 2026-03-23, SAT-A passes ~14:15, SAT-B ~14:49
+        # From (0.5, 0.5) on 2026-03-23, EO-MIO-2 passes ~13:52, SAR-1 ~13:59
         assert self.w_a.start_time < self.w_b.start_time
 
     def test_windows_do_not_overlap(self):
@@ -187,8 +187,8 @@ class TestObserverSensitivity:
     def test_different_observers_see_sat_b_at_different_times(self):
         # Two observers separated by 10 degrees longitude see the same satellite
         # at a slightly different time (or possibly not at all in one case).
-        w1 = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
-        w2 = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON + 10.0, _T13)
+        w1 = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
+        w2 = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON + 10.0, _T13)
         # At least one should find a pass; if both do, start times should differ.
         assert w1 is not None or w2 is not None
         if w1 is not None and w2 is not None:
@@ -197,31 +197,31 @@ class TestObserverSensitivity:
     def test_distant_observer_gets_different_window(self):
         # An observer 90° of longitude away sees the satellite's passes at
         # a systematically different local time.  Use a 720-minute horizon
-        # (≈7 orbital periods for SAT-B) to guarantee a pass is found from
+        # (≈7 orbital periods for SAR-1) to guarantee a pass is found from
         # either location.
-        w_near = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13,
+        w_near = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13,
                                    horizon_minutes=720)
-        w_far = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON + 90.0, _T13,
+        w_far = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON + 90.0, _T13,
                                   horizon_minutes=720)
         assert w_near is not None
         assert w_far is not None
         assert w_near.start_time != w_far.start_time
 
     def test_sat_a_not_visible_from_subsat_sat_b_point_same_time(self):
-        """From SAT-B's sub-satellite point, SAT-A may not be in its same window.
+        """From SAR-1's sub-satellite point, EO-MIO-2 may not be in its same window.
 
         This is the ground-track separation test: the two satellites occupy
         different orbital planes, so being under one doesn't guarantee the
-        other is nearby.  We verify by checking that next_pass_window for SAT-A
-        and SAT-B from SAT-B's sub-satellite point return different start times.
+        other is nearby.  We verify by checking that next_pass_window for EO-MIO-2
+        and SAR-1 from SAR-1's sub-satellite point return different start times.
         """
         from custody.orbit import _gmst_rad, _jd_from_datetime, _teme_to_ecef
         from custody.sensors import _SATREC_CACHE
         import math
 
-        # Compute SAT-B's sub-satellite point at the start of SAT-B's pass
-        t_mid = datetime(2026, 3, 23, 14, 53, tzinfo=UTC)  # mid-pass
-        satrec_b = _SATREC_CACHE["SAT-B"]
+        # Compute SAR-1's sub-satellite point at the start of SAR-1's pass
+        t_mid = datetime(2026, 3, 23, 14, 3, tzinfo=UTC)  # mid-pass
+        satrec_b = _SATREC_CACHE["SAR-1"]
         jd, fr = _jd_from_datetime(t_mid)
         _, r_teme, _ = satrec_b.sgp4(jd, fr)
         gmst = _gmst_rad(jd + fr)
@@ -231,10 +231,10 @@ class TestObserverSensitivity:
         sub_lat = math.degrees(math.asin(z / r))
         sub_lon = math.degrees(math.atan2(y, x))
 
-        w_b = next_pass_window("SAT-B", sub_lat, sub_lon, _T13)
-        w_a = next_pass_window("SAT-A", sub_lat, sub_lon, _T13)
+        w_b = next_pass_window("SAR-1", sub_lat, sub_lon, _T13)
+        w_a = next_pass_window("EO-MIO-2", sub_lat, sub_lon, _T13)
         # Both may find passes, but at different times
-        assert w_b is not None  # SAT-B is visible from its own sub-sat point
+        assert w_b is not None  # SAR-1 is visible from its own sub-sat point
         if w_a is not None:
             assert w_a.start_time != w_b.start_time
 
@@ -245,13 +245,13 @@ class TestObserverSensitivity:
 
 class TestPassWindowDataclass:
     def test_pass_window_is_frozen(self):
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
         assert w is not None
         with pytest.raises((AttributeError, TypeError)):
             w.satellite_id = "OTHER"  # type: ignore[misc]
 
     def test_pass_window_fields_present(self):
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
         assert w is not None
         assert hasattr(w, "satellite_id")
         assert hasattr(w, "start_time")
@@ -260,11 +260,11 @@ class TestPassWindowDataclass:
         assert hasattr(w, "time_to_start_seconds")
 
     def test_duration_is_float(self):
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
         assert w is not None
         assert isinstance(w.duration_seconds, float)
 
     def test_time_to_start_is_float(self):
-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
         assert w is not None
         assert isinstance(w.time_to_start_seconds, float)
