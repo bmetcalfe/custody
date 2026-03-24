@@ -118,6 +118,10 @@ The system explains every transition. At 17:00z the Decision panel reads:
 
 ![Entity detail panel at 17:00z — TASK SAR decision with full reasoning chain](docs/screenshot.png)
 
+The animated progression below shows the full 10-hour scenario — fused score, decision action, and task queue updating at each timestep as V001 escalates from passive transit to SAR tasking.
+
+![V001 reasoning-chain progression across 10-hour scenario](docs/progression.gif)
+
 ---
 
 ## Sensor model
