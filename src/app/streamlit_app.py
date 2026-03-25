@@ -1,3 +1,4 @@
+import math
 import time
 
 import pandas as pd
@@ -506,8 +507,7 @@ if view_mode == "Overview":
             _flon = float(_fr.get("future_lon", float("nan")))
         except (TypeError, ValueError):
             continue
-        import math as _math
-        if _zp > 0.4 and not _math.isnan(_flat) and not _math.isnan(_flon):
+        if _zp > 0.4 and not math.isnan(_flat) and not math.isnan(_flon):
             _in_focus_fr = not _any_filter or str(_fr["target_id"]) in _focused_ids
             if _in_focus_fr:
                 _future_dots.append({"lon": _flon, "lat": _flat})

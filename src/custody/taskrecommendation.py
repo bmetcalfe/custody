@@ -47,6 +47,7 @@ build_task_recommendations(decision, fusion_assessment, record, track,
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
@@ -386,8 +387,7 @@ def _build_reason(
     if _zone_prob > 0.5 and _tte is not None and sensor in ("SAR", "OPTICAL"):
         try:
             _tte_f = float(_tte)
-            import math as _math
-            if not _math.isnan(_tte_f):
+            if not math.isnan(_tte_f):
                 _pretask_prefix = (
                     f"Zone approach in {_tte_f:.1f}h — pre-tasked; "
                 )

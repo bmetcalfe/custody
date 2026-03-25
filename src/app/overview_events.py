@@ -14,6 +14,7 @@ preempted           — entity newly received action=PREEMPTED this step
 """
 from __future__ import annotations
 
+import math
 from typing import Optional
 import pandas as pd
 
@@ -228,9 +229,8 @@ def detect_zone_approach_events(
         if c_zp > threshold and p_zp <= threshold:
             tte = tte_lookup.get(eid)
             try:
-                import math as _math
                 tte_f = float(tte) if tte is not None else None
-                tte_str = f" (est. {tte_f:.1f}h)" if tte_f is not None and not _math.isnan(tte_f) else ""
+                tte_str = f" (est. {tte_f:.1f}h)" if tte_f is not None and not math.isnan(tte_f) else ""
             except (TypeError, ValueError):
                 tte_str = ""
             events.append({

@@ -264,7 +264,7 @@ The dashboard opens in portfolio overview mode showing all entities ranked by ur
 uv run pytest tests/
 ```
 
-**1503 tests** across: orbital mechanics, SGP4 propagation, sensor scheduling, AIS ingestion, track state, behavior detection, anomaly scoring, compound signals, alert layer, collection planner, multi-vessel arbitration, decision trace, what-if analysis, fusion assessment, mission reasoning, task recommendation, portfolio orchestration, attention tier classification, prediction layer, and dashboard data pipeline.
+**1533 tests** across: orbital mechanics, SGP4 propagation, sensor scheduling, AIS ingestion, track state, behavior detection, anomaly scoring, compound signals, alert layer, collection planner, multi-vessel arbitration, decision trace, what-if analysis, fusion assessment, mission reasoning, task recommendation, portfolio orchestration, attention tier classification, prediction layer, and dashboard data pipeline.
 
 ---
 
@@ -362,5 +362,5 @@ src/
     orbital_passes_panel.py Raw orbital pass reference table
     whatif_panel.py         What-if results display
     ground_track.py         Orbital ground-track sampling and satellite position helpers
-tests/                  1503 tests, one file per module
+tests/                  1533 tests, one file per module
 ```
