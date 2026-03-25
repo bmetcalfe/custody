@@ -122,3 +122,104 @@ class TestTimeline:
         assert all(s.is_anomalous for s in sigma_specs)
         bg_specs = [s for s in specs if s.vessel_id.startswith("BG-")]
         assert all(not s.is_anomalous for s in bg_specs)
+
+
+class TestPortfolioScenario:
+    """Tests for the 36-hour, 24-entity portfolio scenario."""
+
+    def setup_method(self):
+        from custody.simulation import run_multi_target_simulation, PORTFOLIO_SCENARIO
+        self.scenario = PORTFOLIO_SCENARIO
+        self.records = run_multi_target_simulation(PORTFOLIO_SCENARIO)
+
+    def test_entity_count_in_expected_range(self):
+        ids = {r["target_id"] for r in self.records}
+        total = len(self.scenario.scripted_vessels) + self.scenario.n_background
+        assert len(ids) == total
+
+    def test_scripted_entities_present(self):
+        ids = {r["target_id"] for r in self.records}
+        assert "BRAVO-1" in ids    # zone loiterer
+        assert "ECHO-1"  in ids    # rendezvous pair
+        assert "ECHO-2"  in ids    # rendezvous pair
+        assert "PORT-1"  in ids    # manual custody / dark vessel
+
+    def test_deterministic_for_fixed_seed(self):
+        from custody.simulation import run_multi_target_simulation, PORTFOLIO_SCENARIO
+        records2 = run_multi_target_simulation(PORTFOLIO_SCENARIO)
+        b1_a = next(r for r in self.records if r["target_id"] == "BRAVO-1")
+        b1_b = next(r for r in records2    if r["target_id"] == "BRAVO-1")
+        assert b1_a["lat"]           == b1_b["lat"]
+        assert b1_a["anomaly_score"] == b1_b["anomaly_score"]
+
+    def test_timeline_covers_full_duration(self):
+        from datetime import timedelta
+        times = {r["time"] for r in self.records}
+        expected_end = self.scenario.start_time + timedelta(hours=self.scenario.duration_hours)
+        assert min(times) == self.scenario.start_time
+        assert max(times) == expected_end
+
+    def test_bravo1_loiters(self):
+        bravo1 = [r for r in self.records if r["target_id"] == "BRAVO-1"]
+        loiter_records = [r for r in bravo1 if r["behavior_mode"] == "loiter"]
+        assert len(loiter_records) >= 5, f"Expected BRAVO-1 to loiter for >=5 steps, got {len(loiter_records)}"
+
+    def test_echo_pair_present_and_symmetric(self):
+        """ECHO-1 and ECHO-2 should both appear and start on opposite sides of the rendezvous anchor."""
+        ids = {r["target_id"] for r in self.records}
+        assert "ECHO-1" in ids and "ECHO-2" in ids
+        echo1_first = min((r for r in self.records if r["target_id"] == "ECHO-1"), key=lambda r: r["time"])
+        echo2_first = min((r for r in self.records if r["target_id"] == "ECHO-2"), key=lambda r: r["time"])
+        # ECHO-1 starts west of the 1.0 anchor; ECHO-2 starts east
+        assert echo1_first["lon"] < 1.0
+        assert echo2_first["lon"] > 1.0
+
+    def test_multiple_action_outcomes(self):
+        """Portfolio scenario should produce more than one distinct action type."""
+        actions = {r["action"] for r in self.records}
+        assert len(actions) >= 2
+
+    def test_metadata_fields_present(self):
+        """New metadata fields should be present on all records."""
+        for r in self.records[:10]:
+            assert "profile" in r, "Missing 'profile' field"
+            assert "is_scripted" in r, "Missing 'is_scripted' field"
+            assert "scenario_tags" in r, "Missing 'scenario_tags' field"
+
+    def test_scripted_entities_marked_is_scripted(self):
+        scripted_ids = {"BRAVO-1", "ECHO-1", "ECHO-2"}  # is_anomalous=True actors
+        for r in self.records:
+            if r["target_id"] in scripted_ids:
+                assert r["is_scripted"], f"{r['target_id']} should be marked is_scripted"
+            elif r["target_id"].startswith("BG-"):
+                assert not r["is_scripted"], f"{r['target_id']} should not be marked is_scripted"
+
+    def test_multiple_behavior_modes_present(self):
+        """Portfolio scenario should exhibit transit, loiter, and at least one other mode."""
+        modes = {r["behavior_mode"] for r in self.records}
+        assert "transit" in modes
+        assert "loiter" in modes
+        assert len(modes) >= 3
+
+    def test_scripted_entities_higher_anomaly_than_background(self):
+        scripted_scores = [r["anomaly_score"] for r in self.records if r["target_id"].startswith("BRAVO-")]
+        bg_scores       = [r["anomaly_score"] for r in self.records if r["target_id"].startswith("BG-")]
+        scripted_max = max(scripted_scores)
+        bg_avg = sum(bg_scores) / len(bg_scores)
+        assert scripted_max > bg_avg, (
+            f"Expected scripted max anomaly ({scripted_max:.2f}) > bg avg ({bg_avg:.2f})"
+        )
+
+    def test_patrol_archetype_vessels_exist(self):
+        """At least one background vessel should exhibit loiter behavior (patrol archetype)."""
+        bg_loiter = [
+            r for r in self.records
+            if r["target_id"].startswith("BG-") and r["behavior_mode"] == "loiter"
+        ]
+        assert len(bg_loiter) > 0, "Expected patrol-archetype background vessels to show loiter mode"
+
+    def test_background_vessel_ids_sequential(self):
+        bg_ids = sorted(r["target_id"] for r in self.records if r["target_id"].startswith("BG-"))
+        unique_bg = sorted(set(bg_ids))
+        assert unique_bg[0] == "BG-001"
+        assert len(unique_bg) == self.scenario.n_background

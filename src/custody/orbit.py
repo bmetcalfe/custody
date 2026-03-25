@@ -270,3 +270,32 @@ def is_in_view(
     """
     _, elevation_deg = satellite_azel(satrec, observer_lat_deg, observer_lon_deg, t)
     return elevation_deg > min_elevation_deg
+
+
+def satellite_subpoint(
+    satrec: Satrec,
+    t: datetime,
+) -> tuple[float, float] | None:
+    """Return the sub-satellite point (lat_deg, lon_deg) at time t.
+
+    Computes the geocentric latitude and longitude of the point on Earth's
+    surface directly below the satellite.  Uses the same spherical Earth
+    model as the rest of this module.
+
+    Args:
+        satrec: SGP4 satellite record from load_tle().
+        t:      UTC observation time.
+
+    Returns:
+        (latitude_deg, longitude_deg) in degrees, or None if SGP4
+        propagation fails.
+    """
+    jd, fr = _jd_from_datetime(t)
+    error_code, r_teme, _ = satrec.sgp4(jd, fr)
+    if error_code != 0:
+        return None
+    gmst = _gmst_rad(jd + fr)
+    x, y, z = _teme_to_ecef(r_teme, gmst)
+    lat_deg = math.degrees(math.atan2(z, math.sqrt(x * x + y * y)))
+    lon_deg = math.degrees(math.atan2(y, x))
+    return lat_deg, lon_deg

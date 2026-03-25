@@ -201,6 +201,15 @@ def _satellite_in_view(
 # Public API
 # ---------------------------------------------------------------------------
 
+def orbital_satrecs() -> dict[str, "Satrec"]:
+    """Return the catalog of orbital satellite records keyed by satellite ID.
+
+    The returned dict is the module-level cache parsed at import time.
+    Callers must not modify it.
+    """
+    return _SATREC_CACHE
+
+
 def get_sensor_opportunities(
     current_time: datetime,
     observer_lat: Optional[float] = None,

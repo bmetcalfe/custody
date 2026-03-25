@@ -340,24 +340,23 @@ def test_dataframe_calls_do_not_use_hide_index():
     )
 
 
-def test_experimental_rerun_is_only_call_used():
+def test_stable_rerun_is_used():
     """
-    st.rerun() replaced st.experimental_rerun() in Streamlit 1.27.
-    Since we're on 1.19, experimental_rerun is correct — this test
-    documents that and will fail if someone upgrades the call prematurely.
+    st.rerun() is the stable API (introduced in Streamlit 1.27, now on 1.55+).
+    st.experimental_rerun() is deprecated — this test ensures the upgrade
+    removed all experimental calls and uses only the stable st.rerun().
     """
     app_path = (
         __file__.replace("tests\\test_dashboard.py", "src\\app\\streamlit_app.py")
         .replace("tests/test_dashboard.py", "src/app/streamlit_app.py")
     )
     source = open(app_path, encoding="utf-8").read()
-    # Should use experimental_rerun, not the 1.27+ st.rerun()
-    assert "st.experimental_rerun()" in source, (
-        "Autoplay requires st.experimental_rerun() on Streamlit 1.19"
+    assert "st.experimental_rerun()" not in source, (
+        "st.experimental_rerun() is deprecated in Streamlit >=1.27. "
+        "Use st.rerun() instead."
     )
-    assert "st.rerun()" not in source, (
-        "st.rerun() requires Streamlit >=1.27. Use st.experimental_rerun() "
-        "while pyproject.toml pins >=1.19.0."
+    assert "st.rerun()" in source, (
+        "Autoplay requires st.rerun() on Streamlit >=1.27."
     )
 
 

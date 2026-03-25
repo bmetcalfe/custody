@@ -321,7 +321,7 @@ class TestPerVesselAccess:
         V001 count=1 and V002 count=2.
         """
         from unittest.mock import patch
-        import custody.simulate as sim_mod
+        import custody.simulation.timeline as timeline_mod
 
         def position_mock(t, lat=None, lon=None):
             if lat is None:
@@ -331,7 +331,7 @@ class TestPerVesselAccess:
                 base.append(_sensor("S2"))
             return base
 
-        with patch.object(sim_mod, "get_sensor_opportunities", position_mock):
+        with patch.object(timeline_mod, "get_sensor_opportunities", position_mock):
             records = run_simulation()
 
         found_diff = any(

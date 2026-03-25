@@ -104,6 +104,19 @@ PROXIMITY_CRITICAL_KM = 5.0
 PROXIMITY_WARNING_KM = 15.0
 
 # ---------------------------------------------------------------------------
+# Rendezvous detection thresholds
+# ---------------------------------------------------------------------------
+
+# Both vessels must be within this distance (km) to count as a dwell step.
+RENDEZVOUS_PROXIMITY_KM = 5.0
+
+# Minimum consecutive dwell steps (including the current step) required to
+# emit a RendezvousEvent.  With dt_hours=1, this means at least 2 consecutive
+# hours of close proximity — enough to distinguish sustained contact from a
+# momentary passing encounter.
+RENDEZVOUS_MIN_DWELL_STEPS = 2
+
+# ---------------------------------------------------------------------------
 # Compound behavior thresholds
 # ---------------------------------------------------------------------------
 

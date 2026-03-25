@@ -9,8 +9,8 @@ from custody.ais import replay_ais_file
 from custody.alerts import alerts_for_timeline
 from custody.compounds import compounds_for_timeline, evaluate_compounds
 from custody.decision_trace import DecisionTrace, traces_to_rows
-from custody.simulate import run_simulation
 from custody.simulation import run_multi_target_simulation
+from custody.simulation.scenarios import PORTFOLIO_SCENARIO
 from custody.config import ZONES
 from custody.sensors import get_sensor_opportunities, next_pass_window
 from custody.whatif import run_comparison
@@ -22,20 +22,18 @@ from compound_panels import (
 from orbital_passes_panel import build_orbital_passes_rows
 from whatif_panel import build_variants, build_whatif_results_df
 from entity_detail_panel import render_entity_detail_panel
+from portfolio_overview import (
+    derive_display_status,
+    build_overview_df,
+    compute_kpi_counts,
+    top_attention_targets,
+    build_focus_view_state,
+    build_label_data,
+)
+from overview_filters import apply_overview_filters, filter_top_n, ALL_STATUSES
+from overview_events import build_event_feed
+from ground_track import all_ground_track_layers_data, satellite_current_positions
 
-
-def _coerce_strings(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert non-object string columns to object dtype.
-
-    Streamlit >=1.19 cannot render Arrow LargeUtf8 columns (type 20).
-    pandas >=3.0 infers string columns as StringDtype or ArrowDtype by
-    default, so we convert them back to plain object dtype before display.
-    """
-    cols = {
-        c: object for c, d in df.dtypes.items()
-        if pd.api.types.is_string_dtype(d) and str(d) != "object"
-    }
-    return df.astype(cols) if cols else df
 
 
 st.set_page_config(page_title="Custody", layout="wide")
@@ -43,7 +41,7 @@ st.set_page_config(page_title="Custody", layout="wide")
 st.markdown("""
 <style>
 /* Tighten main container */
-.block-container { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+.block-container { padding-bottom: 0.75rem !important; }
 
 /* Compact section labels */
 .section-label {
@@ -84,21 +82,49 @@ st.sidebar.header("Playback")
 mode = st.sidebar.radio("Mode", ["Simulation", "AIS Replay"])
 
 if mode == "Simulation":
-    scenario_mode = st.sidebar.radio(
-        "Scenario",
-        ["Demo (2 vessels)", "Multi-Target (30 vessels)"],
-        index=0,
+    # Resolve any pending navigation from Inspect buttons BEFORE widgets are instantiated
+    if "_pending_view_mode" in st.session_state:
+        st.session_state["view_mode_radio"] = st.session_state.pop("_pending_view_mode")
+    if "_pending_entity_select" in st.session_state:
+        st.session_state["sidebar_entity_select"] = st.session_state.pop("_pending_entity_select")
+
+    if "view_mode_radio" not in st.session_state:
+        st.session_state["view_mode_radio"] = "Overview"
+    view_mode = st.sidebar.radio(
+        "View", ["Overview", "Entity Detail"], key="view_mode_radio"
     )
+else:
+    view_mode = "Entity Detail"
 
 if mode == "Simulation":
-    if scenario_mode == "Multi-Target (30 vessels)":
-        records = run_multi_target_simulation()
-    else:
-        records = run_simulation()
+    records = run_multi_target_simulation(PORTFOLIO_SCENARIO)
     all_df = pd.DataFrame(records)
     all_df["time_str"] = all_df["time"].astype(str)
+
+    # Sidebar entity filter with scripted-actor toggle
     target_ids = sorted(all_df["target_id"].unique().tolist())
-    selected_target = st.sidebar.selectbox("Target", options=target_ids, index=0)
+    if "is_scripted" in all_df.columns:
+        _show_scripted_only = st.sidebar.checkbox("Scripted actors only", value=False)
+        if _show_scripted_only:
+            _scripted_ids = all_df[all_df["is_scripted"]]["target_id"].unique().tolist()
+            target_ids = sorted(_scripted_ids) if _scripted_ids else target_ids
+
+    selected_target = st.sidebar.selectbox(
+        "Target", options=target_ids,
+        index=(target_ids.index(st.session_state["sidebar_entity_select"])
+               if st.session_state.get("sidebar_entity_select") in target_ids else 0),
+        key="sidebar_entity_select",
+    )
+
+    # Metadata chip — profile, scripted flag, scenario tags
+    if "profile" in all_df.columns:
+        _meta = all_df[all_df["target_id"] == selected_target].iloc[0]
+        _tags = ", ".join(_meta.get("scenario_tags", [])) or "—"
+        st.sidebar.caption(
+            f"**Profile:** {_meta.get('profile', '—')}  \n"
+            f"**Scripted:** {'Yes' if _meta.get('is_scripted') else 'No'}  \n"
+            f"**Tags:** {_tags}"
+        )
     target_df = all_df[all_df["target_id"] == selected_target].reset_index(drop=True)
 
 else:  # AIS Replay
@@ -248,7 +274,7 @@ if st.sidebar.button("Run What-If", key="btn_whatif"):
     _wf_variants = build_variants(_variant_a_overrides, _variant_b_overrides)
 
     if mode == "Simulation":
-        _wf_scenario = run_simulation
+        _wf_scenario = lambda: run_multi_target_simulation(PORTFOLIO_SCENARIO)
     else:
         _wf_csv = csv_source  # capture for closure
         _wf_scenario = lambda: [r for tl in replay_ais_file(_wf_csv).values() for r in tl]
@@ -257,6 +283,364 @@ if st.sidebar.button("Run What-If", key="btn_whatif"):
 
 st.session_state.playback_idx = selected_idx
 current = target_df.iloc[selected_idx]
+
+# ── Overview mode ──────────────────────────────────────────────────────────────
+if view_mode == "Overview":
+    _ov_time = target_df.iloc[selected_idx]["time"]
+    _ov_ts   = all_df[all_df["time"] == _ov_time].copy()
+
+    _STATUS_BADGE_COLOR = {
+        "NEEDS ACTION": "#d14343", "PREEMPTED": "#b85c00",
+        "NEGLECTED":    "#b08000", "STALE":     "#7a5c00",
+        "WATCH":        "#1f6fa8", "HEALTHY":   "#2ea043",
+    }
+    _STATUS_RGB = {
+        "NEEDS ACTION": [230,  55,  55, 240],   # red — high visibility, high urgency
+        "PREEMPTED":    [215, 130,  25, 225],   # amber
+        "NEGLECTED":    [215, 195,  30, 220],   # yellow-amber
+        "STALE":        [175, 105,  45, 215],   # sienna — more visible than old dark brown
+        "WATCH":        [ 85, 165, 235, 215],   # sky blue
+        "HEALTHY":      [155, 165, 175, 195],   # cool light gray — was near-invisible at 120
+    }
+
+    # ── Intro banner (first load only; dismissed per-session) ─────────────────
+    if "show_intro_banner" not in st.session_state:
+        st.session_state["show_intro_banner"] = True
+    if st.session_state["show_intro_banner"]:
+        _bi, _bd = st.columns([20, 1])
+        with _bi:
+            st.markdown(
+                "<div style='background:#1a1f2e;border:1px solid #2d3550;"
+                "border-radius:6px;padding:10px 14px;margin-bottom:8px;'>"
+                "<span style='font-size:0.8rem;font-weight:600;color:#c8cfe0;'>"
+                "Custody — Decision-led ISR reasoning system</span>"
+                "<span style='font-size:0.75rem;color:#778;margin-left:12px;'>"
+                "Screens maritime traffic, promotes targets of interest, and allocates "
+                "limited sensor resources across competing priorities. "
+                "Start with the top-ranked vessels to see what matters and why."
+                "</span></div>",
+                unsafe_allow_html=True,
+            )
+        with _bd:
+            if st.button("✕", key="dismiss_intro", help="Dismiss"):
+                st.session_state["show_intro_banner"] = False
+
+    # ── KPI strip (always full portfolio) ─────────────────────────────────────
+    st.markdown("<div class='section-label'>Portfolio at a Glance</div>", unsafe_allow_html=True)
+    _kpis = compute_kpi_counts(_ov_ts)
+    _kc = st.columns(5)
+    with _kc[0]: st.metric("Tracked",      _kpis["total"])
+    with _kc[1]: st.metric("Need Action",  _kpis["needs_action"])
+    with _kc[2]: st.metric("Neglected",    _kpis["neglected"])
+    with _kc[3]: st.metric("Stale / Lost", _kpis["stale_or_lost"])
+    with _kc[4]: st.metric("Preempted",    _kpis["preempted"])
+
+    # ── Filters & Focus ────────────────────────────────────────────────────────
+    with st.expander("Filters & Focus", expanded=False):
+        _fc = st.columns([3, 1, 1, 1, 2])
+        with _fc[0]:
+            _f_status = st.multiselect(
+                "Status", ALL_STATUSES, default=ALL_STATUSES, key="ov_f_status",
+                help="Show only selected display-status categories",
+            )
+        with _fc[1]:
+            _f_scripted  = st.checkbox("Scripted", value=False, key="ov_f_scripted",
+                                       help="Show scripted actors only")
+        with _fc[2]:
+            _f_neglected = st.checkbox("Neglected", value=False, key="ov_f_neglected",
+                                       help="Show neglected entities only")
+        with _fc[3]:
+            _f_stale     = st.checkbox("Stale/Lost", value=False, key="ov_f_stale",
+                                       help="Show STALE or LOST custody tracks only")
+        with _fc[4]:
+            _f_topn_label = st.selectbox(
+                "Top N", ["All", "Top 5", "Top 10", "Top 15"], index=0, key="ov_f_topn",
+                help="Limit table and cards to N highest-urgency entities",
+            )
+    _f_topn_map = {"All": None, "Top 5": 5, "Top 10": 10, "Top 15": 15}
+    _f_top_n = _f_topn_map[_f_topn_label]
+
+    # Determine whether any filter is active (for map dimming)
+    _any_filter = (
+        set(_f_status) != set(ALL_STATUSES)
+        or _f_scripted or _f_neglected or _f_stale
+        or _f_top_n is not None
+    )
+
+    # Apply filters to get the focused subset
+    _focused_ts = apply_overview_filters(
+        _ov_ts,
+        status_filter=_f_status if set(_f_status) != set(ALL_STATUSES) else None,
+        scripted_only=_f_scripted,
+        neglected_only=_f_neglected,
+        stale_lost_only=_f_stale,
+    )
+    _focused_ts = filter_top_n(_focused_ts, _f_top_n)
+    _focused_ids = set(_focused_ts["target_id"].tolist()) if not _focused_ts.empty else set()
+
+    # ── Attention Now — top 5 cards (from focused set) ────────────────────────
+    _top = top_attention_targets(_focused_ts, n=5)
+    if not _top.empty:
+        st.markdown("<div class='section-label'>Attention Now</div>", unsafe_allow_html=True)
+        _card_cols = st.columns(min(len(_top), 5))
+        for _ci, (_col, (_, _row)) in enumerate(zip(_card_cols, _top.iterrows())):
+            _eid    = str(_row.get("target_id", "—"))
+            _status = str(_row.get("display_status", "—"))
+            _action = str(_row.get("action", "—"))
+            _reason = str(_row.get("portfolio_reason", ""))
+            _deferred = _row.get("deferred_for")
+            _badge_c = _STATUS_BADGE_COLOR.get(_status, "#555")
+            _short_reason = _reason[_reason.find(": ") + 2:] if ": " in _reason else _reason
+            with _col:
+                st.markdown(
+                    f"<div style='border:1px solid #2d2d2d;border-radius:6px;"
+                    f"padding:8px 10px;margin-bottom:4px;'>"
+                    f"<div style='font-family:monospace;font-weight:700;"
+                    f"font-size:0.9rem;margin-bottom:4px;'>{_eid}</div>"
+                    f"<div style='display:inline-block;background:{_badge_c};color:#fff;"
+                    f"border-radius:4px;padding:1px 7px;font-size:0.68rem;"
+                    f"font-weight:600;margin-bottom:5px;'>{_status}</div>"
+                    f"<div style='color:#999;font-size:0.68rem;margin-bottom:4px;"
+                    f"line-height:1.3;'>{_short_reason[:80]}</div>"
+                    f"<div style='color:#aaa;font-size:0.68rem;'>Action: {_action}"
+                    f"{'<br>Deferred for: ' + str(_deferred) if pd.notna(_deferred) and str(_deferred) not in ('', 'None', 'nan') else ''}"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("→ Inspect", key=f"btn_inspect_{_eid}_{_ci}"):
+                    st.session_state["_pending_entity_select"] = _eid
+                    st.session_state["_pending_view_mode"]     = "Entity Detail"
+                    st.rerun()
+
+    # ── Ranked portfolio table (focused) ──────────────────────────────────────
+    _tbl_label = (
+        f"Filtered Entities ({len(_focused_ts)}/{len(_ov_ts)}) — Ranked by Urgency"
+        if _any_filter else
+        "All Entities — Ranked by Urgency"
+    )
+    st.markdown(f"<div class='section-label'>{_tbl_label}</div>", unsafe_allow_html=True)
+    _map_focused_id: str | None = None
+    if _focused_ts.empty and _any_filter:
+        st.caption("No entities match the current filters.")
+    else:
+        _ov_df = build_overview_df(_focused_ts)
+        _tbl_sel = st.dataframe(
+            _ov_df,
+            use_container_width=True,
+            height=min(550, 36 * len(_ov_df) + 38),
+            on_select="rerun",
+            selection_mode="single-row",
+            key="ov_ranked_table",
+        )
+        # Derive focused entity from selected row (row indices are 1-based in _ov_df)
+        _sel_rows = _tbl_sel.selection.rows
+        if _sel_rows:
+            # st.dataframe returns 0-based positional indices; _ov_df index starts at 1
+            _sel_entity = _ov_df.iloc[_sel_rows[0]]["Entity"]
+            _map_focused_id = str(_sel_entity) if pd.notna(_sel_entity) else None
+
+    # ── Portfolio map — full portfolio; dim non-focused when filters active ───
+    # Map header: label | labels toggle | ground-track toggle
+    # (entity focus is driven by row selection in the ranked table above)
+    _map_hdr_cols = st.columns([3, 2, 3])
+    with _map_hdr_cols[0]:
+        st.markdown("<div class='section-label'>Portfolio Map</div>", unsafe_allow_html=True)
+    with _map_hdr_cols[1]:
+        _show_labels = st.checkbox(
+            "Labels", value=False, key="ov_show_labels",
+            help="Show vessel ID labels for all entities on the map",
+        )
+    with _map_hdr_cols[2]:
+        _show_ground_tracks = st.checkbox(
+            "Sensor ground tracks", value=False, key="ov_show_ground_tracks",
+            help="Overlay orbital ground-track segments (±90 min) for all sensor satellites",
+        )
+
+    # Build entity layer data; boost selected entity
+    _map_rows = []
+    for _, _mr in _ov_ts.iterrows():
+        _eid_m      = str(_mr["target_id"])
+        _ds         = derive_display_status(_mr.to_dict())
+        _in_focus   = not _any_filter or _eid_m in _focused_ids
+        _is_sel     = _eid_m == _map_focused_id
+        if _in_focus:
+            _rgb = list(_STATUS_RGB.get(_ds, [140, 140, 140, 120]))
+            if _is_sel:
+                _rgb[3] = 255          # full opacity for selected entity
+            _radius = 5500 if _is_sel else (4000 if _ds in ("NEEDS ACTION", "NEGLECTED") else 2500)
+        else:
+            _rgb    = [50, 50, 50, 70]
+            _radius = 1500
+        _map_rows.append({
+            "lon":      float(_mr["lon"]),
+            "lat":      float(_mr["lat"]),
+            "color":    _rgb,
+            "radius":   _radius,
+            "label":    _eid_m,
+            "in_focus": _in_focus,
+        })
+
+    _ov_zone_data = [
+        {
+            "name": z.name,
+            "polygon": [
+                [z.min_lon, z.min_lat], [z.max_lon, z.min_lat],
+                [z.max_lon, z.max_lat], [z.min_lon, z.max_lat],
+            ],
+        }
+        for z in ZONES
+    ]
+    _ov_zone_layer = pdk.Layer(
+        "PolygonLayer", data=_ov_zone_data,
+        get_polygon="polygon", get_fill_color=[255, 215, 0, 35],
+        get_line_color=[255, 215, 0, 180], line_width_min_pixels=2,
+        stroked=True, filled=True,
+    )
+    _ov_entity_layer = pdk.Layer(
+        "ScatterplotLayer", data=_map_rows,
+        get_position="[lon, lat]", get_radius="radius",
+        get_fill_color="color", pickable=True,
+    )
+
+    # Centered view: pan to selected entity at tighter zoom, or mean position
+    _ov_center_lat, _ov_center_lon, _ov_zoom = build_focus_view_state(
+        _ov_ts, _map_focused_id
+    )
+
+    # Assemble layers (bottom → top): ground tracks, zones, entities, highlight, labels
+    _ov_layers = [_ov_zone_layer, _ov_entity_layer]
+
+    if _show_ground_tracks:
+        _gt_data = all_ground_track_layers_data(_ov_time)
+        if _gt_data:
+            _gt_layer = pdk.Layer(
+                "PathLayer", data=_gt_data,
+                get_path="path",
+                get_color=[55, 190, 210, 70],   # muted teal — distinct from vessel layer
+                get_width=1200,
+                width_min_pixels=1,
+            )
+            _ov_layers.insert(0, _gt_layer)  # render below zones and entities
+
+            # Current-position marker for each satellite — rendered on top of tracks
+            _sat_pos = satellite_current_positions(_ov_time)
+            if _sat_pos:
+                _ov_layers.append(pdk.Layer(
+                    "ScatterplotLayer", data=_sat_pos,
+                    get_position="[lon, lat]",
+                    get_radius=18000,
+                    radius_min_pixels=7,
+                    get_fill_color=[30, 220, 245, 220],
+                    get_line_color=[255, 255, 255, 200],
+                    stroked=True,
+                    line_width_min_pixels=2,
+                    pickable=False,
+                ))
+
+    # White ring around the focused entity
+    if _map_focused_id:
+        _sel_rows = _ov_ts[_ov_ts["target_id"] == _map_focused_id]
+        if not _sel_rows.empty:
+            _sel_highlight = [{
+                "lon": float(_sel_rows.iloc[0]["lon"]),
+                "lat": float(_sel_rows.iloc[0]["lat"]),
+            }]
+            _ov_layers.append(pdk.Layer(
+                "ScatterplotLayer", data=_sel_highlight,
+                get_position="[lon, lat]",
+                get_radius=7000,
+                get_fill_color=[0, 0, 0, 0],
+                get_line_color=[255, 255, 255, 180],
+                line_width_min_pixels=2,
+                stroked=True, filled=False,
+            ))
+
+    # Vessel labels — all entities, toggled by the "Labels" checkbox.
+    # Uses _map_rows directly (already has lon/lat/label for every entity).
+    # Two-pass: shadow behind main for contrast on the dark basemap.
+    # font_family uses inner single-quotes so pydeck serialises as a JS string
+    # literal ("@@='monospace'" → "monospace") not a broken variable expression.
+    if _show_labels:
+        _label_rows = [r for r in _map_rows if r["in_focus"]]
+    if _show_labels and _label_rows:
+        _label_common = dict(
+            get_position="[lon, lat]",
+            get_text="label",
+            get_size=11,
+            font_weight=700,
+            font_family="'monospace'",
+            pickable=False,
+        )
+        _ov_layers.append(pdk.Layer(
+            "TextLayer", data=_label_rows,
+            **_label_common,
+            get_color=[15, 15, 15, 160],
+            get_pixel_offset=[1, -11],
+        ))
+        _ov_layers.append(pdk.Layer(
+            "TextLayer", data=_label_rows,
+            **_label_common,
+            get_color=[245, 245, 245, 235],
+            get_pixel_offset=[0, -12],
+        ))
+
+    _ov_deck = pdk.Deck(
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        initial_view_state=pdk.ViewState(
+            latitude=_ov_center_lat, longitude=_ov_center_lon, zoom=_ov_zoom,
+        ),
+        layers=_ov_layers,
+        tooltip={"text": "{label}"},
+    )
+    st.pydeck_chart(_ov_deck, use_container_width=True)
+    _ov_legend = st.columns(6)
+    with _ov_legend[0]: st.markdown("<small>🔴 Needs Action</small>", unsafe_allow_html=True)
+    with _ov_legend[1]: st.markdown("<small>🟠 Preempted</small>",    unsafe_allow_html=True)
+    with _ov_legend[2]: st.markdown("<small>🟡 Neglected</small>",    unsafe_allow_html=True)
+    with _ov_legend[3]: st.markdown("<small>🟤 Stale</small>",        unsafe_allow_html=True)
+    with _ov_legend[4]: st.markdown("<small>🔵 Watch</small>",        unsafe_allow_html=True)
+    with _ov_legend[5]: st.markdown("<small>⚪ Healthy</small>",       unsafe_allow_html=True)
+
+    # ── Event feed (changes since previous timestep) ───────────────────────────
+    _prev_times = sorted(all_df[all_df["time"] < _ov_time]["time"].unique())
+    _prev_ts = (
+        all_df[all_df["time"] == _prev_times[-1]].copy()
+        if _prev_times else pd.DataFrame()
+    )
+    _events = build_event_feed(_ov_ts, _prev_ts if not _prev_ts.empty else None, max_events=6)
+    if _events:
+        _EVENT_ICON = {
+            "zone_entry":        "🚨",
+            "health_worsened":   "📉",
+            "neglect_triggered": "⏱",
+            "rank_change":       "📊",
+            "preempted":         "⛔",
+        }
+        st.markdown("<div class='section-label'>Recent Changes</div>", unsafe_allow_html=True)
+        _ev_cols = st.columns(min(len(_events), 4))
+        for _ei, _ev in enumerate(_events):
+            _icon = _EVENT_ICON.get(_ev["event_type"], "•")
+            with _ev_cols[_ei % len(_ev_cols)]:
+                st.markdown(
+                    f"<div style='border:1px solid #2d2d2d;border-radius:4px;"
+                    f"padding:5px 8px;margin-bottom:4px;font-size:0.72rem;"
+                    f"color:#ccc;line-height:1.35;'>"
+                    f"{_icon} {_ev['description']}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='border-top:1px solid #2a2a2a;padding-top:10px;"
+        "font-size:0.68rem;color:#555;text-align:left;'>"
+        "Custody &mdash; Decision-led ISR reasoning prototype &nbsp;·&nbsp; "
+        "Built by Ben Metcalfe &nbsp;·&nbsp; 2026"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.stop()  # do not render entity detail content below
 
 action_reason = (
     current["action_reason"]
@@ -320,6 +704,66 @@ i1, i2 = st.columns(2)
 with i1: st.metric("Behavior State", str(current["behavior_state"]).upper())
 with i2: st.metric("State Confidence", f'{current["state_confidence"]:.2f}')
 
+# ── Portfolio status ───────────────────────────────────────────────────────────
+if "portfolio_rank" in current.index and pd.notna(current.get("portfolio_rank")):
+    st.markdown("<div class='section-label'>Portfolio Status</div>", unsafe_allow_html=True)
+    _n_entities = all_df["target_id"].nunique() if mode == "Simulation" else 1
+
+    _health     = str(current.get("custody_health", "—"))
+    _n_hours    = float(current.get("neglect_hours", 0.0))
+    _neglected  = bool(current.get("neglect_flag", False))
+    _deferred   = current.get("deferred_for")
+    _reason     = str(current.get("portfolio_reason", ""))
+
+    p1, p2, p3, p4, p5 = st.columns(5)
+    with p1:
+        st.metric("Portfolio Rank", f"{int(current['portfolio_rank'])} / {_n_entities}")
+    with p2:
+        st.metric("Portfolio Score", f"{float(current['portfolio_score']):.3f}")
+    with p3:
+        st.metric("Custody Health", _health)
+    with p4:
+        _neglect_label = f"{_n_hours:.1f} h  {'[NEGLECTED]' if _neglected else ''}"
+        st.metric("Without Collection", _neglect_label.strip())
+    with p5:
+        st.metric("Deferred For", str(_deferred) if _deferred else "—")
+
+    if _reason:
+        st.caption(_reason)
+
+    # ── Portfolio overview at this timestep (all entities ranked) ─────────────
+    with st.expander("Portfolio overview — all entities at this step", expanded=False):
+        _port_ts  = current["time"]
+        _port_df  = all_df[all_df["time"] == _port_ts].copy()
+        if "portfolio_rank" in _port_df.columns:
+            _port_show = (
+                _port_df
+                .sort_values("portfolio_rank")[[
+                    "portfolio_rank", "target_id", "portfolio_score",
+                    "custody_health", "neglect_flag", "neglect_hours",
+                    "action", "deferred_for",
+                ]]
+                .rename(columns={
+                    "portfolio_rank":  "Rank",
+                    "target_id":       "Entity",
+                    "portfolio_score": "Score",
+                    "custody_health":  "Health",
+                    "neglect_flag":    "Neglected",
+                    "neglect_hours":   "Neglect h",
+                    "action":          "Action",
+                    "deferred_for":    "Deferred For",
+                })
+                .reset_index(drop=True)
+            )
+            _port_show["Score"]      = _port_show["Score"].apply(lambda x: f"{x:.3f}")
+            _port_show["Neglect h"]  = _port_show["Neglect h"].apply(lambda x: f"{x:.1f}")
+            _port_show["Deferred For"] = _port_show["Deferred For"].fillna("—")
+            st.dataframe(
+                _port_show,
+                use_container_width=True,
+                height=min(420, 35 * len(_port_show) + 40),
+            )
+
 # ── Reasoning stack: Fusion Assessment → Decision → Task Queue ────────────────
 prefix_window  = target_df.iloc[:selected_idx].to_dict("records")
 current_record = target_df.iloc[selected_idx].to_dict()
@@ -334,7 +778,7 @@ if alerts:
         for a in alerts
     ])
     alerts_df["Time"] = alerts_df["Time"].astype(str).str.split("+").str[0]
-    st.dataframe(_coerce_strings(alerts_df.reset_index(drop=True)), use_container_width=True)
+    st.dataframe(alerts_df.reset_index(drop=True), use_container_width=True)
 else:
     st.markdown("<span style='color:#666;'>No alerts for this target.</span>", unsafe_allow_html=True)
 
@@ -350,7 +794,7 @@ active_compounds = sorted(
 )
 if active_compounds:
     compounds_df = build_active_compounds_df(active_compounds)
-    st.dataframe(_coerce_strings(compounds_df.reset_index(drop=True)), use_container_width=True)
+    st.dataframe(compounds_df.reset_index(drop=True), use_container_width=True)
 else:
     st.markdown("<span style='color:#666;'>No active compound signals at this step.</span>", unsafe_allow_html=True)
 
@@ -367,7 +811,7 @@ history_compounds = [
 if history_compounds:
     agg = aggregate_compound_history(history_compounds)
     history_df = build_compound_history_df(agg)
-    st.dataframe(_coerce_strings(history_df.reset_index(drop=True)), use_container_width=True)
+    st.dataframe(history_df.reset_index(drop=True), use_container_width=True)
 else:
     st.markdown("<span style='color:#666;'>No compound history for this target.</span>", unsafe_allow_html=True)
 
@@ -449,7 +893,7 @@ if _orbital_rows_visible:
     _orbital_df["Within Threshold"] = _orbital_df["Within Threshold"].apply(
         lambda v: "✓" if v else "—"
     )
-    st.dataframe(_coerce_strings(_orbital_df), use_container_width=True)
+    st.dataframe(_orbital_df, use_container_width=True)
 else:
     st.markdown("<span style='color:#666; font-size:0.8rem;'>No Orbital Passes In Horizon</span>", unsafe_allow_html=True)
 
@@ -535,7 +979,7 @@ uncertainty_layer = pdk.Layer("ScatterplotLayer",
     stroked=True, filled=True, line_width_min_pixels=2, pickable=False)
 
 deck = pdk.Deck(
-    map_style="mapbox://styles/mapbox/dark-v10",
+    map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
     initial_view_state=pdk.ViewState(latitude=current_lat, longitude=current_lon, zoom=10),
     layers=[zone_layer, other_targets_layer, uncertainty_layer,
             line_layer_normal, line_layer_anomalous, hold_layer, task_layer, current_point_layer],
@@ -563,7 +1007,7 @@ cot_df = visible_df[["time_str", "custody_confidence", "anomaly_score"]].copy()
 cot_df["custody_confidence"] = pd.to_numeric(cot_df["custody_confidence"], errors="coerce").round(2)
 cot_df["anomaly_score"] = pd.to_numeric(cot_df["anomaly_score"], errors="coerce").round(2)
 cot_df.columns = ["Time", "Confidence", "Anomaly"]
-st.dataframe(_coerce_strings(cot_df.reset_index(drop=True)), use_container_width=True)
+st.dataframe(cot_df.reset_index(drop=True), use_container_width=True)
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
 st.markdown("<div class='section-label'>Timeline</div>", unsafe_allow_html=True)
@@ -583,7 +1027,7 @@ timeline_df["state_confidence"] = timeline_df["state_confidence"].round(2)
 timeline_df.columns = ["Time", "Lat", "Lon", "Unc (km)", "Confidence",
                         "Anomaly", "Action", "Sensor", "Result",
                         "State", "St.Conf"]
-st.dataframe(_coerce_strings(timeline_df.reset_index(drop=True)), use_container_width=True)
+st.dataframe(timeline_df.reset_index(drop=True), use_container_width=True)
 
 # ── Decision Traces ───────────────────────────────────────────────────────────
 # Available in both Simulation and AIS Replay modes when traces are present.
@@ -600,7 +1044,7 @@ if _traces:
     _trace_rows = traces_to_rows(_traces)
     _traces_df = pd.DataFrame(_trace_rows)[_trace_display_cols].copy()
     _traces_df["Time"] = _traces_df["Time"].astype(str).str.split("+").str[0]
-    st.dataframe(_coerce_strings(_traces_df.reset_index(drop=True)), use_container_width=True)
+    st.dataframe(_traces_df.reset_index(drop=True), use_container_width=True)
 else:
     st.markdown("<span style='color:#666;'>No traces available.</span>", unsafe_allow_html=True)
 
@@ -609,7 +1053,7 @@ if st.session_state.get("whatif_results"):
     st.markdown("<div class='section-label'>What-If Results</div>", unsafe_allow_html=True)
     st.caption("Comparison across variants. Baseline uses current config; variants use sidebar overrides.")
     _wf_df = build_whatif_results_df(st.session_state.whatif_results)
-    st.dataframe(_coerce_strings(_wf_df.reset_index(drop=True)), use_container_width=True)
+    st.dataframe(_wf_df.reset_index(drop=True), use_container_width=True)
 
 if st.session_state.playing:
     time.sleep(2.5)
@@ -617,4 +1061,4 @@ if st.session_state.playing:
         st.session_state.playback_idx += 1
     else:
         st.session_state.playing = False   # stop at end rather than looping
-    st.experimental_rerun()
+    st.rerun()

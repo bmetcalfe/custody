@@ -3,13 +3,13 @@ name = "custody"
 version = "0.1.0"
 description = "Anomaly-aware target custody and collection-planning prototype"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "numpy>=2.4.3",
     "pandas>=3.0.1",
     "pydeck>=0.9.0",
     "sgp4>=2.23",
-    "streamlit>=1.19.0",
+    "streamlit>=1.55.0",
 ]
 
 [project.urls]
@@ -19,6 +19,11 @@ Repository = "https://github.com/bmetcalfe/custody"
 dev = [
     "pytest>=9.0.2",
 ]
+
+[tool.uv]
+# Streamlit's published metadata caps pandas at <3, but it works fine at runtime
+# with pandas 3.x.  Override the cap so uv can resolve without downgrading pandas.
+override-dependencies = ["pandas>=3.0.1"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/app"]

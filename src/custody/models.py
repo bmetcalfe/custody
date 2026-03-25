@@ -80,10 +80,25 @@ class TrackState:
     Owns uncertainty, collection timing, and the last-known anomaly score at
     collection time.  Policy decisions (e.g. "recent = < 2 hours") belong in
     the caller, not here.
+
+    Dark-vessel fields (all None/False when AIS is active):
+        is_dark            — True once AIS dropout has been detected.
+        dark_since         — Timestamp of the first dark step.
+        last_known_lat/lon — Position frozen at the first dark step.
+        last_known_time    — Timestamp frozen at the first dark step.
+        last_known_anomaly — Anomaly score frozen at the first dark step.
     """
     uncertainty_km: float = 5.0
     last_collection_time: Optional[datetime] = None
     last_collection_anomaly_score: float = 0.0
+
+    # Dark-vessel state (AIS dropout)
+    is_dark: bool = False
+    dark_since: Optional[datetime] = None
+    last_known_lat: Optional[float] = None
+    last_known_lon: Optional[float] = None
+    last_known_time: Optional[datetime] = None
+    last_known_anomaly: float = 0.0
 
     def hours_since_collection(self, now: datetime) -> Optional[float]:
         """Return hours elapsed since the last successful collection, or None."""
