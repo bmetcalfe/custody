@@ -3,8 +3,8 @@
 Derives a compact list of operator-relevant changes by comparing the current
 timestep DataFrame to the previous one.  No Streamlit imports.
 
-Supported event types
----------------------
+Supported event types (listed in descending feed priority)
+----------------------------------------------------------
 zone_entry          — sensitive_zone score crossed entry threshold
 health_worsened     — custody_health degraded (HEALTHY→DEGRADING→STALE→LOST)
 neglect_triggered   — neglect_flag newly became True

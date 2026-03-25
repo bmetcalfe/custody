@@ -327,6 +327,7 @@ def _compute_expected_value(
       + 0.25 × decision.confidence
       + 0.20 × sensor_fit
       + 0.15 × timing_score
+      + zone_boost  (record.zone_probability × 0.08 when zone_probability > 0.5, else 0)
 
     Args:
         sensor:        Abstract sensor label.

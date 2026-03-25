@@ -297,13 +297,13 @@ if view_mode == "Overview":
         "WATCH":        "#1f6fa8", "HEALTHY":   "#2ea043",
     }
     _STATUS_RGB = {
-        "NEEDS ACTION": [230,  55,  55, 240],
-        "PREEMPTED":    [215, 130,  25, 225],
-        "NEGLECTED":    [215, 195,  30, 220],
-        "STALE":        [175, 105,  45, 215],
-        "APPROACHING":  [180,  80, 220, 225],
-        "WATCH":        [ 85, 165, 235, 215],
-        "HEALTHY":      [155, 165, 175, 195],
+        "NEEDS ACTION": [230,  55,  55, 240],   # red    — lost custody or extreme anomaly
+        "PREEMPTED":    [215, 130,  25, 225],   # amber  — servicing another entity this step
+        "NEGLECTED":    [215, 195,  30, 220],   # yellow — unobserved beyond neglect threshold
+        "STALE":        [175, 105,  45, 215],   # sienna — custody degraded but not lost
+        "APPROACHING":  [180,  80, 220, 225],   # purple — predicted zone entry within horizon
+        "WATCH":        [ 85, 165, 235, 215],   # blue   — elevated interest, monitoring
+        "HEALTHY":      [155, 165, 175, 195],   # gray   — nominal, no active concern
     }
 
     # ── Intro banner (first load only; dismissed per-session) ─────────────────
@@ -1132,9 +1132,9 @@ if st.session_state.get("whatif_results"):
     st.dataframe(_wf_df.reset_index(drop=True), use_container_width=True)
 
 if st.session_state.playing:
-    time.sleep(2.5)
+    time.sleep(1.0)
     if st.session_state.playback_idx < max_idx:
         st.session_state.playback_idx += 1
     else:
-        st.session_state.playing = False   # stop at end rather than looping
+        st.session_state.playing = False   # stop cleanly at end
     st.rerun()
