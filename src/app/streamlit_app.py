@@ -330,12 +330,13 @@ if view_mode == "Overview":
     # ── KPI strip (always full portfolio) ─────────────────────────────────────
     st.markdown("<div class='section-label'>Portfolio at a Glance</div>", unsafe_allow_html=True)
     _kpis = compute_kpi_counts(_ov_ts)
-    _kc = st.columns(5)
+    _kc = st.columns(6)
     with _kc[0]: st.metric("Tracked",      _kpis["total"])
     with _kc[1]: st.metric("Need Action",  _kpis["needs_action"])
-    with _kc[2]: st.metric("Neglected",    _kpis["neglected"])
-    with _kc[3]: st.metric("Stale / Lost", _kpis["stale_or_lost"])
-    with _kc[4]: st.metric("Preempted",    _kpis["preempted"])
+    with _kc[2]: st.metric("Approaching",  _kpis["approaching"])
+    with _kc[3]: st.metric("Neglected",    _kpis["neglected"])
+    with _kc[4]: st.metric("Stale / Lost", _kpis["stale_or_lost"])
+    with _kc[5]: st.metric("Preempted",    _kpis["preempted"])
 
     # ── Filters & Focus ────────────────────────────────────────────────────────
     with st.expander("Filters & Focus", expanded=False):
@@ -495,6 +496,28 @@ if view_mode == "Overview":
                 "lat": float(_ar["lat"]),
             })
 
+    # Future-position ghost dots + trajectory lines for approaching vessels
+    _future_dots = []
+    _future_lines = []
+    for _, _fr in _ov_ts.iterrows():
+        try:
+            _zp = float(_fr.get("zone_probability", 0.0))
+            _flat = float(_fr.get("future_lat", float("nan")))
+            _flon = float(_fr.get("future_lon", float("nan")))
+        except (TypeError, ValueError):
+            continue
+        import math as _math
+        if _zp > 0.4 and not _math.isnan(_flat) and not _math.isnan(_flon):
+            _in_focus_fr = not _any_filter or str(_fr["target_id"]) in _focused_ids
+            if _in_focus_fr:
+                _future_dots.append({"lon": _flon, "lat": _flat})
+                _future_lines.append({
+                    "path": [
+                        [float(_fr["lon"]), float(_fr["lat"])],
+                        [_flon, _flat],
+                    ]
+                })
+
     _ov_zone_data = [
         {
             "name": z.name,
@@ -536,8 +559,30 @@ if view_mode == "Overview":
         _ov_ts, _map_focused_id
     )
 
-    # Assemble layers (bottom → top): ground tracks, zones, entities, highlight, labels
+    # Assemble layers (bottom → top): ground tracks, zones, entities, trajectory, approaching rings, labels
     _ov_layers = [_ov_zone_layer, _ov_entity_layer]
+
+    if _future_lines:
+        _ov_layers.append(pdk.Layer(
+            "PathLayer", data=_future_lines,
+            get_path="path",
+            get_color=[180, 80, 220, 100],
+            get_width=800,
+            width_min_pixels=1,
+            pickable=False,
+        ))
+    if _future_dots:
+        _ov_layers.append(pdk.Layer(
+            "ScatterplotLayer", data=_future_dots,
+            get_position="[lon, lat]",
+            get_radius=3500,
+            radius_min_pixels=4,
+            get_fill_color=[180, 80, 220, 90],
+            get_line_color=[180, 80, 220, 160],
+            line_width_min_pixels=1,
+            stroked=True, filled=True,
+            pickable=False,
+        ))
     if _ov_approaching_layer:
         _ov_layers.append(_ov_approaching_layer)
 

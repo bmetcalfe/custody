@@ -37,6 +37,13 @@ Coverage:
  33.  _build_reason for MONITOR with PASSIVE_MONITOR mentions significance
  34.  _fallbacks_for_sensor excludes the primary sensor
  35.  Smoke test: end-to-end with run_simulation()
+ 36.  prediction: expected_value boosted when zone_probability > 0.5
+ 37.  prediction: expected_value not boosted when zone_probability <= 0.5
+ 38.  prediction: zone_boost bounded so expected_value stays <= 1.0
+ 39.  prediction: SAR reason prefixed with zone approach when zone_probability > 0.5
+ 40.  prediction: OPTICAL reason prefixed with zone approach when zone_probability > 0.5
+ 41.  prediction: MONITOR reason NOT prefixed regardless of zone_probability
+ 42.  prediction: prefix omitted when zone_probability <= 0.5
 """
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
@@ -488,6 +495,60 @@ class TestBuildReason:
     def test_sar_in_view_mentions_overhead(self):
         reason = _build_reason("SAR", _decision(), _fa(), _T0, _record(), 0.0)
         assert "overhead" in reason.lower() or "now" in reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# 36–42. Prediction layer wiring
+# ---------------------------------------------------------------------------
+
+class TestPredictionExpectedValue:
+    """36–38: zone_boost in _compute_expected_value."""
+
+    def _ev(self, zone_probability, **record_kwargs):
+        r = _record(zone_probability=zone_probability, **record_kwargs)
+        dec = _decision(priority=0.6, confidence=0.5)
+        fa = _fa(recommended_confirming_source="SAR")
+        ws = _T0
+        we = _T0 + timedelta(minutes=10)
+        return _compute_expected_value("SAR", dec, fa, ws, we, r, _track())
+
+    def test_ev_boosted_when_approaching(self):
+        ev_base = self._ev(zone_probability=0.0)
+        ev_approach = self._ev(zone_probability=0.8)
+        assert ev_approach > ev_base
+
+    def test_ev_not_boosted_when_prob_low(self):
+        ev_base = self._ev(zone_probability=0.0)
+        ev_low = self._ev(zone_probability=0.3)
+        assert ev_base == ev_low
+
+    def test_ev_bounded_at_one(self):
+        ev = self._ev(zone_probability=1.0)
+        assert ev <= 1.0
+
+
+class TestPredictionReason:
+    """39–42: pre-tasking prefix in _build_reason."""
+
+    def test_sar_reason_has_pretask_prefix_when_approaching(self):
+        r = _record(zone_probability=0.8, time_to_zone_hours=3.0)
+        reason = _build_reason("SAR", _decision(), _fa(), _T0, r, 600.0)
+        assert "3.0h" in reason or "zone" in reason.lower()
+
+    def test_optical_reason_has_pretask_prefix_when_approaching(self):
+        r = _record(zone_probability=0.8, time_to_zone_hours=2.5)
+        reason = _build_reason("OPTICAL", _decision(action=TASK_OPTICAL), _fa(), _T0, r, 600.0)
+        assert "2.5h" in reason or "zone" in reason.lower()
+
+    def test_monitor_reason_not_prefixed(self):
+        r = _record(zone_probability=0.9, time_to_zone_hours=1.0)
+        reason = _build_reason("MONITOR", _decision(action=PASSIVE_MONITOR), _fa(), _T0, r, 0.0)
+        assert "zone approach" not in reason.lower() and "pre-tasked" not in reason.lower()
+
+    def test_sar_reason_no_prefix_when_prob_low(self):
+        r = _record(zone_probability=0.2, time_to_zone_hours=2.0)
+        reason = _build_reason("SAR", _decision(), _fa(), _T0, r, 600.0)
+        assert "pre-tasked" not in reason.lower() and "zone approach" not in reason.lower()
 
 
 # ---------------------------------------------------------------------------

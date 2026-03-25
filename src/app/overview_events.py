@@ -8,6 +8,7 @@ Supported event types
 zone_entry          — sensitive_zone score crossed entry threshold
 health_worsened     — custody_health degraded (HEALTHY→DEGRADING→STALE→LOST)
 neglect_triggered   — neglect_flag newly became True
+zone_approach       — entity newly reached zone_probability > 0.5 (APPROACHING status)
 rank_change         — portfolio_rank shifted by >= threshold (default 3)
 preempted           — entity newly received action=PREEMPTED this step
 """
@@ -28,9 +29,12 @@ _EVENT_PRIORITY: dict[str, int] = {
     "zone_entry":        0,
     "health_worsened":   1,
     "neglect_triggered": 2,
-    "rank_change":       3,
-    "preempted":         4,
+    "zone_approach":     3,
+    "rank_change":       4,
+    "preempted":         5,
 }
+
+_ZONE_APPROACH_THRESHOLD: float = 0.5
 
 
 def _health_rank(status: str) -> int:
@@ -185,6 +189,60 @@ def detect_zone_entry_events(
     return events
 
 
+def detect_zone_approach_events(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    threshold: float = _ZONE_APPROACH_THRESHOLD,
+) -> list[dict]:
+    """Return events where zone_probability newly crossed the approach threshold.
+
+    Each event dict contains:
+      entity_id, event_type="zone_approach", description, zone_probability,
+      time_to_zone_hours
+    """
+    if (
+        "zone_probability" not in current_df.columns
+        or "zone_probability" not in prev_df.columns
+        or current_df.empty
+        or prev_df.empty
+    ):
+        return []
+
+    curr = (
+        pd.to_numeric(current_df.set_index("target_id")["zone_probability"], errors="coerce")
+        .fillna(0.0)
+    )
+    prev = (
+        pd.to_numeric(prev_df.set_index("target_id")["zone_probability"], errors="coerce")
+        .fillna(0.0)
+    )
+    common = curr.index.intersection(prev.index)
+
+    tte_lookup: dict[str, object] = {}
+    if "time_to_zone_hours" in current_df.columns:
+        tte_lookup = current_df.set_index("target_id")["time_to_zone_hours"].to_dict()
+
+    events: list[dict] = []
+    for eid in common:
+        c_zp, p_zp = float(curr[eid]), float(prev[eid])
+        if c_zp > threshold and p_zp <= threshold:
+            tte = tte_lookup.get(eid)
+            try:
+                import math as _math
+                tte_f = float(tte) if tte is not None else None
+                tte_str = f" (est. {tte_f:.1f}h)" if tte_f is not None and not _math.isnan(tte_f) else ""
+            except (TypeError, ValueError):
+                tte_str = ""
+            events.append({
+                "entity_id":        eid,
+                "event_type":       "zone_approach",
+                "description":      f"{eid} projected to enter zone{tte_str}",
+                "zone_probability": c_zp,
+                "time_to_zone_hours": tte,
+            })
+    return events
+
+
 def detect_preemption_events(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
@@ -250,6 +308,7 @@ def build_event_feed(
     all_events.extend(detect_zone_entry_events(current_df, prev_df))
     all_events.extend(detect_health_change_events(current_df, prev_df))
     all_events.extend(detect_neglect_events(current_df, prev_df))
+    all_events.extend(detect_zone_approach_events(current_df, prev_df))
     all_events.extend(detect_rank_change_events(current_df, prev_df))
     all_events.extend(detect_preemption_events(current_df, prev_df))
 

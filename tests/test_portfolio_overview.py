@@ -72,6 +72,53 @@ class TestDeriveDisplayStatus:
         """String 'nan' in deferred_for must not trigger PREEMPTED status."""
         assert derive_display_status(self._r(deferred_for="nan")) != "PREEMPTED"
 
+    # ── APPROACHING status (prediction layer) ─────────────────────────────
+
+    def _r_approaching(self, **overrides):
+        base = {
+            "anomaly_score": 0.2, "custody_health": "HEALTHY",
+            "action": "NONE", "neglect_flag": False,
+            "deferred_for": None, "zone_probability": 0.7,
+            "sensitive_zone": 0.0,
+        }
+        base.update(overrides)
+        return base
+
+    def test_approaching_when_zone_prob_high_and_not_in_zone(self):
+        assert derive_display_status(self._r_approaching()) == "APPROACHING"
+
+    def test_approaching_boundary_exactly_above_threshold(self):
+        assert derive_display_status(self._r_approaching(zone_probability=0.51)) == "APPROACHING"
+
+    def test_not_approaching_when_prob_at_threshold(self):
+        result = derive_display_status(self._r_approaching(zone_probability=0.5))
+        assert result != "APPROACHING"
+
+    def test_not_approaching_when_already_in_zone(self):
+        result = derive_display_status(self._r_approaching(sensitive_zone=1.0))
+        assert result != "APPROACHING"
+
+    def test_not_approaching_when_prob_low(self):
+        result = derive_display_status(self._r_approaching(zone_probability=0.3))
+        assert result != "APPROACHING"
+
+    def test_approaching_loses_to_needs_action(self):
+        r = self._r_approaching(custody_health="LOST")
+        assert derive_display_status(r) == "NEEDS ACTION"
+
+    def test_approaching_loses_to_neglected(self):
+        r = self._r_approaching(neglect_flag=True, attention_state="ACTIVE_CUSTODY")
+        assert derive_display_status(r) == "NEGLECTED"
+
+    def test_approaching_loses_to_stale(self):
+        r = self._r_approaching(custody_health="STALE")
+        assert derive_display_status(r) == "STALE"
+
+    def test_approaching_beats_watch(self):
+        r = self._r_approaching(custody_health="DEGRADING")
+        # APPROACHING should fire before WATCH in the priority chain
+        assert derive_display_status(r) == "APPROACHING"
+
 
 # ── build_overview_df ─────────────────────────────────────────────────────────
 
@@ -114,7 +161,7 @@ class TestComputeKpiCounts:
     def test_empty_df_returns_zeros(self):
         counts = compute_kpi_counts(pd.DataFrame())
         assert counts == {"total": 0, "needs_action": 0, "neglected": 0,
-                          "stale_or_lost": 0, "preempted": 0}
+                          "stale_or_lost": 0, "preempted": 0, "approaching": 0}
 
     def test_total_matches_rows(self):
         counts = compute_kpi_counts(_make_ts_df(10))

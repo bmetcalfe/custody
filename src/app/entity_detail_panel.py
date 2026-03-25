@@ -130,12 +130,13 @@ def _render_prediction(record: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    tte   = record.get("time_to_zone_hours")
-    fa    = record.get("future_anomaly")
-    pc    = record.get("prediction_confidence")
-    reason = record.get("prediction_reason", "—")
+    tte     = record.get("time_to_zone_hours")
+    fa      = record.get("future_anomaly")
+    pc      = record.get("prediction_confidence")
+    horizon = record.get("prediction_horizon_hours")
+    reason  = record.get("prediction_reason", "—")
 
-    p1, p2, p3, p4 = st.columns(4)
+    p1, p2, p3, p4, p5 = st.columns(5)
     with p1:
         st.metric("Zone Prob", f"{zone_prob:.0%}")
     with p2:
@@ -157,6 +158,12 @@ def _render_prediction(record: dict) -> None:
         except (TypeError, ValueError):
             pc_str = "—"
         st.metric("Confidence", pc_str)
+    with p5:
+        try:
+            hz_str = f"{float(horizon):.1f}h" if horizon is not None else "—"
+        except (TypeError, ValueError):
+            hz_str = "—"
+        st.metric("Horizon", hz_str)
 
     if reason and reason != "—":
         st.markdown(

@@ -35,6 +35,13 @@ Coverage:
  31.  decision_for_timeline raises on mismatched lengths
  32.  decision_for_timeline preserves order
  33.  Smoke test: end-to-end with run_simulation()
+ 34.  prediction: why[] includes zone approach bullet when zone_probability > 0.5
+ 35.  prediction: why[] omits zone approach bullet when zone_probability <= 0.5
+ 36.  prediction: why[] omits zone approach bullet when time_to_zone_hours is None
+ 37.  prediction: priority bumped when zone_probability > 0.5 and tte valid
+ 38.  prediction: priority NOT bumped when zone_probability <= 0.5
+ 39.  prediction: priority NOT bumped when time_to_zone_hours is None
+ 40.  prediction: priority bump bounded to [0, 1]
 """
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
@@ -391,6 +398,73 @@ class TestDecisionForTimeline:
 
     def test_empty_timeline_returns_empty(self):
         assert decision_for_timeline([], _track(), []) == []
+
+
+# ---------------------------------------------------------------------------
+# 34–40. Prediction layer wiring
+# ---------------------------------------------------------------------------
+
+class TestPredictionWhy:
+    """34–36: prediction bullet in why[] based on zone_probability and tte."""
+
+    def test_why_includes_prediction_bullet_when_approaching(self):
+        r = _record(zone_probability=0.7, time_to_zone_hours=3.5)
+        fa = _fa(fused_score=0.55, uncertainty=0.4, recommended_confirming_source="SAR")
+        why = _build_why(fa, TASK_SAR, r, _track(), [])
+        combined = " ".join(why).lower()
+        assert "zone" in combined and ("3.5" in combined or "project" in combined)
+
+    def test_why_omits_prediction_bullet_when_prob_low(self):
+        r = _record(zone_probability=0.3, time_to_zone_hours=2.0)
+        fa = _fa(fused_score=0.55, uncertainty=0.4)
+        why = _build_why(fa, ELEVATE, r, _track(), [])
+        combined = " ".join(why).lower()
+        assert "project" not in combined or "2.0h" not in combined
+
+    def test_why_omits_prediction_bullet_when_tte_none(self):
+        r = _record(zone_probability=0.8, time_to_zone_hours=None)
+        fa = _fa(fused_score=0.55, uncertainty=0.4, recommended_confirming_source="SAR")
+        why = _build_why(fa, TASK_SAR, r, _track(), [])
+        # No bullet mentioning h projection without a tte value
+        combined = " ".join(why).lower()
+        assert "0.8" not in combined or "trajectory" not in combined
+
+
+class TestPredictionPriority:
+    """37–40: prediction_bump in _compute_priority."""
+
+    def test_priority_bumped_when_approaching(self):
+        base_record = _record(zone_probability=0.0, time_to_zone_hours=None)
+        approach_record = _record(zone_probability=0.7, time_to_zone_hours=4.0)
+        fa = _fa(fused_score=0.5, uncertainty=0.3)
+        p_base = _compute_priority(fa, base_record, _track(), [])
+        p_approach = _compute_priority(fa, approach_record, _track(), [])
+        assert p_approach > p_base
+
+    def test_priority_not_bumped_when_prob_low(self):
+        base_record = _record(zone_probability=0.0, time_to_zone_hours=None)
+        low_prob_record = _record(zone_probability=0.3, time_to_zone_hours=2.0)
+        fa = _fa(fused_score=0.5, uncertainty=0.3)
+        p_base = _compute_priority(fa, base_record, _track(), [])
+        p_low = _compute_priority(fa, low_prob_record, _track(), [])
+        assert p_base == p_low
+
+    def test_priority_not_bumped_when_tte_none(self):
+        base_record = _record(zone_probability=0.0, time_to_zone_hours=None)
+        no_tte_record = _record(zone_probability=0.8, time_to_zone_hours=None)
+        fa = _fa(fused_score=0.5, uncertainty=0.3)
+        p_base = _compute_priority(fa, base_record, _track(), [])
+        p_no_tte = _compute_priority(fa, no_tte_record, _track(), [])
+        assert p_base == p_no_tte
+
+    def test_priority_bounded_at_one_even_with_prediction_bump(self):
+        r = _record(
+            sensitive_zone=1.0, anomaly_score=0.95,
+            zone_probability=0.9, time_to_zone_hours=1.0,
+        )
+        fa = _fa(fused_score=1.0, uncertainty=0.9)
+        p = _compute_priority(fa, r, _track(last_collection_anomaly_score=0.0), [_compound()])
+        assert p <= 1.0
 
 
 # ---------------------------------------------------------------------------

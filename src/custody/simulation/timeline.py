@@ -422,6 +422,7 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 "future_anomaly":          _pred.future_anomaly,
                 "prediction_confidence":   _pred.prediction_confidence,
                 "prediction_reason":       _pred.prediction_reason,
+                "prediction_horizon_hours": _horizon_hours,
             }
             timelines[vid].append(record)
             current_timestep_records.append(record)

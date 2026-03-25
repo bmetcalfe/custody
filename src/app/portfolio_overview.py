@@ -85,11 +85,11 @@ def compute_kpi_counts(timestep_df: pd.DataFrame) -> dict:
     """Compute operator KPI counts for one timestep.
 
     Returns dict with keys:
-      total, needs_action, neglected, stale_or_lost, preempted
+      total, needs_action, neglected, stale_or_lost, preempted, approaching
     """
     if timestep_df.empty:
         return {"total": 0, "needs_action": 0, "neglected": 0,
-                "stale_or_lost": 0, "preempted": 0}
+                "stale_or_lost": 0, "preempted": 0, "approaching": 0}
 
     statuses = timestep_df.apply(lambda r: derive_display_status(r.to_dict()), axis=1)
     actions  = timestep_df.get("action", pd.Series(dtype=str))
@@ -100,6 +100,7 @@ def compute_kpi_counts(timestep_df: pd.DataFrame) -> dict:
         "neglected":     int((statuses == "NEGLECTED").sum()),
         "stale_or_lost": int(statuses.isin(["STALE", "NEEDS ACTION"]).sum()),
         "preempted":     int((actions == "PREEMPTED").sum()),
+        "approaching":   int((statuses == "APPROACHING").sum()),
     }
 
 

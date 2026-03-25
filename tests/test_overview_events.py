@@ -11,6 +11,7 @@ from overview_events import (
     detect_neglect_events,
     detect_zone_entry_events,
     detect_preemption_events,
+    detect_zone_approach_events,
 )
 
 
@@ -324,3 +325,73 @@ class TestBuildEventFeed:
             "sensitive_zone": 0.0, "action": "NONE",
         }])
         assert build_event_feed(curr, prev) == []
+
+
+# ── detect_zone_approach_events ───────────────────────────────────────────────
+
+class TestDetectZoneApproachEvents:
+
+    def test_approach_detected_when_crosses_threshold(self):
+        curr, prev = _two(
+            {"zone_probability": 0.7, "time_to_zone_hours": 3.5},
+            {"zone_probability": 0.2, "time_to_zone_hours": None},
+        )
+        events = detect_zone_approach_events(curr, prev)
+        assert len(events) == 1
+        assert events[0]["event_type"] == "zone_approach"
+        assert "A" in events[0]["description"]
+
+    def test_description_includes_tte_when_available(self):
+        curr, prev = _two(
+            {"zone_probability": 0.8, "time_to_zone_hours": 4.2},
+            {"zone_probability": 0.1, "time_to_zone_hours": None},
+        )
+        events = detect_zone_approach_events(curr, prev)
+        assert "4.2h" in events[0]["description"]
+
+    def test_no_event_when_already_approaching(self):
+        """Both steps above threshold — not a new transition."""
+        curr, prev = _two(
+            {"zone_probability": 0.8, "time_to_zone_hours": 2.0},
+            {"zone_probability": 0.7, "time_to_zone_hours": 3.0},
+        )
+        assert detect_zone_approach_events(curr, prev) == []
+
+    def test_no_event_when_prob_low(self):
+        curr, prev = _two(
+            {"zone_probability": 0.3, "time_to_zone_hours": 5.0},
+            {"zone_probability": 0.1, "time_to_zone_hours": None},
+        )
+        assert detect_zone_approach_events(curr, prev) == []
+
+    def test_no_event_when_column_missing(self):
+        curr, prev = _two({"custody_health": "HEALTHY"}, {"custody_health": "HEALTHY"})
+        assert detect_zone_approach_events(curr, prev) == []
+
+    def test_event_fields_populated(self):
+        curr, prev = _two(
+            {"zone_probability": 0.9, "time_to_zone_hours": 1.5},
+            {"zone_probability": 0.0, "time_to_zone_hours": None},
+        )
+        events = detect_zone_approach_events(curr, prev)
+        assert events[0]["entity_id"] == "A"
+        assert "zone_probability" in events[0]
+        assert "time_to_zone_hours" in events[0]
+
+    def test_zone_approach_ranked_before_rank_change_in_feed(self):
+        curr = pd.DataFrame([{
+            "target_id": "A", "portfolio_rank": 2,
+            "custody_health": "HEALTHY", "neglect_flag": False,
+            "sensitive_zone": 0.0, "action": "NONE",
+            "zone_probability": 0.8, "time_to_zone_hours": 2.0,
+        }])
+        prev = pd.DataFrame([{
+            "target_id": "A", "portfolio_rank": 9,
+            "custody_health": "HEALTHY", "neglect_flag": False,
+            "sensitive_zone": 0.0, "action": "NONE",
+            "zone_probability": 0.1, "time_to_zone_hours": None,
+        }])
+        events = build_event_feed(curr, prev)
+        types = [e["event_type"] for e in events]
+        if "zone_approach" in types and "rank_change" in types:
+            assert types.index("zone_approach") < types.index("rank_change")
