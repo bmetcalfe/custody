@@ -356,12 +356,18 @@ def render_entity_detail_panel(record: dict, prefix_window: list[dict]) -> None:
                        TrackState derivation.
     """
     # ── Pipeline computation ─────────────────────────────────────────────────
+    # Prefer canonical fusion/decision objects stored during simulation.
+    # Fall back to on-the-fly rebuild for AIS replay records that lack them.
     try:
-        track     = _derive_track_state(record, prefix_window)
-        compounds = evaluate_compounds(record, window=prefix_window)
-        fa        = build_fusion_assessment(record, compounds, track)
-        decision  = build_decision(fa, record, track, compounds)
-        tasks     = build_task_recommendations(decision, fa, record, track)
+        fa       = record.get("fusion_assessment")
+        decision = record.get("mission_decision")
+        if fa is None or decision is None:
+            track     = _derive_track_state(record, prefix_window)
+            compounds = evaluate_compounds(record, window=prefix_window)
+            fa        = build_fusion_assessment(record, compounds, track)
+            decision  = build_decision(fa, record, track, compounds)
+        track    = _derive_track_state(record, prefix_window)
+        tasks    = build_task_recommendations(decision, fa, record, track)
     except Exception as exc:  # noqa: BLE001
         st.warning(f"Reasoning pipeline unavailable for this step: {exc}")
         return

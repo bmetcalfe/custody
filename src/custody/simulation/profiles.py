@@ -15,6 +15,7 @@ SLOW_TRANSIT   = BehaviorProfile("slow_transit",    7.0, 1.0, 6.0)
 LOITERING      = BehaviorProfile("loitering",       2.0, 0.5, 20.0)
 ZONE_APPROACH  = BehaviorProfile("zone_approach",  10.0, 0.5, 2.0)
 EVASIVE        = BehaviorProfile("evasive",        20.0, 3.0, 25.0)
+PATROL         = BehaviorProfile("patrol",         10.0, 1.5, 8.0)
 
 # Demo-scenario profiles — zero variance so positions are fully deterministic.
 # Speeds and headings mirror the hardcoded values in behavior/modes.py so that
@@ -31,6 +32,7 @@ PROFILE_TO_MODE: dict[str, str] = {
     "zone_approach":  "approach",
     "loitering":      "loiter",
     "evasive":        "egress",
+    "patrol":         "transit",
     "demo_transit":   "transit",
     "demo_approach":  "approach",
     "demo_loiter":    "loiter",

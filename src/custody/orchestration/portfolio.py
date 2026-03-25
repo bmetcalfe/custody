@@ -238,15 +238,24 @@ def _portfolio_score(
     uncertainty_km: float,
     neglect_hours: float,
     attention_state: str = "ACTIVE_CUSTODY",
+    fused_score: float | None = None,
 ) -> float:
     """Composite portfolio urgency score in [0, 1].
 
     Components:
-      0.30 × normalised anomaly                             (mission urgency)
+      0.30 × fused_score (or normalised anomaly fallback)  (intrinsic urgency)
       0.25 × (1 – custody_conf)                            (custody pressure)
       0.20 × neglect pressure × neglect_weight(tier)       (tier-gated neglect)
       0.10 × normalised uncertainty                         (positional imprecision)
       0.15 × attention tier baseline (BG=0, WL=0.5, AC=1.0)
+
+    When *fused_score* is provided (from a FusionAssessment computed during
+    simulation), it replaces the raw anomaly normalisation as the intrinsic
+    urgency term.  fused_score already incorporates anomaly severity, compound
+    behavioral patterns, and custody weakness into a single [0, 1] signal.
+
+    When *fused_score* is None (backward compatibility for test fixtures and
+    AIS replay records), the legacy ``anomaly_score / _ANOMALY_MAX`` is used.
 
     Neglect is gated by attention tier:
       BACKGROUND     → weight 0.0  (no neglect pressure)
@@ -257,7 +266,10 @@ def _portfolio_score(
     BACKGROUND vessels with otherwise identical signals, even after
     background neglect is zeroed out.
     """
-    urgency        = min(anomaly_score / _ANOMALY_MAX, 1.0)
+    if fused_score is not None:
+        urgency = min(max(fused_score, 0.0), 1.0)
+    else:
+        urgency = min(anomaly_score / _ANOMALY_MAX, 1.0)
     custody        = 1.0 - min(max(custody_confidence, 0.0), 1.0)
     neglect_raw    = min(neglect_hours / (NEGLECT_THRESHOLD_HOURS * 2.0), 1.0)
     neglect        = neglect_raw * compute_neglect_weight(attention_state)
@@ -365,8 +377,12 @@ def rank_portfolio(
         attention = apply_tracking_directive_floor(attention, directive)
         attention = apply_dark_vessel_floor(attention, dark_flag, directive)
 
+        # Read fused_score from canonical FusionAssessment when available.
+        _fa = record.get("fusion_assessment")
+        _fused = _fa.fused_score if _fa is not None else None
+
         health = compute_custody_health(eid, unc_km, conf, n_hours)
-        base_score = _portfolio_score(anomaly, conf, unc_km, n_hours, attention)
+        base_score = _portfolio_score(anomaly, conf, unc_km, n_hours, attention, fused_score=_fused)
         # Prediction boost: approaching zone raises urgency slightly
         zone_prob_raw = record.get("zone_probability", 0.0)
         zone_prob = float(zone_prob_raw) if zone_prob_raw is not None else 0.0

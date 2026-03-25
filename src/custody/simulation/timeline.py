@@ -32,18 +32,79 @@ from custody.interactions import detect_rendezvous_events, RendezvousEvent
 from custody.dark_vessel import mark_dark, build_dark_reason
 
 from custody.simulation.profiles import BehaviorProfile, PROFILE_TO_MODE
-from custody.simulation.scenarios import ScenarioConfig, VesselSpec, ProfilePhase, DEFAULT_SCENARIO
+from custody.simulation.scenarios import ScenarioConfig, VesselSpec, ProfilePhase, PhaseTrigger, DEFAULT_SCENARIO
 from custody.simulation.generator import build_vessel_list
 from custody.orchestration.portfolio import rank_portfolio
 from custody.prediction import predict_entity
 from custody.config import ZONES
+from custody.fusion import build_fusion_assessment
+from custody.decision import build_decision
 
 
-def _current_phase(spec: VesselSpec, hour_index: int) -> ProfilePhase:
-    """Return the active phase for the given simulation hour."""
+def _trigger_satisfied(
+    trigger: PhaseTrigger,
+    vessel_state: dict,
+) -> bool:
+    """Evaluate a PhaseTrigger against current vessel state.
+
+    Args:
+        trigger:      The condition to check.
+        vessel_state: Dict with keys: anomaly_score, custody_confidence,
+                      sensitive_zone, consecutive_no_task.
+    """
+    cond = trigger.condition
+    thr = trigger.threshold
+
+    if cond == "anomaly_above":
+        return vessel_state.get("anomaly_score", 0.0) > thr
+    if cond == "anomaly_below":
+        return vessel_state.get("anomaly_score", 0.0) < thr
+    if cond == "custody_below":
+        return vessel_state.get("custody_confidence", 1.0) < thr
+    if cond == "custody_above":
+        return vessel_state.get("custody_confidence", 1.0) > thr
+    if cond == "missed_collections":
+        return vessel_state.get("consecutive_no_task", 0) >= thr
+    if cond == "zone_entry":
+        return vessel_state.get("sensitive_zone", 0.0) > 0.0
+    if cond == "zone_exit":
+        return vessel_state.get("sensitive_zone", 0.0) == 0.0
+    return False
+
+
+def _current_phase(
+    spec: VesselSpec,
+    hour_index: int,
+    vessel_state: Optional[dict] = None,
+    latched_triggers: Optional[set] = None,
+) -> ProfilePhase:
+    """Return the active phase for the given simulation hour.
+
+    Phases are evaluated in order; the last phase whose start_hour has been
+    reached AND whose trigger (if any) is satisfied wins.  Once a trigger
+    fires it is recorded in *latched_triggers* (mutated in place) so the
+    phase stays active even if the condition becomes false later.
+
+    Args:
+        spec:              Vessel specification with ordered phases.
+        hour_index:        Current simulation hour offset.
+        vessel_state:      Dict of current signals for trigger evaluation.
+                           Pass None when no triggers are used (backward compat).
+        latched_triggers:  Mutable set of phase indices whose triggers have
+                           already fired.  Pass None for time-only behavior.
+    """
     active = spec.phases[0]
-    for phase in spec.phases:
-        if phase.start_hour <= hour_index:
+    for idx, phase in enumerate(spec.phases):
+        if phase.start_hour > hour_index:
+            continue
+        if phase.trigger is None:
+            active = phase
+        elif latched_triggers is not None and idx in latched_triggers:
+            # Previously fired — stays active
+            active = phase
+        elif vessel_state is not None and _trigger_satisfied(phase.trigger, vessel_state):
+            if latched_triggers is not None:
+                latched_triggers.add(idx)
             active = phase
     return active
 
@@ -112,6 +173,9 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
     tracks: dict[str, TrackState] = {}
     timelines: dict[str, list[dict]] = {}
     spec_by_id: dict[str, VesselSpec] = {}
+    # Per-vessel trigger latch state and consecutive-no-task counter
+    latched: dict[str, set[int]] = {}
+    consecutive_no_task: dict[str, int] = {}
 
     for spec in vessel_specs:
         vid = spec.vessel_id
@@ -126,6 +190,8 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
         tracks[vid] = TrackState()
         timelines[vid] = []
         spec_by_id[vid] = spec
+        latched[vid] = set()
+        consecutive_no_task[vid] = 0
 
     # ── Main simulation loop ─────────────────────────────────────────────────
     current_time = scenario.start_time
@@ -144,7 +210,18 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
             vessel = vessels[vid]
             track = tracks[vid]
 
-            phase = _current_phase(spec, hour_index)
+            # Build trigger state from the previous timestep's record
+            _prev = timelines[vid][-1] if timelines[vid] else None
+            _trig_state: Optional[dict] = None
+            if _prev is not None:
+                _trig_state = {
+                    "anomaly_score":       _prev.get("anomaly_score", 0.0),
+                    "custody_confidence":  _prev.get("custody_confidence", 1.0),
+                    "sensitive_zone":      _prev.get("sensitive_zone", 0.0),
+                    "consecutive_no_task": consecutive_no_task[vid],
+                }
+
+            phase = _current_phase(spec, hour_index, _trig_state, latched[vid])
             vessel = _apply_profile(vessel, phase, rng)
             vessel = update_position(vessel, hours=scenario.dt_hours)
             vessel.last_seen = current_time
@@ -424,6 +501,25 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 "prediction_reason":       _pred.prediction_reason,
                 "prediction_horizon_hours": _horizon_hours,
             }
+            # ── Fusion + Decision (canonical, used by portfolio & UI) ──────
+            # Evaluate compounds from the full record with the history prefix
+            # (timelines[vid] does not yet include the current record).
+            _fusion_compounds = evaluate_compounds(record, window=timelines[vid])
+            _fa = build_fusion_assessment(
+                record, _fusion_compounds, track, planner_context=trace,
+            )
+            _mission_dec = build_decision(
+                _fa, record, track, _fusion_compounds, planner_context=trace,
+            )
+            record["fusion_assessment"] = _fa
+            record["mission_decision"]  = _mission_dec
+
+            # Update consecutive-no-task counter for trigger evaluation
+            if decision.action == "TASK":
+                consecutive_no_task[vid] = 0
+            else:
+                consecutive_no_task[vid] += 1
+
             timelines[vid].append(record)
             current_timestep_records.append(record)
 

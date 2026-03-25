@@ -6,14 +6,45 @@ from typing import Optional
 
 from custody.simulation.profiles import (
     BehaviorProfile, NORMAL_TRANSIT, SLOW_TRANSIT,
-    LOITERING, ZONE_APPROACH, EVASIVE,
+    LOITERING, ZONE_APPROACH, EVASIVE, PATROL,
     DEMO_TRANSIT, DEMO_APPROACH, DEMO_LOITER, DEMO_EGRESS,
 )
 
 
 @dataclass(frozen=True)
+class PhaseTrigger:
+    """Optional condition that can activate a phase independent of time.
+
+    When attached to a ProfilePhase, the phase activates when BOTH its
+    ``start_hour`` has been reached AND the trigger condition is satisfied.
+    Use ``start_hour=0`` for a trigger-only phase (eligible from the start).
+
+    Supported condition types:
+        "anomaly_above"      — entity anomaly_score > threshold
+        "anomaly_below"      — entity anomaly_score < threshold
+        "custody_below"      — custody_confidence < threshold
+        "custody_above"      — custody_confidence > threshold
+        "missed_collections" — consecutive timesteps with no TASK action >= threshold
+        "zone_entry"         — sensitive_zone detector score > 0 (threshold ignored)
+        "zone_exit"          — sensitive_zone detector score == 0 (threshold ignored)
+
+    Once a trigger fires for a vessel, it latches: the phase stays active
+    until a later phase (by start_hour or its own trigger) supersedes it.
+    """
+    condition: str
+    threshold: float = 0.0
+
+
+@dataclass(frozen=True)
 class ProfilePhase:
-    """One behavior phase in a vessel's scripted timeline."""
+    """One behavior phase in a vessel's scripted timeline.
+
+    Phase selection priority:
+      1. Time-gated: ``start_hour <= current_hour``.
+      2. Trigger-gated: if ``trigger`` is set, the phase only activates when
+         the trigger condition is also satisfied (checked after start_hour).
+      3. Later phases override earlier ones (last eligible phase wins).
+    """
     start_hour: int
     profile: BehaviorProfile
     # If both set, vessel steers toward this point each step
@@ -21,6 +52,8 @@ class ProfilePhase:
     target_lon: Optional[float] = None
     # If set, override heading to this fixed value
     heading_override: Optional[float] = None
+    # Optional condition for activation (evaluated after start_hour gate)
+    trigger: Optional[PhaseTrigger] = None
 
 
 @dataclass
@@ -254,6 +287,176 @@ PORTFOLIO_SCENARIO = ScenarioConfig(
             ],
             is_anomalous=True,
             tags=["rendezvous_pair", "scripted"],
+        ),
+    ],
+)
+
+
+# ── Multi-day 72-hour, 30-entity scenario ─────────────────────────────────────
+#
+# 6 scripted actors + 24 background vessels.
+# Scenario date: 2026-03-23 00:00z → 2026-03-26 00:00z (72h window).
+#
+# Three-act narrative arc:
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ACT 1 — BASELINE (h0–h24)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Normal portfolio operations.  Background traffic transits the region.
+#  Scripted actors establish their presence and begin initial approaches.
+#
+#  FOXTROT-1 : Slow approach from SW toward ZONE_ALPHA; arrives ~h20.
+#  GOLF-1    : Normal transit from N; begins route deviation at h16.
+#  HOTEL-1/2 : Rendezvous pair — converge from E/W; dwell begins ~h14.
+#  INDIA-1   : Port departure under MAINTAIN_CUSTODY; AIS goes dark at h20.
+#  JULIET-1  : Fast transit from SE; no anomaly in Act 1 — surveillance baseline.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ACT 2 — SUSPICIOUS BUILDUP / COMPETING PRIORITIES (h24–h48)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Multiple concerns compete for limited sensor capacity.
+#
+#  FOXTROT-1 : Loitering inside ZONE_ALPHA (h20–h44).  Primary collection target.
+#  GOLF-1    : Zone approach begins h24; enters zone ~h36.  Second priority.
+#  HOTEL-1/2 : Rendezvous confirmed; pair separates at h36 on evasive headings.
+#  INDIA-1   : Dark since h20; uncertainty growing.  Dark-vessel floor holds
+#              ACTIVE_CUSTODY.  Competes for sensors it cannot confirm.
+#  JULIET-1  : Begins zone approach at h28 from distance; third priority.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ACT 3 — ESCALATION, MISSED COLLECTIONS, RETASKING (h48–h72)
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Consequences of constrained resources accumulate.  Some tracks degrade;
+#  resolved targets clear the board; new concern surfaces.
+#
+#  FOXTROT-1 : Evasive egress from zone starting h44.  Anomaly drops slowly.
+#  GOLF-1    : Loitering in zone h36–h60.  Becomes top priority after FOXTROT
+#              clears.  Evasive egress h60.
+#  HOTEL-1/2 : Gone — evasive since h36, leaving the region.
+#  INDIA-1   : Still dark.  Uncertainty very large.  Custody LOST by ~h60.
+#  JULIET-1  : Approaches zone h28–h48; loiters inside h48–h64.  Late-arriving
+#              concern overlaps GOLF-1 zone loitering — the peak of portfolio
+#              contention.  Patrol exit h64.
+#
+
+MULTI_DAY_SCENARIO = ScenarioConfig(
+    name="multi_day_72h",
+    seed=7272,
+    n_background=24,
+    start_time=datetime(2026, 3, 23, 0, 0, tzinfo=timezone.utc),
+    duration_hours=72,
+    dt_hours=1,
+    region=(-2.0, 4.0, -2.0, 4.0),
+    zone_center=(1.3, 0.75),
+    background_archetype_weights={
+        "transit":      0.35,
+        "slow_transit": 0.25,
+        "patrol":       0.25,
+        "approach":     0.15,
+    },
+    scripted_vessels=[
+        # ── FOXTROT-1: Zone loiterer ─────────────────────────────────────
+        # Act 1: slow approach from SW.  Act 2: loiters in ZONE_ALPHA for
+        # 24 hours.  Act 3: evasive egress.
+        VesselSpec(
+            vessel_id="FOXTROT-1",
+            start_lat=0.3, start_lon=-0.5,
+            start_heading_deg=50.0,
+            phases=[
+                ProfilePhase(0,  ZONE_APPROACH, target_lat=1.3, target_lon=0.75),
+                ProfilePhase(20, LOITERING),
+                ProfilePhase(44, EVASIVE, heading_override=220.0),
+            ],
+            is_anomalous=True,
+            tags=["zone_loiterer", "scripted", "act1_approach"],
+        ),
+
+        # ── GOLF-1: Delayed zone entrant ─────────────────────────────────
+        # Act 1: normal transit from N, route deviation at h16.  Act 2:
+        # zone approach → enters zone, loiters.  The loitering phase uses a
+        # zone_entry trigger: it activates when the vessel's sensitive_zone
+        # score > 0, rather than at a fixed hour.  Act 3: evasive egress h60.
+        VesselSpec(
+            vessel_id="GOLF-1",
+            start_lat=3.5, start_lon=1.5,
+            start_heading_deg=200.0,
+            phases=[
+                ProfilePhase(0,  NORMAL_TRANSIT),
+                ProfilePhase(16, NORMAL_TRANSIT, heading_override=240.0),
+                ProfilePhase(24, ZONE_APPROACH, target_lat=1.2, target_lon=0.8),
+                ProfilePhase(24, LOITERING,
+                             trigger=PhaseTrigger("zone_entry")),
+                ProfilePhase(60, EVASIVE, heading_override=30.0),
+            ],
+            is_anomalous=True,
+            tags=["delayed_entrant", "scripted", "act2_zone", "trigger_zone_entry"],
+        ),
+
+        # ── HOTEL-1 / HOTEL-2: Rendezvous pair ──────────────────────────
+        # Act 1: converge from E/W to shared waypoint (2.3, 0.8); dwell
+        # begins ~h14.  Act 2: sustained rendezvous through h36, then
+        # separate on evasive headings.  Act 3: left the region.
+        VesselSpec(
+            vessel_id="HOTEL-1",
+            start_lat=2.3, start_lon=0.0,
+            start_heading_deg=90.0,
+            phases=[
+                ProfilePhase(0,  ZONE_APPROACH, target_lat=2.3, target_lon=0.8),
+                ProfilePhase(6,  LOITERING, target_lat=2.3, target_lon=0.8),
+                ProfilePhase(36, EVASIVE, heading_override=270.0),
+            ],
+            is_anomalous=True,
+            tags=["rendezvous_pair", "scripted"],
+        ),
+        VesselSpec(
+            vessel_id="HOTEL-2",
+            start_lat=2.3, start_lon=1.6,
+            start_heading_deg=270.0,
+            phases=[
+                ProfilePhase(0,  ZONE_APPROACH, target_lat=2.3, target_lon=0.8),
+                ProfilePhase(6,  LOITERING, target_lat=2.3, target_lon=0.8),
+                ProfilePhase(36, EVASIVE, heading_override=90.0),
+            ],
+            is_anomalous=True,
+            tags=["rendezvous_pair", "scripted"],
+        ),
+
+        # ── INDIA-1: Dark vessel ─────────────────────────────────────────
+        # Slow transit under MAINTAIN_CUSTODY.  AIS goes dark at h20 (Act 1
+        # boundary).  Uncertainty grows through Acts 2 and 3.  Custody
+        # degrades to LOST by ~h60.
+        VesselSpec(
+            vessel_id="INDIA-1",
+            start_lat=3.0, start_lon=-1.0,
+            start_heading_deg=100.0,
+            phases=[
+                ProfilePhase(0, SLOW_TRANSIT, heading_override=100.0),
+            ],
+            is_anomalous=False,
+            tracking_directive="MAINTAIN_CUSTODY",
+            ais_dropout_hour=20,
+            tags=["dark_vessel", "manual_custody", "scripted"],
+        ),
+
+        # ── JULIET-1: Late-arriving zone concern ────────────────────────
+        # Act 1: fast transit from SE, unremarkable.  Act 2: begins zone
+        # approach h28, arrives ~h48.  Act 3: loiters inside zone h48–h64,
+        # overlapping GOLF-1 for peak contention.  Patrol exit uses a
+        # zone_exit trigger (starts when vessel leaves zone) rather than
+        # a fixed hour.  Time floor h56 prevents premature activation.
+        VesselSpec(
+            vessel_id="JULIET-1",
+            start_lat=-0.5, start_lon=3.0,
+            start_heading_deg=315.0,
+            phases=[
+                ProfilePhase(0,  NORMAL_TRANSIT),
+                ProfilePhase(28, ZONE_APPROACH, target_lat=1.1, target_lon=0.7),
+                ProfilePhase(48, LOITERING),
+                ProfilePhase(56, PATROL, heading_override=135.0,
+                             trigger=PhaseTrigger("zone_exit")),
+            ],
+            is_anomalous=True,
+            tags=["late_entrant", "scripted", "act3_contention", "trigger_zone_exit"],
         ),
     ],
 )

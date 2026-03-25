@@ -2,7 +2,7 @@
 from custody.simulation.timeline import run_multi_target_simulation
 from custody.simulation.scenarios import (
     DEFAULT_SCENARIO, TWO_VESSEL_SMOKE, PORTFOLIO_SCENARIO,
-    RENDEZVOUS_SMOKE, DARK_VESSEL_SMOKE,
+    RENDEZVOUS_SMOKE, DARK_VESSEL_SMOKE, MULTI_DAY_SCENARIO,
 )
 
 __all__ = [
@@ -12,4 +12,5 @@ __all__ = [
     "PORTFOLIO_SCENARIO",
     "RENDEZVOUS_SMOKE",
     "DARK_VESSEL_SMOKE",
+    "MULTI_DAY_SCENARIO",
 ]
