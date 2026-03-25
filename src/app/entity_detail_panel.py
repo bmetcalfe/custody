@@ -15,6 +15,7 @@ render_entity_detail_panel(record, prefix_window)
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -111,6 +112,58 @@ def _panel_summary(fa: FusionAssessment, decision: Decision) -> str:
 # ---------------------------------------------------------------------------
 # Section renderers
 # ---------------------------------------------------------------------------
+
+def _render_prediction(record: dict) -> None:
+    """Render the Prediction section if prediction data is present."""
+    zone_prob = record.get("zone_probability")
+    if zone_prob is None:
+        return
+    try:
+        zone_prob = float(zone_prob)
+        if math.isnan(zone_prob):
+            return
+    except (TypeError, ValueError):
+        return
+
+    st.markdown(
+        "<div class='section-label'>Prediction</div>",
+        unsafe_allow_html=True,
+    )
+
+    tte   = record.get("time_to_zone_hours")
+    fa    = record.get("future_anomaly")
+    pc    = record.get("prediction_confidence")
+    reason = record.get("prediction_reason", "—")
+
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        st.metric("Zone Prob", f"{zone_prob:.0%}")
+    with p2:
+        try:
+            _tte = float(tte) if tte is not None else None
+            tte_str = f"{_tte:.1f}h" if _tte is not None and not math.isnan(_tte) else "—"
+        except (TypeError, ValueError):
+            tte_str = "—"
+        st.metric("Time to Zone", tte_str)
+    with p3:
+        try:
+            fa_str = f"{float(fa):.3f}" if fa is not None else "—"
+        except (TypeError, ValueError):
+            fa_str = "—"
+        st.metric("Future Anomaly", fa_str)
+    with p4:
+        try:
+            pc_str = f"{float(pc):.0%}" if pc is not None else "—"
+        except (TypeError, ValueError):
+            pc_str = "—"
+        st.metric("Confidence", pc_str)
+
+    if reason and reason != "—":
+        st.markdown(
+            f"<p style='font-size:0.80rem;color:#aaa;margin:4px 0 0 0;'>{reason}</p>",
+            unsafe_allow_html=True,
+        )
+
 
 def _render_fusion_assessment(fa: FusionAssessment) -> None:
     st.markdown(
@@ -316,6 +369,7 @@ def render_entity_detail_panel(record: dict, prefix_window: list[dict]) -> None:
     # ── Three reasoning sections ─────────────────────────────────────────────
     now: Optional[datetime] = record.get("time")
 
+    _render_prediction(record)
     _render_fusion_assessment(fa)
     _render_decision(decision)
     _render_task_queue(tasks, now)

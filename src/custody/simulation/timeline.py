@@ -25,7 +25,7 @@ from custody.planner import plan_collection, compute_target_priority
 from custody.behavior.state_machine import infer_state
 from custody.compounds import evaluate_compounds
 from custody.decision_trace import build_decision_trace
-from custody.sensors import get_sensor_opportunities
+from custody.sensors import get_sensor_opportunities, next_pass_window
 from custody.features.proximity_features import haversine_km
 from custody.config import PROXIMITY_CRITICAL_KM, PROXIMITY_WARNING_KM
 from custody.interactions import detect_rendezvous_events, RendezvousEvent
@@ -337,6 +337,17 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
             # ── Prediction layer ──────────────────────────────────────────────
             # Convert speed from km/h to knots (1 knot = 1.852 km/h)
             speed_kts = vessel.speed_kmh / 1.852
+            # Dynamic horizon: match to nearest orbital pass (SAR or OPTICAL)
+            _SAT_IDS = ["SAR-1", "SAR-2", "EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"]
+            _best_tts: Optional[float] = None
+            for _sid in _SAT_IDS:
+                _pw = next_pass_window(_sid, state["rec_lat"], state["rec_lon"], current_time)
+                if _pw is not None:
+                    _tts_h = _pw.time_to_start_seconds / 3600.0
+                    if _best_tts is None or _tts_h < _best_tts:
+                        _best_tts = _tts_h
+            _horizon_hours = max(1.0, min(_best_tts, 12.0)) if _best_tts is not None else 6.0
+
             _pred = predict_entity(
                 entity_id=vid,
                 lat=state["rec_lat"],
@@ -346,7 +357,7 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 current_anomaly=score,
                 custody_confidence=confidence,
                 zones=ZONES,
-                horizon_hours=6.0,
+                horizon_hours=_horizon_hours,
             )
 
             _rdv = rendezvous_by_vessel.get(vid)

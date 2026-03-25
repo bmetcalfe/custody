@@ -40,6 +40,10 @@ def derive_display_status(record: dict) -> str:
         return "NEGLECTED"
     if health in ("STALE", "LOST"):
         return "STALE"
+    _zone_prob = float(record.get("zone_probability", 0.0))
+    _sensitive = float(record.get("sensitive_zone", 0.0))
+    if _zone_prob > 0.5 and _sensitive == 0.0:
+        return "APPROACHING"
     if health == "DEGRADING" or anomaly >= 0.5:
         return "WATCH"
     return "HEALTHY"

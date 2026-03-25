@@ -344,11 +344,15 @@ def _compute_expected_value(
     tts = max((window_start - now).total_seconds(), 0.0) if now else 0.0
     timing_score = _compute_timing_score(tts)
 
+    zone_prob = float(record.get("zone_probability", 0.0))
+    zone_boost = zone_prob * 0.08 if zone_prob > 0.5 else 0.0
+
     return round(_clamp01(
         0.40 * decision.priority
         + 0.25 * decision.confidence
         + 0.20 * sensor_fit
         + 0.15 * timing_score
+        + zone_boost
     ), 3)
 
 
@@ -375,18 +379,36 @@ def _build_reason(
     """
     tts_min = max(int(tts_seconds / 60), 0)
 
+    # Pre-tasking context prefix when entity is approaching a zone
+    _zone_prob = float(record.get("zone_probability", 0.0))
+    _tte = record.get("time_to_zone_hours")
+    _pretask_prefix = ""
+    if _zone_prob > 0.5 and _tte is not None and sensor in ("SAR", "OPTICAL"):
+        try:
+            _tte_f = float(_tte)
+            import math as _math
+            if not _math.isnan(_tte_f):
+                _pretask_prefix = (
+                    f"Zone approach in {_tte_f:.1f}h — pre-tasked; "
+                )
+        except (TypeError, ValueError):
+            pass
+
     if sensor == "SAR":
         if tts_seconds <= 0:
             return (
+                _pretask_prefix +
                 "SAR is the highest-value confirming source and the satellite "
                 "is currently overhead — task now."
             )
         if tts_min <= 5:
             return (
+                _pretask_prefix +
                 f"SAR is the highest-value confirming source and an access "
                 f"window opens in approximately {tts_min} minutes."
             )
         return (
+            _pretask_prefix +
             f"SAR offers all-weather confirmation capability with an access "
             f"window in approximately {tts_min} minutes."
         )
@@ -394,15 +416,18 @@ def _build_reason(
     if sensor == "OPTICAL":
         if tts_seconds <= 0:
             return (
+                _pretask_prefix +
                 "Optical confirmation is available now and is the best match "
                 "for the current evidence gap."
             )
         if tts_min <= 5:
             return (
+                _pretask_prefix +
                 f"Optical confirmation is available in approximately "
                 f"{tts_min} minutes and best matches the current evidence gap."
             )
         return (
+            _pretask_prefix +
             f"Optical tasking provides direct visual confirmation with an "
             f"access window in approximately {tts_min} minutes."
         )

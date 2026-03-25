@@ -70,7 +70,7 @@ In the default scenario, `PORT-1` illustrates this: a routine slow-transit vesse
 
 ## Architecture
 
-Eight layers, each with a clean data contract. Each layer reads from the previous layer's output and writes nothing back.
+Eight layers, each with a clean data contract. Each layer reads from the previous layer's output and writes nothing back. A prediction sub-layer (dead-reckoning trajectory + zone-crossing probability + anomaly forecast) feeds forward into Layers 5, 6, and 7 to enable pre-emptive tasking before a vessel reaches a zone.
 
 ```
   Raw Observations (AIS, simulation)
@@ -123,6 +123,17 @@ Eight layers, each with a clean data contract. Each layer reads from the previou
            │
            ▼
  ┌─────────────────────────────────┐
+ │  Layer 5.5: Prediction          │  custody/prediction/
+ │  Forward trajectory & risk      │    project_position() — dead-reckoning
+ │  (feeds Layers 5, 6, 7)        │    zone_crossing_probability()
+ │                                 │    forecast_anomaly_score()
+ │                                 │    Prediction: future_lat/lon,
+ │                                 │      zone_probability, time_to_zone_hours,
+ │                                 │      future_anomaly, prediction_confidence
+ └─────────────────────────────────┘
+           │
+           ▼
+ ┌─────────────────────────────────┐
  │  Layer 6: Collection            │  custody/taskrecommendation.py
  │  Orchestration                  │  TaskRecommendation:
  │  "Which asset, when, and why?"  │    sensor, window_start, window_end
@@ -130,7 +141,9 @@ Eight layers, each with a clean data contract. Each layer reads from the previou
  │                                 │                   + 0.25·confidence
  │                                 │                   + 0.20·sensor_fit
  │                                 │                   + 0.15·timing_score
+ │                                 │                   + zone_boost (if approaching)
  │                                 │    reason, fallbacks[], rank
+ │                                 │    horizon matched to nearest orbital pass
  └─────────────────────────────────┘
            │  (per-entity outputs × N entities)
            ▼
@@ -169,7 +182,7 @@ The main scenario is a 36-hour, 24-entity portfolio (`PORTFOLIO_SCENARIO`): 20 b
 | background ×20 | Mixed archetypes | Routine transits, patrols, approaches | BACKGROUND at start; may rise as confidence decays without collection |
 
 **Scenario narrative:** three distinct concerns emerge and overlap:
-- **h0–11** — normal portfolio; PORT-1 visible and tracked; ECHO pair in transit; BRAVO-1 approaching zone
+- **h0–11** — normal portfolio; PORT-1 visible and tracked; ECHO pair in transit; BRAVO-1 surfaces APPROACHING status as prediction layer projects zone entry before h15
 - **h12** — PORT-1 AIS dropout and ECHO rendezvous fire simultaneously → direct portfolio tradeoff
 - **h12–22** — dark-vessel concern and active rendezvous dwell compete for sensor capacity; BRAVO-1 loitering inside zone from h16
 - **h22+** — ECHO pair separates; PORT-1 track degrades; BRAVO-1 evasive egress from h28
@@ -191,13 +204,14 @@ The dashboard is **overview-first**: the default view is a portfolio triage surf
 
 **Overview page:**
 - **Ranked portfolio table** — all entities sorted by urgency, with display status, anomaly score, custody health, neglect flag, and a one-line reason. Click any row to focus the map on that entity.
-- **Click-to-focus map** — geospatial view of the full portfolio; the selected entity is highlighted, centered, and labeled. Vessel dot color encodes display status (red = needs action → amber = preempted → yellow = neglected → blue = watch → gray = healthy).
+- **Click-to-focus map** — geospatial view of the full portfolio; the selected entity is highlighted, centered, and labeled. Vessel dot color encodes display status (red = needs action → amber = preempted → yellow = neglected → sienna = stale → purple = approaching zone → blue = watch → gray = healthy). Vessels projected to enter a zone within the prediction horizon show a hollow purple ring.
 - **Event feed** — compact stream of notable changes since the previous timestep: zone entries, custody health degradations, neglect triggers, and significant rank shifts.
 - **Filters** — narrow the table and map by status category, neglect flag, scripted-actors-only, or top-N by urgency rank.
 - **Optional orbital ground tracks** — toggle to overlay ±90 min sub-satellite paths for all sensor satellites, with current satellite positions marked.
 
 **Entity detail panel (drill-down):**
-- Full Evidence → Fusion → Decision → Task Queue reasoning chain, explainable at each step.
+- Full Prediction → Fusion → Decision → Task Queue reasoning chain, explainable at each step.
+- Prediction section: zone-crossing probability, estimated time to zone, forecast anomaly, and prediction confidence for the current orbital horizon.
 - What-if analysis, compound signal history, and orbital pass reference table.
 
 ---
@@ -227,7 +241,7 @@ Three abstract sensor types are resolved against real orbital pass windows using
 | `AIS_REFRESH` | — | Immediate | Always (synthetic 30-min window) |
 | `MONITOR` | — | Passive | Always (synthetic 2-hr window) |
 
-The task planner searches all satellites of a type and returns the nearest upcoming pass. Sensors with no accessible window within the horizon are omitted from the queue; MONITOR ensures the queue is never empty.
+The task planner searches all satellites of a type and returns the nearest upcoming pass. Sensors with no accessible window within the horizon are omitted from the queue; MONITOR ensures the queue is never empty. The prediction horizon is set dynamically to the time-to-start of the nearest SAR or OPTICAL pass (clamped to 1–12 h), so forward projections are always anchored to an actual collection opportunity.
 
 ---
 
@@ -250,7 +264,7 @@ The dashboard opens in portfolio overview mode showing all entities ranked by ur
 uv run pytest tests/
 ```
 
-**1464 tests** across: orbital mechanics, SGP4 propagation, sensor scheduling, AIS ingestion, track state, behavior detection, anomaly scoring, compound signals, alert layer, collection planner, multi-vessel arbitration, decision trace, what-if analysis, fusion assessment, mission reasoning, task recommendation, portfolio orchestration, attention tier classification, and dashboard data pipeline.
+**1503 tests** across: orbital mechanics, SGP4 propagation, sensor scheduling, AIS ingestion, track state, behavior detection, anomaly scoring, compound signals, alert layer, collection planner, multi-vessel arbitration, decision trace, what-if analysis, fusion assessment, mission reasoning, task recommendation, portfolio orchestration, attention tier classification, prediction layer, and dashboard data pipeline.
 
 ---
 
@@ -329,6 +343,7 @@ src/
     taskrecommendation.py  Collection orchestration → ranked TaskRecommendation queue
     tracks.py           Track position update and uncertainty decay
     whatif.py           Config-variant comparison engine
+    prediction/         Forward trajectory, zone-crossing probability, anomaly forecast
     orchestration/
       attention.py      Attention tier classification and neglect-weight gating
       portfolio.py      Population-level ranking, health, neglect, tradeoff surface
@@ -347,5 +362,5 @@ src/
     orbital_passes_panel.py Raw orbital pass reference table
     whatif_panel.py         What-if results display
     ground_track.py         Orbital ground-track sampling and satellite position helpers
-tests/                  1464 tests, one file per module
+tests/                  1503 tests, one file per module
 ```

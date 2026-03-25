@@ -292,15 +292,17 @@ if view_mode == "Overview":
     _STATUS_BADGE_COLOR = {
         "NEEDS ACTION": "#d14343", "PREEMPTED": "#b85c00",
         "NEGLECTED":    "#b08000", "STALE":     "#7a5c00",
+        "APPROACHING":  "#7b3fa0",
         "WATCH":        "#1f6fa8", "HEALTHY":   "#2ea043",
     }
     _STATUS_RGB = {
-        "NEEDS ACTION": [230,  55,  55, 240],   # red — high visibility, high urgency
-        "PREEMPTED":    [215, 130,  25, 225],   # amber
-        "NEGLECTED":    [215, 195,  30, 220],   # yellow-amber
-        "STALE":        [175, 105,  45, 215],   # sienna — more visible than old dark brown
-        "WATCH":        [ 85, 165, 235, 215],   # sky blue
-        "HEALTHY":      [155, 165, 175, 195],   # cool light gray — was near-invisible at 120
+        "NEEDS ACTION": [230,  55,  55, 240],
+        "PREEMPTED":    [215, 130,  25, 225],
+        "NEGLECTED":    [215, 195,  30, 220],
+        "STALE":        [175, 105,  45, 215],
+        "APPROACHING":  [180,  80, 220, 225],
+        "WATCH":        [ 85, 165, 235, 215],
+        "HEALTHY":      [155, 165, 175, 195],
     }
 
     # ── Intro banner (first load only; dismissed per-session) ─────────────────
@@ -480,6 +482,19 @@ if view_mode == "Overview":
             "in_focus": _in_focus,
         })
 
+    # Ghost-dot rings for approaching vessels (zone_probability > 0.5)
+    _approaching_rows = []
+    for _, _ar in _ov_ts.iterrows():
+        try:
+            _zp = float(_ar.get("zone_probability", 0.0))
+        except (TypeError, ValueError):
+            _zp = 0.0
+        if _zp > 0.5:
+            _approaching_rows.append({
+                "lon": float(_ar["lon"]),
+                "lat": float(_ar["lat"]),
+            })
+
     _ov_zone_data = [
         {
             "name": z.name,
@@ -502,6 +517,20 @@ if view_mode == "Overview":
         get_fill_color="color", pickable=True,
     )
 
+    _ov_approaching_layer = None
+    if _approaching_rows:
+        _ov_approaching_layer = pdk.Layer(
+            "ScatterplotLayer", data=_approaching_rows,
+            get_position="[lon, lat]",
+            get_radius=9000,
+            radius_min_pixels=10,
+            get_fill_color=[0, 0, 0, 0],
+            get_line_color=[180, 80, 220, 200],
+            line_width_min_pixels=2,
+            stroked=True, filled=False,
+            pickable=False,
+        )
+
     # Centered view: pan to selected entity at tighter zoom, or mean position
     _ov_center_lat, _ov_center_lon, _ov_zoom = build_focus_view_state(
         _ov_ts, _map_focused_id
@@ -509,6 +538,8 @@ if view_mode == "Overview":
 
     # Assemble layers (bottom → top): ground tracks, zones, entities, highlight, labels
     _ov_layers = [_ov_zone_layer, _ov_entity_layer]
+    if _ov_approaching_layer:
+        _ov_layers.append(_ov_approaching_layer)
 
     if _show_ground_tracks:
         _gt_data = all_ground_track_layers_data(_ov_time)

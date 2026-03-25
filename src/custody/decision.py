@@ -47,6 +47,7 @@ decision_for_timeline(timeline, track, fusion_assessments,
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -210,8 +211,17 @@ def _compute_priority(
         if tts is not None and 0 < tts <= config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS:
             orbital_bump = 0.05
 
+    # Approaching zone — prediction layer signal
+    _zone_prob = float(record.get("zone_probability", 0.0))
+    _tte       = record.get("time_to_zone_hours")
+    try:
+        _tte_valid = _tte is not None and not math.isnan(float(_tte))
+    except (TypeError, ValueError):
+        _tte_valid = False
+    prediction_bump = 0.06 if _zone_prob > 0.5 and _tte_valid else 0.0
+
     return round(_clamp01(
-        base + zone_bump + compound_bump + worsening_bump + orbital_bump
+        base + zone_bump + compound_bump + worsening_bump + orbital_bump + prediction_bump
     ), 3)
 
 
@@ -333,6 +343,20 @@ def _build_why(
     # ── Zone context ──────────────────────────────────────────────────────
     if zone > 0.5:
         bullets.append("The entity is operating in or near a sensitive zone.")
+
+    # ── Prediction — approaching zone ─────────────────────────────────────
+    zone_prob = float(record.get("zone_probability", 0.0))
+    tte        = record.get("time_to_zone_hours")
+    if zone_prob > 0.5 and tte is not None:
+        try:
+            _tte = float(tte)
+            if not math.isnan(_tte):
+                bullets.append(
+                    f"Trajectory analysis projects zone entry in {_tte:.1f}h "
+                    f"(zone probability {zone_prob:.0%}); pre-tasking recommended."
+                )
+        except (TypeError, ValueError):
+            pass
 
     # ── Compound signals ──────────────────────────────────────────────────
     if compounds:
