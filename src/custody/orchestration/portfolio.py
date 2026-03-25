@@ -36,6 +36,7 @@ rank_portfolio(timestamp, timestep_records, scenario_start, sensor_claimer=None)
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -279,9 +280,14 @@ def _build_reason(
     neglect_hours: float,
     rank: int,
     n_entities: int,
+    zone_probability: float = 0.0,
+    time_to_zone_hours: float | None = None,
 ) -> str:
     """One-sentence human-readable explanation of this entity's portfolio rank."""
     parts: list[str] = []
+    # Prediction-driven part: prepend zone-approach signal when significant
+    if zone_probability > 0.5 and time_to_zone_hours is not None:
+        parts.append(f"projected zone entry in {time_to_zone_hours:.1f}h")
     if anomaly_score >= 1.5:
         parts.append(f"elevated anomaly ({anomaly_score:.2f})")
     if neglect_flag:
@@ -360,7 +366,14 @@ def rank_portfolio(
         attention = apply_dark_vessel_floor(attention, dark_flag, directive)
 
         health = compute_custody_health(eid, unc_km, conf, n_hours)
-        score  = _portfolio_score(anomaly, conf, unc_km, n_hours, attention)
+        base_score = _portfolio_score(anomaly, conf, unc_km, n_hours, attention)
+        # Prediction boost: approaching zone raises urgency slightly
+        zone_prob_raw = record.get("zone_probability", 0.0)
+        zone_prob = float(zone_prob_raw) if zone_prob_raw is not None else 0.0
+        if math.isnan(zone_prob):
+            zone_prob = 0.0
+        prediction_boost = zone_prob * 0.15
+        score = round(min(1.0, base_score + prediction_boost), 4)
         scored.append((score, eid, record, health, n_hours, attention, directive))
 
     # Sort descending by score; break ties by entity_id for determinism
@@ -392,7 +405,19 @@ def rank_portfolio(
         conf         = float(record.get("custody_confidence", 1.0))
         dark_flag    = bool(record.get("dark_vessel_flag", False))
         neglect      = detect_neglect(eid, n_hours)
-        reason       = _build_reason(anomaly, health.status, neglect, n_hours, rank_idx, n)
+        # Prediction fields from record (present only when timeline has run prediction)
+        _raw_zone_prob = record.get("zone_probability", 0.0)
+        _zone_prob = float(_raw_zone_prob) if _raw_zone_prob == _raw_zone_prob else 0.0
+        _raw_tte = record.get("time_to_zone_hours")
+        if _raw_tte is None or (isinstance(_raw_tte, float) and math.isnan(_raw_tte)):  # None or NaN
+            _tte: float | None = None
+        else:
+            _tte = float(_raw_tte)
+        reason       = _build_reason(
+            anomaly, health.status, neglect, n_hours, rank_idx, n,
+            zone_probability=_zone_prob,
+            time_to_zone_hours=_tte,
+        )
         deferred_for = top_serviced if eid in deferred_set else None
         basis        = explain_attention_state(attention, directive, anomaly, zone_sc, conf, dark_flag=dark_flag)
 

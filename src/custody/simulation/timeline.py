@@ -35,6 +35,8 @@ from custody.simulation.profiles import BehaviorProfile, PROFILE_TO_MODE
 from custody.simulation.scenarios import ScenarioConfig, VesselSpec, ProfilePhase, DEFAULT_SCENARIO
 from custody.simulation.generator import build_vessel_list
 from custody.orchestration.portfolio import rank_portfolio
+from custody.prediction import predict_entity
+from custody.config import ZONES
 
 
 def _current_phase(spec: VesselSpec, hour_index: int) -> ProfilePhase:
@@ -332,6 +334,21 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 hold_reason=decision.hold_reason,
             )
 
+            # ── Prediction layer ──────────────────────────────────────────────
+            # Convert speed from km/h to knots (1 knot = 1.852 km/h)
+            speed_kts = vessel.speed_kmh / 1.852
+            _pred = predict_entity(
+                entity_id=vid,
+                lat=state["rec_lat"],
+                lon=state["rec_lon"],
+                speed_knots=speed_kts,
+                heading_deg=vessel.heading_deg,
+                current_anomaly=score,
+                custody_confidence=confidence,
+                zones=ZONES,
+                horizon_hours=6.0,
+            )
+
             _rdv = rendezvous_by_vessel.get(vid)
             record = {
                 "target_id":               vid,
@@ -382,6 +399,18 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 "last_known_lat":          state["last_known_lat"],
                 "last_known_lon":          state["last_known_lon"],
                 "last_known_time":         state["last_known_time"],
+                # Prediction fields — advisory; None values stored as float('nan')
+                "future_lat":              _pred.future_lat,
+                "future_lon":              _pred.future_lon,
+                "zone_probability":        _pred.zone_probability,
+                "time_to_zone_hours":      (
+                    _pred.time_to_zone_hours
+                    if _pred.time_to_zone_hours is not None
+                    else float("nan")
+                ),
+                "future_anomaly":          _pred.future_anomaly,
+                "prediction_confidence":   _pred.prediction_confidence,
+                "prediction_reason":       _pred.prediction_reason,
             }
             timelines[vid].append(record)
             current_timestep_records.append(record)
