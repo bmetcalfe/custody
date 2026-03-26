@@ -22,7 +22,8 @@ import state
 from adapter import scenario_names
 from layout.sidebar import build_sidebar
 from layout.overview import build_overview_layout
-from callbacks import navigation, portfolio
+from layout.entity_detail import build_entity_detail_layout
+from callbacks import navigation, portfolio, map_layers, entity_detail
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -53,7 +54,11 @@ app.layout = html.Div(
                     style={"borderRight": "1px solid #2d2d2d", "minHeight": "100vh"},
                 ),
                 dbc.Col(
-                    build_overview_layout(),
+                    html.Div([
+                        build_overview_layout(),
+                        html.Hr(style={"borderColor": "#2d2d2d", "margin": "8px 0"}),
+                        build_entity_detail_layout(),
+                    ]),
                     width=9,
                 ),
             ],
@@ -69,6 +74,8 @@ app.layout = html.Div(
 
 navigation.register(app)
 portfolio.register(app)
+map_layers.register(app)
+entity_detail.register(app)
 
 # ---------------------------------------------------------------------------
 # Dev server

@@ -93,12 +93,25 @@ def build_portfolio_table() -> dash_table.DataTable:
     )
 
 
+# Event feed container ID
+EVENT_FEED = "event-feed"
+
+
+def build_event_feed_container() -> html.Div:
+    """Empty container populated by the event feed callback."""
+    return html.Div(id=EVENT_FEED, style={"marginBottom": "12px"})
+
+
 def build_overview_layout() -> html.Div:
-    """Assemble the full overview panel: KPI strip + portfolio table."""
+    """Assemble the full overview panel: KPI strip + table + map + events."""
+    from layout.map_panel import build_map_panel
+
     return html.Div(
         [
             build_kpi_strip(),
             build_portfolio_table(),
+            build_map_panel(),
+            build_event_feed_container(),
         ],
         style={"padding": "12px"},
     )

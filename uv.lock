@@ -132,6 +132,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "dash" },
     { name = "dash-bootstrap-components" },
+    { name = "dash-deck" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydeck" },
@@ -148,6 +149,7 @@ dev = [
 requires-dist = [
     { name = "dash", specifier = ">=2.18" },
     { name = "dash-bootstrap-components", specifier = ">=1.6" },
+    { name = "dash-deck", specifier = ">=0.0.1" },
     { name = "numpy", specifier = ">=2.4.3" },
     { name = "pandas", specifier = ">=2.2,<3" },
     { name = "pydeck", specifier = ">=0.9.0" },
@@ -189,6 +191,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/cc/d4/5b7da808ff5acb3a6
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/38/1efeec8b4d741c09ccd169baf8a00c07a0176b58e418d4cd0c30dffedd22/dash_bootstrap_components-2.0.4-py3-none-any.whl", hash = "sha256:767cf0084586c1b2b614ccf50f79fe4525fdbbf8e3a161ed60016e584a14f5d1", size = 204044, upload-time = "2025-08-20T19:42:07.928Z" },
 ]
+
+[[package]]
+name = "dash-deck"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/e8/1ad72f207c694b72a8f03e6508207c3fcf1a6883bee83f7121cfbd4a08f1/dash_deck-0.0.1.tar.gz", hash = "sha256:c31bb653a7632dade749b7a3b8c09d9ddbfba9394b27209d1ed464dcbcbdcbd9", size = 2128413, upload-time = "2020-09-04T01:40:28.502Z" }
 
 [[package]]
 name = "entrypoints"

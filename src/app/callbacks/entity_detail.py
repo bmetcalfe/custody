@@ -1,0 +1,295 @@
+"""Entity detail callbacks: reasoning chain + supporting tables.
+
+Split into two callbacks per the design constraints:
+  1. Reasoning callback: prediction, fusion, decision, summary, task queue
+  2. Tables callback: alerts, compounds, compound history, orbital passes, traces
+"""
+from __future__ import annotations
+
+import math
+from datetime import datetime
+
+from dash import Dash, Input, Output, html, no_update
+
+import state as app_state
+from adapter import entity_timeline_up_to
+from entity_detail_data import derive_track_state, panel_summary
+
+from custody.alerts import alerts_for_timeline
+from custody.compounds import evaluate_compounds
+from custody.decision import build_decision
+from custody.decision_trace import traces_to_rows
+from custody.fusion import build_fusion_assessment
+from custody.taskrecommendation import build_task_recommendations
+
+from compound_panels import (
+    aggregate_compound_history,
+    build_active_compounds_df,
+    build_compound_history_df,
+)
+from orbital_passes_panel import build_orbital_passes_rows
+
+from layout.entity_detail import (
+    DETAIL_SUMMARY,
+    PRED_ZONE_PROB, PRED_TIME_TO_ZONE, PRED_FUTURE_ANOMALY,
+    PRED_CONFIDENCE, PRED_HORIZON,
+    FUSION_SCORE, FUSION_UNCERTAINTY, FUSION_AGREEMENT,
+    FUSION_SOURCE, FUSION_MISSING,
+    DECISION_ACTION, DECISION_PRIORITY, DECISION_CONFIDENCE,
+    DECISION_WHY, DECISION_FALLBACKS, TASK_QUEUE,
+    ALERTS_TABLE, COMPOUNDS_TABLE, COMPOUND_HISTORY_TABLE,
+    ORBITAL_TABLE, TRACES_TABLE,
+)
+
+# Action → badge color
+_ACTION_COLOR = {
+    "PASSIVE_MONITOR": "#2ea043",
+    "ELEVATE":         "#b08000",
+    "TASK_OPTICAL":    "#e07b00",
+    "TASK_SAR":        "#c94a00",
+    "ESCALATE":        "#d73a49",
+}
+
+
+def _fmt(val, fmt_str=".3f", fallback="—"):
+    """Safe format a possibly-None/NaN value."""
+    if val is None:
+        return fallback
+    try:
+        v = float(val)
+        if math.isnan(v):
+            return fallback
+        return f"{v:{fmt_str}}"
+    except (TypeError, ValueError):
+        return fallback
+
+
+def register(app: Dash) -> None:
+    """Register entity detail callbacks."""
+
+    # ── Callback A: reasoning chain (prediction + fusion + decision + tasks)
+
+    _reasoning_outputs = [
+        Output(DETAIL_SUMMARY, "children"),
+        Output(PRED_ZONE_PROB, "children"),
+        Output(PRED_TIME_TO_ZONE, "children"),
+        Output(PRED_FUTURE_ANOMALY, "children"),
+        Output(PRED_CONFIDENCE, "children"),
+        Output(PRED_HORIZON, "children"),
+        Output(FUSION_SCORE, "children"),
+        Output(FUSION_UNCERTAINTY, "children"),
+        Output(FUSION_AGREEMENT, "children"),
+        Output(FUSION_SOURCE, "children"),
+        Output(FUSION_MISSING, "children"),
+        Output(DECISION_ACTION, "children"),
+        Output(DECISION_ACTION, "style"),
+        Output(DECISION_PRIORITY, "children"),
+        Output(DECISION_CONFIDENCE, "children"),
+        Output(DECISION_WHY, "children"),
+        Output(DECISION_FALLBACKS, "children"),
+        Output(TASK_QUEUE, "children"),
+    ]
+    N_REASONING = len(_reasoning_outputs)
+
+    @app.callback(
+        *_reasoning_outputs,
+        Input(app_state.SCENARIO_KEY, "data"),
+        Input(app_state.TIMESTEP_INDEX, "data"),
+        Input(app_state.SELECTED_ENTITY, "data"),
+    )
+    def update_reasoning(scenario_key, timestep_idx, entity_id):
+        blank = ("Select an entity to see its reasoning chain.",
+                 *["—"] * 10,
+                 "—",   # action text
+                 {"fontSize": "1.0rem", "fontWeight": "700", "padding": "4px 14px",
+                  "borderRadius": "5px", "backgroundColor": "#555", "color": "#fff"},
+                 "—", "—",
+                 "—",   # why
+                 "",     # fallbacks
+                 "No task recommendations.")
+
+        if not scenario_key or timestep_idx is None or entity_id is None:
+            return blank
+
+        records = app_state.get_records(scenario_key)
+        timeline = entity_timeline_up_to(records, entity_id, timestep_idx)
+        if not timeline:
+            return blank
+
+        current = timeline[-1]
+        prefix = timeline[:-1]
+
+        # Fusion + Decision: prefer stored objects
+        fa = current.get("fusion_assessment")
+        decision = current.get("mission_decision")
+
+        if fa is None or decision is None:
+            track = derive_track_state(current, prefix)
+            compounds = evaluate_compounds(current, window=prefix)
+            fa = build_fusion_assessment(current, compounds, track)
+            decision = build_decision(fa, current, track, compounds)
+
+        # Task recommendations
+        track = derive_track_state(current, prefix)
+        tasks = build_task_recommendations(decision, fa, current, track)
+
+        # Summary
+        summary = panel_summary(fa, decision)
+
+        # Prediction values
+        pred_zp = _fmt(current.get("zone_probability"), ".0%")
+        if pred_zp != "—":
+            pred_zp = f"{float(current['zone_probability']):.0%}"
+        pred_tte = _fmt(current.get("time_to_zone_hours"), ".1f")
+        if pred_tte != "—":
+            pred_tte += "h"
+        pred_fa = _fmt(current.get("future_anomaly"))
+        pred_conf = _fmt(current.get("prediction_confidence"), ".0%")
+        if pred_conf != "—":
+            pred_conf = f"{float(current['prediction_confidence']):.0%}"
+        pred_hz = _fmt(current.get("prediction_horizon_hours"), ".1f")
+        if pred_hz != "—":
+            pred_hz += "h"
+
+        # Fusion values
+        fs = f"{fa.fused_score:.3f}"
+        fu = f"{fa.uncertainty:.3f}"
+        fag = f"{fa.source_agreement:.3f}"
+        f_src = fa.recommended_confirming_source or "—"
+        f_miss = ", ".join(fa.missing_evidence) if fa.missing_evidence else "None identified"
+
+        # Decision values
+        action_label = decision.action.replace("_", " ")
+        action_color = _ACTION_COLOR.get(decision.action, "#555")
+        action_style = {
+            "fontSize": "1.0rem", "fontWeight": "700",
+            "padding": "4px 14px", "borderRadius": "5px",
+            "backgroundColor": action_color, "color": "#fff",
+        }
+        priority = f"{decision.priority:.3f}"
+        confidence = f"{decision.confidence:.3f}"
+
+        # Why bullets
+        if decision.why:
+            why_children = html.Ol([
+                html.Li(b, style={"marginBottom": "4px"}) for b in decision.why
+            ], style={"margin": "6px 0", "paddingLeft": "1.4em", "fontSize": "0.82rem"})
+        else:
+            why_children = "—"
+
+        # Fallbacks
+        if decision.next_best_actions:
+            fallback_str = "Next best: " + " → ".join(decision.next_best_actions)
+        else:
+            fallback_str = ""
+
+        # Task queue cards
+        if tasks:
+            task_children = []
+            now = current.get("time")
+            for t in tasks:
+                window_str = t.window_start.strftime("%H:%Mz") if t.window_start else "—"
+                if now and t.window_start:
+                    tts_sec = max(0.0, (t.window_start - now).total_seconds())
+                    tts_str = f"{int(tts_sec / 60)} min" if tts_sec > 0 else "now"
+                else:
+                    tts_str = "—"
+                fallbacks = " · ".join(t.fallbacks) if t.fallbacks else "none"
+                task_children.append(html.Div(
+                    [
+                        html.Span(f"#{t.rank} ", style={"fontWeight": "700", "marginRight": "8px"}),
+                        html.Span(t.sensor, style={"fontWeight": "600", "fontFamily": "monospace"}),
+                        html.Span(f"  {window_str}  TTS {tts_str}", style={"color": "#999", "fontSize": "0.78rem"}),
+                        html.Span(f"  EV {t.expected_value:.3f}", style={"fontWeight": "600", "marginLeft": "auto"}),
+                        html.Div(t.reason, style={"fontSize": "0.8rem", "marginTop": "4px"}),
+                        html.Div(f"Fallbacks: {fallbacks}", style={"fontSize": "0.72rem", "color": "#666", "marginTop": "2px"}),
+                    ],
+                    style={
+                        "border": "1px solid #2d2d2d", "borderRadius": "6px",
+                        "padding": "8px 12px", "marginBottom": "6px",
+                    },
+                ))
+            task_queue_el = html.Div(task_children)
+        else:
+            task_queue_el = "No task recommendations."
+
+        return (
+            summary,
+            pred_zp, pred_tte, pred_fa, pred_conf, pred_hz,
+            fs, fu, fag, f_src, f_miss,
+            action_label, action_style,
+            priority, confidence,
+            why_children, fallback_str,
+            task_queue_el,
+        )
+
+    # ── Callback B: supporting tables (alerts, compounds, orbital, traces)
+
+    @app.callback(
+        Output(ALERTS_TABLE, "data"),
+        Output(COMPOUNDS_TABLE, "data"),
+        Output(COMPOUND_HISTORY_TABLE, "data"),
+        Output(ORBITAL_TABLE, "data"),
+        Output(TRACES_TABLE, "data"),
+        Input(app_state.SCENARIO_KEY, "data"),
+        Input(app_state.TIMESTEP_INDEX, "data"),
+        Input(app_state.SELECTED_ENTITY, "data"),
+    )
+    def update_detail_tables(scenario_key, timestep_idx, entity_id):
+        empty = ([], [], [], [], [])
+
+        if not scenario_key or timestep_idx is None or entity_id is None:
+            return empty
+
+        records = app_state.get_records(scenario_key)
+        timeline = entity_timeline_up_to(records, entity_id, timestep_idx)
+        if not timeline:
+            return empty
+
+        current = timeline[-1]
+        prefix = timeline[:-1]
+
+        # Alerts
+        alerts = alerts_for_timeline(timeline)
+        alerts_data = [
+            {"level": a.level, "code": a.code, "message": a.message}
+            for a in alerts
+        ]
+
+        # Compounds: active at current step
+        compounds = evaluate_compounds(current, window=prefix)
+        active_df = build_active_compounds_df(compounds)
+        active_data = active_df.to_dict("records") if not active_df.empty else []
+
+        # Compound history: aggregated over full prefix + current
+        all_compounds = []
+        for i, r in enumerate(timeline):
+            w = timeline[:i]
+            all_compounds.extend(evaluate_compounds(r, window=w))
+        agg = aggregate_compound_history(all_compounds)
+        hist_df = build_compound_history_df(agg)
+        hist_data = hist_df.to_dict("records") if not hist_df.empty else []
+
+        # Orbital passes
+        orbital_rows = build_orbital_passes_rows(
+            float(current["lat"]), float(current["lon"]), current["time"],
+        )
+        for row in orbital_rows:
+            for k, v in row.items():
+                if isinstance(v, datetime):
+                    row[k] = v.strftime("%H:%M:%Sz")
+
+        # Decision traces
+        traces = [r["decision_trace"] for r in timeline if r.get("decision_trace")]
+        trace_rows = traces_to_rows(traces)
+        for row in trace_rows:
+            if "Time" in row and isinstance(row["Time"], datetime):
+                row["Time"] = str(row["Time"]).split("+")[0]
+
+        return (
+            alerts_data,
+            active_data,
+            hist_data,
+            orbital_rows,
+            trace_rows,
+        )
