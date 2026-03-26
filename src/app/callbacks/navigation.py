@@ -12,8 +12,8 @@ from __future__ import annotations
 from dash import Dash, Input, Output, State, no_update
 
 import state as app_state
-from adapter import entity_ids, timestep_count
-from layout.sidebar import SCENARIO_DROPDOWN, TIMELINE_SLIDER, ENTITY_DROPDOWN
+from adapter import entity_ids, timestep_count, records_at_timestep
+from layout.sidebar import SCENARIO_DROPDOWN, TIMELINE_SLIDER, ENTITY_DROPDOWN, TIMESTEP_DISPLAY
 from layout.overview import PORTFOLIO_TABLE
 
 
@@ -113,3 +113,21 @@ def register(app: Dash) -> None:
     )
     def sync_dropdown_to_store(entity_id):
         return entity_id
+
+    # ── Callback 6: timestep display text ────────────────────────────────
+
+    @app.callback(
+        Output(TIMESTEP_DISPLAY, "children"),
+        Input(app_state.SCENARIO_KEY, "data"),
+        Input(app_state.TIMESTEP_INDEX, "data"),
+    )
+    def update_timestep_display(scenario_key, timestep_idx):
+        if not scenario_key or timestep_idx is None:
+            return "Step 0"
+        records = app_state.get_records(scenario_key)
+        ts_records = records_at_timestep(records, timestep_idx)
+        if not ts_records:
+            return f"Step {timestep_idx}"
+        t = ts_records[0]["time"]
+        time_str = t.strftime("%b %d, %H:%M UTC")
+        return f"Step {timestep_idx} — {time_str}"

@@ -249,5 +249,9 @@ class TestEventFeed:
 
 class TestCallbackCount:
 
-    def test_nine_callbacks_registered(self, app):
-        assert len(app.callback_map) == 9
+    def test_callbacks_registered(self, app):
+        # Phase 1: 5 nav + 1 portfolio = 6
+        # Phase 2: +1 map + 2 entity detail = 3
+        # Phase 3: +1 timestep display = 1
+        # Total: 10
+        assert len(app.callback_map) == 10

@@ -57,8 +57,8 @@ def _build_deck_json(
         is_sel = eid == selected_entity
         rgb = list(_STATUS_RGB.get(ds, [140, 140, 140, 120]))
         if is_sel:
-            rgb[3] = 255
-        radius = 5500 if is_sel else (4000 if ds in ("NEEDS ACTION", "NEGLECTED") else 2500)
+            rgb = [255, 255, 255, 255]  # white fill for selected entity
+        radius = 8000 if is_sel else (4000 if ds in ("NEEDS ACTION", "NEGLECTED") else 2500)
         map_rows.append({
             "lon": float(r["lon"]),
             "lat": float(r["lat"]),
@@ -162,17 +162,26 @@ def _build_deck_json(
             line_width_min_pixels=2, stroked=True, filled=False, pickable=False,
         ))
 
-    # Selection highlight ring
+    # Selection highlight — double ring (outer glow + inner bright)
     if selected_entity:
         sel = [r for r in ts_records if r["target_id"] == selected_entity]
         if sel:
+            _sel_pt = [{"lon": float(sel[0]["lon"]), "lat": float(sel[0]["lat"])}]
+            # Outer glow ring
             layers.append(pdk.Layer(
-                "ScatterplotLayer",
-                data=[{"lon": float(sel[0]["lon"]), "lat": float(sel[0]["lat"])}],
-                get_position="[lon, lat]", get_radius=7000,
+                "ScatterplotLayer", data=_sel_pt,
+                get_position="[lon, lat]", get_radius=14000,
                 get_fill_color=[0, 0, 0, 0],
-                get_line_color=[255, 255, 255, 180],
-                line_width_min_pixels=2, stroked=True, filled=False,
+                get_line_color=[255, 255, 255, 60],
+                line_width_min_pixels=3, stroked=True, filled=False,
+            ))
+            # Inner bright ring
+            layers.append(pdk.Layer(
+                "ScatterplotLayer", data=_sel_pt,
+                get_position="[lon, lat]", get_radius=10000,
+                get_fill_color=[0, 0, 0, 0],
+                get_line_color=[255, 255, 255, 220],
+                line_width_min_pixels=3, stroked=True, filled=False,
             ))
 
     # Labels (top-5 by rank + selected)

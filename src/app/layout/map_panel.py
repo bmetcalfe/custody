@@ -37,6 +37,7 @@ def build_map_panel() -> html.Div:
                     html.Span("● Preempted ", style={"color": "#d78219", "fontSize": "0.7rem", "marginRight": "10px"}),
                     html.Span("● Neglected ", style={"color": "#d7c31e", "fontSize": "0.7rem", "marginRight": "10px"}),
                     html.Span("● Stale ", style={"color": "#af692d", "fontSize": "0.7rem", "marginRight": "10px"}),
+                    html.Span("◎ Approaching ", style={"color": "#b450dc", "fontSize": "0.7rem", "marginRight": "10px"}),
                     html.Span("● Watch ", style={"color": "#55a5eb", "fontSize": "0.7rem", "marginRight": "10px"}),
                     html.Span("● Healthy ", style={"color": "#9ba5af", "fontSize": "0.7rem"}),
                 ],

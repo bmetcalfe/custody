@@ -35,10 +35,11 @@ from layout.entity_detail import (
     PRED_CONFIDENCE, PRED_HORIZON,
     FUSION_SCORE, FUSION_UNCERTAINTY, FUSION_AGREEMENT,
     FUSION_SOURCE, FUSION_MISSING,
+    DETAIL_HEADING,
     DECISION_ACTION, DECISION_PRIORITY, DECISION_CONFIDENCE,
     DECISION_WHY, DECISION_FALLBACKS, TASK_QUEUE,
     ALERTS_TABLE, COMPOUNDS_TABLE, COMPOUND_HISTORY_TABLE,
-    ORBITAL_TABLE, TRACES_TABLE,
+    ORBITAL_TABLE, TRACES_TABLE, DETAIL_ACCORDION,
 )
 
 # Action → badge color
@@ -48,6 +49,13 @@ _ACTION_COLOR = {
     "TASK_OPTICAL":    "#e07b00",
     "TASK_SAR":        "#c94a00",
     "ESCALATE":        "#d73a49",
+}
+
+# Confirming source → badge color
+_SOURCE_COLOR = {
+    "OPTICAL": "#e07b00",
+    "SAR":     "#1f78b4",
+    "AIS":     "#2ea043",
 }
 
 
@@ -64,12 +72,58 @@ def _fmt(val, fmt_str=".3f", fallback="—"):
         return fallback
 
 
+def _build_situation_summary(record: dict, fa, decision, prefix: list[dict]) -> str:
+    """One concise human-readable sentence summarizing the entity's situation.
+
+    Derived entirely from existing record fields and stored objects.
+    """
+    eid = record.get("target_id", "Entity")
+    health = record.get("custody_health", "HEALTHY")
+    anomaly = float(record.get("anomaly_score", 0.0))
+    hsc = record.get("hours_since_collection")
+    failures = int(record.get("consecutive_failures", 0))
+    dark = record.get("dark_vessel_flag", False)
+    zone = float(record.get("sensitive_zone", 0.0))
+
+    # Build concern fragments
+    concerns = []
+    if dark:
+        concerns.append("AIS dark")
+    if zone > 0.5:
+        concerns.append("inside sensitive zone")
+    elif zone > 0:
+        concerns.append("near sensitive zone")
+    if anomaly >= 1.5:
+        concerns.append("critically elevated anomaly")
+    elif anomaly >= 0.8:
+        concerns.append("elevated anomaly")
+    if health in ("STALE", "LOST"):
+        concerns.append(f"custody {health.lower()}")
+    elif health == "DEGRADING":
+        concerns.append("custody degrading")
+    if failures >= 2:
+        concerns.append(f"{failures} consecutive collection failures")
+
+    # Time without collection
+    if hsc is not None and hsc > 4:
+        concerns.append(f"no successful collection in {hsc:.0f}h")
+
+    if not concerns:
+        action_str = decision.action.replace("_", " ").lower()
+        return f"{eid} is in routine status. System recommends {action_str}."
+
+    concern_str = ", ".join(concerns[:-1]) + (" and " + concerns[-1] if len(concerns) > 1 else concerns[0])
+    action_str = decision.action.replace("_", " ").lower()
+    return f"{eid} is deteriorating due to {concern_str}. System recommends {action_str}."
+
+
 def register(app: Dash) -> None:
     """Register entity detail callbacks."""
 
     # ── Callback A: reasoning chain (prediction + fusion + decision + tasks)
 
     _reasoning_outputs = [
+        Output(DETAIL_HEADING, "children"),
         Output(DETAIL_SUMMARY, "children"),
         Output(PRED_ZONE_PROB, "children"),
         Output(PRED_TIME_TO_ZONE, "children"),
@@ -98,7 +152,8 @@ def register(app: Dash) -> None:
         Input(app_state.SELECTED_ENTITY, "data"),
     )
     def update_reasoning(scenario_key, timestep_idx, entity_id):
-        blank = ("Select an entity to see its reasoning chain.",
+        blank = ("Entity Detail",  # heading
+                 "Select an entity to see its reasoning chain.",
                  *["—"] * 10,
                  "—",   # action text
                  {"fontSize": "1.0rem", "fontWeight": "700", "padding": "4px 14px",
@@ -134,7 +189,7 @@ def register(app: Dash) -> None:
         tasks = build_task_recommendations(decision, fa, current, track)
 
         # Summary
-        summary = panel_summary(fa, decision)
+        summary = _build_situation_summary(current, fa, decision, prefix)
 
         # Prediction values
         pred_zp = _fmt(current.get("zone_probability"), ".0%")
@@ -155,7 +210,13 @@ def register(app: Dash) -> None:
         fs = f"{fa.fused_score:.3f}"
         fu = f"{fa.uncertainty:.3f}"
         fag = f"{fa.source_agreement:.3f}"
-        f_src = fa.recommended_confirming_source or "—"
+        _src_name = fa.recommended_confirming_source or "—"
+        _src_color = _SOURCE_COLOR.get(_src_name, "#555")
+        f_src = html.Span(_src_name, style={
+            "backgroundColor": _src_color, "color": "#fff",
+            "padding": "2px 10px", "borderRadius": "4px",
+            "fontWeight": "700",
+        }) if _src_name != "—" else "—"
         f_miss = ", ".join(fa.missing_evidence) if fa.missing_evidence else "None identified"
 
         # Decision values
@@ -195,9 +256,24 @@ def register(app: Dash) -> None:
                 else:
                     tts_str = "—"
                 fallbacks = " · ".join(t.fallbacks) if t.fallbacks else "none"
+                is_top = t.rank == 1
+                border_color = "#4a9" if is_top else "#2d2d2d"
+                bg = "#0d1f18" if is_top else "transparent"
+                rank_label = [
+                    html.Span(f"#{t.rank} ", style={"fontWeight": "700", "marginRight": "8px"}),
+                ]
+                if is_top:
+                    rank_label.append(html.Span(
+                        "RECOMMENDED",
+                        style={
+                            "fontSize": "0.6rem", "fontWeight": "700",
+                            "color": "#4a9", "letterSpacing": "0.08em",
+                            "marginRight": "8px",
+                        },
+                    ))
                 task_children.append(html.Div(
                     [
-                        html.Span(f"#{t.rank} ", style={"fontWeight": "700", "marginRight": "8px"}),
+                        *rank_label,
                         html.Span(t.sensor, style={"fontWeight": "600", "fontFamily": "monospace"}),
                         html.Span(f"  {window_str}  TTS {tts_str}", style={"color": "#999", "fontSize": "0.78rem"}),
                         html.Span(f"  EV {t.expected_value:.3f}", style={"fontWeight": "600", "marginLeft": "auto"}),
@@ -205,8 +281,9 @@ def register(app: Dash) -> None:
                         html.Div(f"Fallbacks: {fallbacks}", style={"fontSize": "0.72rem", "color": "#666", "marginTop": "2px"}),
                     ],
                     style={
-                        "border": "1px solid #2d2d2d", "borderRadius": "6px",
+                        "border": f"1px solid {border_color}", "borderRadius": "6px",
                         "padding": "8px 12px", "marginBottom": "6px",
+                        "backgroundColor": bg,
                     },
                 ))
             task_queue_el = html.Div(task_children)
@@ -214,6 +291,7 @@ def register(app: Dash) -> None:
             task_queue_el = "No task recommendations."
 
         return (
+            entity_id,  # heading
             summary,
             pred_zp, pred_tte, pred_fa, pred_conf, pred_hz,
             fs, fu, fag, f_src, f_miss,
@@ -231,12 +309,13 @@ def register(app: Dash) -> None:
         Output(COMPOUND_HISTORY_TABLE, "data"),
         Output(ORBITAL_TABLE, "data"),
         Output(TRACES_TABLE, "data"),
+        Output(DETAIL_ACCORDION, "active_item"),
         Input(app_state.SCENARIO_KEY, "data"),
         Input(app_state.TIMESTEP_INDEX, "data"),
         Input(app_state.SELECTED_ENTITY, "data"),
     )
     def update_detail_tables(scenario_key, timestep_idx, entity_id):
-        empty = ([], [], [], [], [])
+        empty = ([], [], [], [], [], [])
 
         if not scenario_key or timestep_idx is None or entity_id is None:
             return empty
@@ -249,11 +328,19 @@ def register(app: Dash) -> None:
         current = timeline[-1]
         prefix = timeline[:-1]
 
-        # Alerts
+        # Alerts — deduplicate repeated codes into counts
         alerts = alerts_for_timeline(timeline)
+        _alert_counts: dict[tuple, int] = {}
+        for a in alerts:
+            key = (a.level, a.code)
+            _alert_counts[key] = _alert_counts.get(key, 0) + 1
         alerts_data = [
-            {"level": a.level, "code": a.code, "message": a.message}
-            for a in alerts
+            {
+                "level": level,
+                "code": f"{code} ({count})" if count > 1 else code,
+                "message": next(a.message for a in alerts if a.level == level and a.code == code),
+            }
+            for (level, code), count in _alert_counts.items()
         ]
 
         # Compounds: active at current step
@@ -286,10 +373,32 @@ def register(app: Dash) -> None:
             if "Time" in row and isinstance(row["Time"], datetime):
                 row["Time"] = str(row["Time"]).split("+")[0]
 
+        # Auto-expand accordion sections that have data
+        active_items = []
+        if alerts_data:
+            active_items.append("acc-alerts")
+        if active_data:
+            active_items.append("acc-compounds")
+        if hist_data:
+            active_items.append("acc-compound-history")
+        # Orbital passes always have 6 rows; expand only if a pass is imminent
+        imminent = any(
+            r.get("Status") == "IN VIEW" or (
+                isinstance(r.get("Time to Start (min)"), (int, float))
+                and r["Time to Start (min)"] <= 30
+            )
+            for r in orbital_rows
+        )
+        if imminent:
+            active_items.append("acc-orbital")
+        if trace_rows:
+            active_items.append("acc-traces")
+
         return (
             alerts_data,
             active_data,
             hist_data,
             orbital_rows,
             trace_rows,
+            active_items,
         )

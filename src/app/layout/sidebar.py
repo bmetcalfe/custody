@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 # Component IDs — importable by callbacks
 SCENARIO_DROPDOWN = "scenario-dropdown"
 TIMELINE_SLIDER = "timeline-slider"
+TIMESTEP_DISPLAY = "timestep-display"
 ENTITY_DROPDOWN = "entity-dropdown"
 
 
@@ -48,7 +49,14 @@ def build_sidebar(
                 marks=None,  # updated by scenario_changed callback
                 tooltip={"placement": "bottom", "always_visible": False},
             ),
-            html.Div(style={"marginBottom": "16px"}),
+            html.Div(
+                "Step 0",
+                id=TIMESTEP_DISPLAY,
+                style={
+                    "fontSize": "0.75rem", "color": "#aaa",
+                    "textAlign": "center", "marginBottom": "16px",
+                },
+            ),
 
             # ── Entity selector ──────────────────────────────────────────
             dbc.Label("Entity", html_for=ENTITY_DROPDOWN, size="sm"),

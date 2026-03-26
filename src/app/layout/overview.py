@@ -102,15 +102,30 @@ def build_event_feed_container() -> html.Div:
     return html.Div(id=EVENT_FEED, style={"marginBottom": "12px"})
 
 
+def _section_label(text: str) -> html.Div:
+    return html.Div(
+        text,
+        style={
+            "fontSize": "0.62rem", "fontWeight": "600", "letterSpacing": "0.09em",
+            "textTransform": "uppercase", "color": "#888",
+            "borderBottom": "1px solid #2d2d2d", "paddingBottom": "3px",
+            "marginTop": "14px", "marginBottom": "6px",
+        },
+    )
+
+
 def build_overview_layout() -> html.Div:
-    """Assemble the full overview panel: KPI strip + table + map + events."""
+    """Assemble the full overview panel: KPI → map → table → events."""
     from layout.map_panel import build_map_panel
 
     return html.Div(
         [
             build_kpi_strip(),
-            build_portfolio_table(),
+            _section_label("Portfolio Map"),
             build_map_panel(),
+            _section_label("Ranked Portfolio"),
+            build_portfolio_table(),
+            _section_label("Events"),
             build_event_feed_container(),
         ],
         style={"padding": "12px"},

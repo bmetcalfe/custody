@@ -1,0 +1,30 @@
+/* Custody Dash app — shared styles
+   Dash auto-loads CSS from the assets/ directory. */
+
+/* Dark scrollbar for the whole app */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #1a1a1a; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+/* Tighter accordion spacing */
+.accordion-button {
+    padding: 8px 14px !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+}
+.accordion-body {
+    padding: 8px 0 !important;
+}
+
+/* Compact KPI cards */
+.card {
+    border-color: #2d2d2d !important;
+}
+.card-body h4 {
+    font-size: 1.15rem !important;
+}
+
+/* Dropdown dark-mode overrides */
+.Select-control, .Select-menu-outer {
+    background-color: #1e1e1e !important;
+}
