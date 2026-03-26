@@ -28,6 +28,7 @@ def build_map_panel() -> html.Div:
             dash_deck.DeckGL(
                 id=OVERVIEW_MAP,
                 data=_empty_deck_json(),
+                mapboxKey="",
                 tooltip={"text": "{label}"},
                 style={"width": "100%", "height": "480px", "position": "relative"},
             ),

@@ -22,14 +22,15 @@ def build_sidebar(
     """
     return html.Div(
         [
-            html.H5("Custody", style={"marginBottom": "2px"}),
+            html.H5("Custody", style={"marginBottom": "2px", "color": "#f3f4f6"}),
             html.P(
                 "Anomaly-aware custody and collection planning",
-                style={"color": "#888", "fontSize": "0.75rem", "marginBottom": "16px"},
+                style={"color": "#9ca3af", "fontSize": "0.75rem", "marginBottom": "16px"},
             ),
 
             # ── Scenario selector ────────────────────────────────────────
-            dbc.Label("Scenario", html_for=SCENARIO_DROPDOWN, size="sm"),
+            dbc.Label("Scenario", html_for=SCENARIO_DROPDOWN, size="sm",
+                      style={"color": "#e5e7eb"}),
             dcc.Dropdown(
                 id=SCENARIO_DROPDOWN,
                 options=[{"label": n, "value": n} for n in scenario_names],
@@ -39,7 +40,8 @@ def build_sidebar(
             ),
 
             # ── Timeline slider ──────────────────────────────────────────
-            dbc.Label("Timeline step", html_for=TIMELINE_SLIDER, size="sm"),
+            dbc.Label("Timeline step", html_for=TIMELINE_SLIDER, size="sm",
+                      style={"color": "#e5e7eb"}),
             dcc.Slider(
                 id=TIMELINE_SLIDER,
                 min=0,
@@ -59,7 +61,8 @@ def build_sidebar(
             ),
 
             # ── Entity selector ──────────────────────────────────────────
-            dbc.Label("Entity", html_for=ENTITY_DROPDOWN, size="sm"),
+            dbc.Label("Entity", html_for=ENTITY_DROPDOWN, size="sm",
+                      style={"color": "#e5e7eb"}),
             dcc.Dropdown(
                 id=ENTITY_DROPDOWN,
                 options=[],   # populated by scenario_changed callback

@@ -200,7 +200,7 @@ def _build_deck_json(
     if label_rows:
         label_common = dict(
             get_position="[lon, lat]", get_text="label",
-            get_size=11, font_weight=700, font_family="'monospace'",
+            get_size=13, font_weight=700, font_family="'monospace'",
             pickable=False,
         )
         layers.append(pdk.Layer(

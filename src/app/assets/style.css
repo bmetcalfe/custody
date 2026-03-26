@@ -24,7 +24,15 @@
     font-size: 1.15rem !important;
 }
 
-/* Dropdown dark-mode overrides */
-.Select-control, .Select-menu-outer {
-    background-color: #1e1e1e !important;
+/* Dropdown text — force dark, fully opaque text inside sidebar dropdowns.
+   Scoped by component ID; broad descendant selectors cover any
+   React Select class naming scheme. */
+#scenario-dropdown div,
+#scenario-dropdown span,
+#scenario-dropdown input,
+#entity-dropdown div,
+#entity-dropdown span,
+#entity-dropdown input {
+    color: #000 !important;
+    opacity: 1 !important;
 }
