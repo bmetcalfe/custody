@@ -1,5 +1,4 @@
 import math
-import time
 
 import pandas as pd
 import pydeck as pdk
@@ -11,7 +10,7 @@ from custody.alerts import alerts_for_timeline
 from custody.compounds import compounds_for_timeline, evaluate_compounds
 from custody.decision_trace import DecisionTrace, traces_to_rows
 from custody.simulation import run_multi_target_simulation
-from custody.simulation.scenarios import PORTFOLIO_SCENARIO
+from custody.simulation.scenarios import MULTI_DAY_SCENARIO
 from custody.config import ZONES
 from custody.sensors import get_sensor_opportunities, next_pass_window
 from custody.whatif import run_comparison
@@ -98,7 +97,7 @@ else:
     view_mode = "Entity Detail"
 
 if mode == "Simulation":
-    records = run_multi_target_simulation(PORTFOLIO_SCENARIO)
+    records = run_multi_target_simulation(MULTI_DAY_SCENARIO)
     all_df = pd.DataFrame(records)
     all_df["time_str"] = all_df["time"].astype(str)
 
@@ -154,44 +153,10 @@ else:  # AIS Replay
     all_df = pd.DataFrame(all_records)
     all_df["time_str"] = all_df["time"].astype(str)
 
-if "playback_idx" not in st.session_state:
-    st.session_state.playback_idx = 0
-if "playing" not in st.session_state:
-    st.session_state.playing = False
-
 max_idx = len(target_df) - 1
-if st.session_state.playback_idx > max_idx:
-    st.session_state.playback_idx = 0
 
-# ── Playback transport controls ───────────────────────────────────────────────
-_tc = st.sidebar.columns(5)
-with _tc[0]:
-    if st.button("⏮", key="btn_to_start", help="Skip to start"):
-        st.session_state.playback_idx = 0
-        st.session_state.playing = False
-with _tc[1]:
-    if st.button("⏪", key="btn_step_back", help="Step back one frame"):
-        st.session_state.playback_idx = max(0, st.session_state.playback_idx - 1)
-        st.session_state.playing = False
-with _tc[2]:
-    _play_icon = "⏸" if st.session_state.playing else "▶"
-    if st.button(_play_icon, key="btn_play_pause", help="Play / Pause"):
-        st.session_state.playing = not st.session_state.playing
-with _tc[3]:
-    if st.button("⏩", key="btn_step_fwd", help="Step forward one frame"):
-        st.session_state.playback_idx = min(max_idx, st.session_state.playback_idx + 1)
-        st.session_state.playing = False
-with _tc[4]:
-    if st.button("⏭", key="btn_to_end", help="Skip to end"):
-        st.session_state.playback_idx = max_idx
-        st.session_state.playing = False
-
-selected_idx = st.sidebar.slider(
-    "Timeline step",
-    min_value=0,
-    max_value=max_idx,
-    value=st.session_state.playback_idx,
-)
+# ── Timeline slider (sole playback control) ───────────────────────────────────
+selected_idx = st.sidebar.slider("Timeline step", 0, max_idx, 0)
 
 min_compound_conf = st.sidebar.slider(
     "Min compound confidence",
@@ -203,86 +168,88 @@ min_compound_conf = st.sidebar.slider(
     help="Hide compound signals below this confidence. Default 0.0 shows all.",
 )
 
-# ── What-If Analysis ──────────────────────────────────────────────────────────
-st.sidebar.markdown("---")
-st.sidebar.header("What-If Analysis")
-st.sidebar.caption("Compare planner behavior across config variants. Baseline always runs with current config.")
+# ── What-If Analysis (gated by ENABLE_WHAT_IF) ───────────────────────────────
+ENABLE_WHAT_IF = False
 
-st.sidebar.markdown("**Variant A**")
-_wf_a_threshold = st.sidebar.number_input(
-    "Lookahead Threshold (s)", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
-    min_value=0.0, step=60.0, key="wf_a_threshold",
-)
-_wf_a_boost = st.sidebar.number_input(
-    "Lookahead Boost", value=config.HOLD_LOOKAHEAD_BOOST,
-    min_value=0.0, max_value=2.0, step=0.05, key="wf_a_boost",
-)
-_wf_a_stale_gap = st.sidebar.number_input(
-    "AIS Stale Gap (s)", value=config.AIS_STALE_GAP_SECONDS,
-    min_value=0.0, step=60.0, key="wf_a_stale_gap",
-)
-_wf_a_decay_rate = st.sidebar.number_input(
-    "AIS Decay Rate (1/s)", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
-    min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_a_decay_rate",
-)
-_wf_a_min_conf = st.sidebar.number_input(
-    "AIS Min Confidence", value=config.AIS_MIN_STALE_CONFIDENCE,
-    min_value=0.0, max_value=1.0, step=0.05, key="wf_a_min_conf",
-)
+if ENABLE_WHAT_IF and st.sidebar.checkbox("Show What-If Analysis", value=False, key="show_whatif"):
+    st.sidebar.markdown("---")
+    st.sidebar.header("What-If Analysis")
+    st.sidebar.caption("Compare planner behavior across config variants. Baseline always runs with current config.")
 
-_include_b = st.sidebar.checkbox("Include Variant B", value=False, key="wf_include_b")
-if _include_b:
-    st.sidebar.markdown("**Variant B**")
-    _wf_b_threshold = st.sidebar.number_input(
-        "Lookahead Threshold (s) ", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
-        min_value=0.0, step=60.0, key="wf_b_threshold",
+    st.sidebar.markdown("**Variant A**")
+    _wf_a_threshold = st.sidebar.number_input(
+        "Lookahead Threshold (s)", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
+        min_value=0.0, step=60.0, key="wf_a_threshold",
     )
-    _wf_b_boost = st.sidebar.number_input(
-        "Lookahead Boost ", value=config.HOLD_LOOKAHEAD_BOOST,
-        min_value=0.0, max_value=2.0, step=0.05, key="wf_b_boost",
+    _wf_a_boost = st.sidebar.number_input(
+        "Lookahead Boost", value=config.HOLD_LOOKAHEAD_BOOST,
+        min_value=0.0, max_value=2.0, step=0.05, key="wf_a_boost",
     )
-    _wf_b_stale_gap = st.sidebar.number_input(
-        "AIS Stale Gap (s) ", value=config.AIS_STALE_GAP_SECONDS,
-        min_value=0.0, step=60.0, key="wf_b_stale_gap",
+    _wf_a_stale_gap = st.sidebar.number_input(
+        "AIS Stale Gap (s)", value=config.AIS_STALE_GAP_SECONDS,
+        min_value=0.0, step=60.0, key="wf_a_stale_gap",
     )
-    _wf_b_decay_rate = st.sidebar.number_input(
-        "AIS Decay Rate (1/s) ", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
-        min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_b_decay_rate",
+    _wf_a_decay_rate = st.sidebar.number_input(
+        "AIS Decay Rate (1/s)", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
+        min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_a_decay_rate",
     )
-    _wf_b_min_conf = st.sidebar.number_input(
-        "AIS Min Confidence ", value=config.AIS_MIN_STALE_CONFIDENCE,
-        min_value=0.0, max_value=1.0, step=0.05, key="wf_b_min_conf",
+    _wf_a_min_conf = st.sidebar.number_input(
+        "AIS Min Confidence", value=config.AIS_MIN_STALE_CONFIDENCE,
+        min_value=0.0, max_value=1.0, step=0.05, key="wf_a_min_conf",
     )
 
-if st.sidebar.button("Run What-If", key="btn_whatif"):
-    _variant_a_overrides = {
-        "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_a_threshold,
-        "HOLD_LOOKAHEAD_BOOST": _wf_a_boost,
-        "AIS_STALE_GAP_SECONDS": _wf_a_stale_gap,
-        "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_a_decay_rate,
-        "AIS_MIN_STALE_CONFIDENCE": _wf_a_min_conf,
-    }
-    _variant_b_overrides = None
+    _include_b = st.sidebar.checkbox("Include Variant B", value=False, key="wf_include_b")
     if _include_b:
-        _variant_b_overrides = {
-            "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_b_threshold,
-            "HOLD_LOOKAHEAD_BOOST": _wf_b_boost,
-            "AIS_STALE_GAP_SECONDS": _wf_b_stale_gap,
-            "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_b_decay_rate,
-            "AIS_MIN_STALE_CONFIDENCE": _wf_b_min_conf,
+        st.sidebar.markdown("**Variant B**")
+        _wf_b_threshold = st.sidebar.number_input(
+            "Lookahead Threshold (s) ", value=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
+            min_value=0.0, step=60.0, key="wf_b_threshold",
+        )
+        _wf_b_boost = st.sidebar.number_input(
+            "Lookahead Boost ", value=config.HOLD_LOOKAHEAD_BOOST,
+            min_value=0.0, max_value=2.0, step=0.05, key="wf_b_boost",
+        )
+        _wf_b_stale_gap = st.sidebar.number_input(
+            "AIS Stale Gap (s) ", value=config.AIS_STALE_GAP_SECONDS,
+            min_value=0.0, step=60.0, key="wf_b_stale_gap",
+        )
+        _wf_b_decay_rate = st.sidebar.number_input(
+            "AIS Decay Rate (1/s) ", value=config.AIS_STALE_CONFIDENCE_DECAY_RATE,
+            min_value=0.0, max_value=0.01, step=1e-5, format="%.5f", key="wf_b_decay_rate",
+        )
+        _wf_b_min_conf = st.sidebar.number_input(
+            "AIS Min Confidence ", value=config.AIS_MIN_STALE_CONFIDENCE,
+            min_value=0.0, max_value=1.0, step=0.05, key="wf_b_min_conf",
+        )
+
+    if st.sidebar.button("Run What-If", key="btn_whatif"):
+        _variant_a_overrides = {
+            "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_a_threshold,
+            "HOLD_LOOKAHEAD_BOOST": _wf_a_boost,
+            "AIS_STALE_GAP_SECONDS": _wf_a_stale_gap,
+            "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_a_decay_rate,
+            "AIS_MIN_STALE_CONFIDENCE": _wf_a_min_conf,
         }
+        _variant_b_overrides = None
+        if _include_b:
+            _variant_b_overrides = {
+                "HOLD_LOOKAHEAD_THRESHOLD_SECONDS": _wf_b_threshold,
+                "HOLD_LOOKAHEAD_BOOST": _wf_b_boost,
+                "AIS_STALE_GAP_SECONDS": _wf_b_stale_gap,
+                "AIS_STALE_CONFIDENCE_DECAY_RATE": _wf_b_decay_rate,
+                "AIS_MIN_STALE_CONFIDENCE": _wf_b_min_conf,
+            }
 
-    _wf_variants = build_variants(_variant_a_overrides, _variant_b_overrides)
+        _wf_variants = build_variants(_variant_a_overrides, _variant_b_overrides)
 
-    if mode == "Simulation":
-        _wf_scenario = lambda: run_multi_target_simulation(PORTFOLIO_SCENARIO)
-    else:
-        _wf_csv = csv_source  # capture for closure
-        _wf_scenario = lambda: [r for tl in replay_ais_file(_wf_csv).values() for r in tl]
+        if mode == "Simulation":
+            _wf_scenario = lambda: run_multi_target_simulation(MULTI_DAY_SCENARIO)
+        else:
+            _wf_csv = csv_source  # capture for closure
+            _wf_scenario = lambda: [r for tl in replay_ais_file(_wf_csv).values() for r in tl]
 
-    st.session_state.whatif_results = run_comparison(_wf_scenario, _wf_variants)
+        st.session_state.whatif_results = run_comparison(_wf_scenario, _wf_variants)
 
-st.session_state.playback_idx = selected_idx
 current = target_df.iloc[selected_idx]
 
 # ── Overview mode ──────────────────────────────────────────────────────────────
@@ -430,7 +397,7 @@ if view_mode == "Overview":
         _ov_df = build_overview_df(_focused_ts)
         _tbl_sel = st.dataframe(
             _ov_df,
-            use_container_width=True,
+            width="stretch",
             height=min(550, 36 * len(_ov_df) + 38),
             on_select="rerun",
             selection_mode="single-row",
@@ -668,7 +635,7 @@ if view_mode == "Overview":
         layers=_ov_layers,
         tooltip={"text": "{label}"},
     )
-    st.pydeck_chart(_ov_deck, use_container_width=True)
+    st.pydeck_chart(_ov_deck, width="stretch")
     _ov_legend = st.columns(6)
     with _ov_legend[0]: st.markdown("<small>🔴 Needs Action</small>", unsafe_allow_html=True)
     with _ov_legend[1]: st.markdown("<small>🟠 Preempted</small>",    unsafe_allow_html=True)
@@ -836,7 +803,7 @@ if "portfolio_rank" in current.index and pd.notna(current.get("portfolio_rank"))
             _port_show["Deferred For"] = _port_show["Deferred For"].fillna("—")
             st.dataframe(
                 _port_show,
-                use_container_width=True,
+                width="stretch",
                 height=min(420, 35 * len(_port_show) + 40),
             )
 
@@ -854,7 +821,7 @@ if alerts:
         for a in alerts
     ])
     alerts_df["Time"] = alerts_df["Time"].astype(str).str.split("+").str[0]
-    st.dataframe(alerts_df.reset_index(drop=True), use_container_width=True)
+    st.dataframe(alerts_df.reset_index(drop=True), width="stretch")
 else:
     st.markdown("<span style='color:#666;'>No alerts for this target.</span>", unsafe_allow_html=True)
 
@@ -870,7 +837,7 @@ active_compounds = sorted(
 )
 if active_compounds:
     compounds_df = build_active_compounds_df(active_compounds)
-    st.dataframe(compounds_df.reset_index(drop=True), use_container_width=True)
+    st.dataframe(compounds_df.reset_index(drop=True), width="stretch")
 else:
     st.markdown("<span style='color:#666;'>No active compound signals at this step.</span>", unsafe_allow_html=True)
 
@@ -887,7 +854,7 @@ history_compounds = [
 if history_compounds:
     agg = aggregate_compound_history(history_compounds)
     history_df = build_compound_history_df(agg)
-    st.dataframe(history_df.reset_index(drop=True), use_container_width=True)
+    st.dataframe(history_df.reset_index(drop=True), width="stretch")
 else:
     st.markdown("<span style='color:#666;'>No compound history for this target.</span>", unsafe_allow_html=True)
 
@@ -969,7 +936,7 @@ if _orbital_rows_visible:
     _orbital_df["Within Threshold"] = _orbital_df["Within Threshold"].apply(
         lambda v: "✓" if v else "—"
     )
-    st.dataframe(_orbital_df, use_container_width=True)
+    st.dataframe(_orbital_df, width="stretch")
 else:
     st.markdown("<span style='color:#666; font-size:0.8rem;'>No Orbital Passes In Horizon</span>", unsafe_allow_html=True)
 
@@ -1062,7 +1029,7 @@ deck = pdk.Deck(
     tooltip={"text": "Lat: {lat}\nLon: {lon}"},
 )
 
-st.pydeck_chart(deck, use_container_width=True)
+st.pydeck_chart(deck, width="stretch")
 
 legend_cols = st.columns(6)
 with legend_cols[0]: st.markdown("<small>🟨 Sensitive zone</small>", unsafe_allow_html=True)
@@ -1083,7 +1050,7 @@ cot_df = visible_df[["time_str", "custody_confidence", "anomaly_score"]].copy()
 cot_df["custody_confidence"] = pd.to_numeric(cot_df["custody_confidence"], errors="coerce").round(2)
 cot_df["anomaly_score"] = pd.to_numeric(cot_df["anomaly_score"], errors="coerce").round(2)
 cot_df.columns = ["Time", "Confidence", "Anomaly"]
-st.dataframe(cot_df.reset_index(drop=True), use_container_width=True)
+st.dataframe(cot_df.reset_index(drop=True), width="stretch")
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
 st.markdown("<div class='section-label'>Timeline</div>", unsafe_allow_html=True)
@@ -1103,7 +1070,7 @@ timeline_df["state_confidence"] = timeline_df["state_confidence"].round(2)
 timeline_df.columns = ["Time", "Lat", "Lon", "Unc (km)", "Confidence",
                         "Anomaly", "Action", "Sensor", "Result",
                         "State", "St.Conf"]
-st.dataframe(timeline_df.reset_index(drop=True), use_container_width=True)
+st.dataframe(timeline_df.reset_index(drop=True), width="stretch")
 
 # ── Decision Traces ───────────────────────────────────────────────────────────
 # Available in both Simulation and AIS Replay modes when traces are present.
@@ -1120,21 +1087,13 @@ if _traces:
     _trace_rows = traces_to_rows(_traces)
     _traces_df = pd.DataFrame(_trace_rows)[_trace_display_cols].copy()
     _traces_df["Time"] = _traces_df["Time"].astype(str).str.split("+").str[0]
-    st.dataframe(_traces_df.reset_index(drop=True), use_container_width=True)
+    st.dataframe(_traces_df.reset_index(drop=True), width="stretch")
 else:
     st.markdown("<span style='color:#666;'>No traces available.</span>", unsafe_allow_html=True)
 
-# ── What-If Results ───────────────────────────────────────────────────────────
-if st.session_state.get("whatif_results"):
+# ── What-If Results (gated by ENABLE_WHAT_IF) ─────────────────────────────────
+if ENABLE_WHAT_IF and st.session_state.get("whatif_results"):
     st.markdown("<div class='section-label'>What-If Results</div>", unsafe_allow_html=True)
     st.caption("Comparison across variants. Baseline uses current config; variants use sidebar overrides.")
     _wf_df = build_whatif_results_df(st.session_state.whatif_results)
-    st.dataframe(_wf_df.reset_index(drop=True), use_container_width=True)
-
-if st.session_state.playing:
-    time.sleep(1.0)
-    if st.session_state.playback_idx < max_idx:
-        st.session_state.playback_idx += 1
-    else:
-        st.session_state.playing = False   # stop cleanly at end
-    st.rerun()
+    st.dataframe(_wf_df.reset_index(drop=True), width="stretch")

@@ -92,6 +92,10 @@ class TrackState:
     last_collection_time: Optional[datetime] = None
     last_collection_anomaly_score: float = 0.0
 
+    # Collection failure tracking (operational history, separate from physical state)
+    consecutive_failures: int = 0
+    last_failure_time: Optional[datetime] = None
+
     # Dark-vessel state (AIS dropout)
     is_dark: bool = False
     dark_since: Optional[datetime] = None
@@ -116,6 +120,29 @@ class TrackState:
         self.uncertainty_km = new_uncertainty
         self.last_collection_time = now
         self.last_collection_anomaly_score = anomaly_score
+        self.consecutive_failures = 0
+
+    def record_failure(self, now: datetime) -> None:
+        """Update track state after a failed collection attempt.
+
+        Applies a diminishing uncertainty penalty and increments the
+        consecutive failure counter.  The penalty shrinks with each
+        additional failure and is hard-capped to prevent runaway growth.
+
+        Physical state (uncertainty_km) and operational history
+        (consecutive_failures) are updated independently.
+        """
+        from custody.config import (
+            FAILURE_UNCERTAINTY_PENALTY_KM,
+            FAILURE_UNCERTAINTY_CAP_KM,
+        )
+        self.consecutive_failures += 1
+        self.last_failure_time = now
+        penalty = FAILURE_UNCERTAINTY_PENALTY_KM / (1 + self.consecutive_failures)
+        self.uncertainty_km = min(
+            self.uncertainty_km + penalty,
+            FAILURE_UNCERTAINTY_CAP_KM,
+        )
 
     @property
     def confidence(self) -> float:

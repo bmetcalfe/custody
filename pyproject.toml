@@ -5,6 +5,8 @@ description = "Anomaly-aware target custody and collection-planning prototype"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "dash>=2.18",
+    "dash-bootstrap-components>=1.6",
     "numpy>=2.4.3",
     "pandas>=2.2,<3",
     "pydeck>=0.9.0",

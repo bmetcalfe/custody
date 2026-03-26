@@ -467,6 +467,8 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 "scenario_tags":           list(spec_by_id[vid].tags),
                 # hours_since_collection: None if never collected; 0.0 if just tasked
                 "hours_since_collection":  track.hours_since_collection(current_time),
+                # Consecutive failed collection attempts (0 after success)
+                "consecutive_failures":    track.consecutive_failures,
                 # Operator tracking directive from vessel spec (NONE | MAINTAIN_CUSTODY)
                 "tracking_directive":      spec_by_id[vid].tracking_directive,
                 # Real pairwise proximity score (0.0 / 0.5 / 1.0)
@@ -514,8 +516,10 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
             record["fusion_assessment"] = _fa
             record["mission_decision"]  = _mission_dec
 
-            # Update consecutive-no-task counter for trigger evaluation
-            if decision.action == "TASK":
+            # Update consecutive-no-task counter for trigger evaluation.
+            # Only a *successful* TASK resets the counter; a failed TASK still
+            # counts as "no successful task" for trigger purposes.
+            if decision.action == "TASK" and decision.success:
                 consecutive_no_task[vid] = 0
             else:
                 consecutive_no_task[vid] += 1

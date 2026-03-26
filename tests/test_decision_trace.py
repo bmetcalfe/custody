@@ -337,7 +337,8 @@ class TestSimulationTraces:
     def test_task_value_total_equals_base_minus_decay_plus_worsening(self):
         for r in self.records:
             tv = r["decision_trace"].task_value
-            expected = tv.base - tv.freshness_decay + tv.worsening_boost + tv.lookahead_boost
+            expected = (tv.base - tv.freshness_decay + tv.worsening_boost
+                        + tv.lookahead_boost + tv.failure_boost)
             assert tv.total == pytest.approx(expected, abs=1e-9)
 
 
@@ -349,7 +350,8 @@ EXPECTED_ROW_KEYS = {
     "Time", "Vessel", "Action", "Hold Reason", "Chosen Sensor",
     "Priority", "Priority Anomaly", "Priority Uncertainty", "Priority Compound",
     "Task Value", "Task Base", "Freshness Decay", "Worsening Boost",
-    "Lookahead Boost", "Nearest Pass TTS", "Hold Eligible",
+    "Lookahead Boost", "Failure Boost", "Nearest Pass TTS", "Hold Eligible",
+    "Consecutive Failures",
     "Accessible Sensors", "Claimed Higher", "Final Pool", "Sensor Access Count",
 }
 

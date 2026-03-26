@@ -66,6 +66,30 @@ HOLD_LOOKAHEAD_BOOST = 0.15               # added to task-value total when boost
 SENSOR_MIN_ELEVATION_DEG = 10.0
 
 # ---------------------------------------------------------------------------
+# Collection failure feedback
+# ---------------------------------------------------------------------------
+
+# Uncertainty penalty (km) added after the first failed collection attempt.
+# Subsequent consecutive failures receive diminishing penalties:
+#   penalty = FAILURE_UNCERTAINTY_PENALTY_KM / (1 + consecutive_failures)
+# A successful fast_revisit reduces uncertainty by ~50% (e.g. 20 km → 10 km);
+# this penalty is less than half that (~5 km), so a single failure is moderate.
+FAILURE_UNCERTAINTY_PENALTY_KM = 5.0
+
+# Hard cap on failure-driven uncertainty (km).  Failures alone can push an
+# entity to STALE (_UNC_STALE_KM = 50 km) but never reach LOST (90 km).
+FAILURE_UNCERTAINTY_CAP_KM = 120.0
+
+# Per-failure additive boost to task_value, capped at 3 failures (= 0.24).
+# One failure (0.08) does not break HOLD on its own (threshold 0.2);
+# two consecutive failures (0.16) make HOLD very unlikely when any anomaly
+# is present; three (0.24) overcome HOLD for low-anomaly entities.
+FAILURE_URGENCY_BOOST = 0.08
+
+# Maximum number of consecutive failures that contribute to urgency boost.
+FAILURE_URGENCY_MAX_COUNT = 3
+
+# ---------------------------------------------------------------------------
 # AIS staleness confidence decay
 # ---------------------------------------------------------------------------
 

@@ -7,6 +7,8 @@ from custody.config import (
     ANOMALY_THRESHOLD,
     CRITICAL_ANOMALY_THRESHOLD,
     CUSTODY_TASK_CONFIDENCE_THRESHOLD,
+    FAILURE_URGENCY_BOOST,
+    FAILURE_URGENCY_MAX_COUNT,
     FRESHNESS_SUPPRESSION,
     HOLD_LOOKAHEAD_BOOST,
     HOLD_LOOKAHEAD_THRESHOLD_SECONDS,
@@ -119,6 +121,7 @@ def compute_task_value(
     compound_boost: float = 0.0,
     lookahead_boost: float = 0.0,
     nearest_pass_tts: Optional[float] = None,
+    consecutive_failures: int = 0,
     return_breakdown: bool = False,
 ):
     """Return a task-value score indicating how urgently this vessel should be re-tasked.
@@ -174,16 +177,20 @@ def compute_task_value(
         + compound_boost * 0.10
     )
 
+    # Failure urgency: consecutive failed collections bias toward retasking.
+    # Capped at FAILURE_URGENCY_MAX_COUNT failures × FAILURE_URGENCY_BOOST per.
+    failure_boost = min(consecutive_failures, FAILURE_URGENCY_MAX_COUNT) * FAILURE_URGENCY_BOOST
+
     if hours_since_last_collection is None:
         freshness_decay = 0.0
         worsening_boost_amount = 0.0
-        total = base + lookahead_boost
+        total = base + lookahead_boost + failure_boost
     else:
         freshness = math.exp(-hours_since_last_collection / REVISIT_DECAY_HOURS)
         worsening = max(0.0, score - (last_collection_anomaly_score or 0.0))
         freshness_decay = freshness * FRESHNESS_SUPPRESSION
         worsening_boost_amount = worsening * WORSENING_BOOST
-        total = base - freshness_decay + worsening_boost_amount + lookahead_boost
+        total = base - freshness_decay + worsening_boost_amount + lookahead_boost + failure_boost
 
     if not return_breakdown:
         return total
@@ -197,6 +204,7 @@ def compute_task_value(
         hold_eligible=(total < TASK_VALUE_THRESHOLD),
         lookahead_boost=lookahead_boost,
         nearest_pass_time_to_start_seconds=nearest_pass_tts,
+        failure_boost=failure_boost,
     )
 
 
@@ -317,6 +325,7 @@ def plan_collection(
         task_value = compute_task_value(
             score, confidence, hours_since, track.last_collection_anomaly_score,
             compound_boost, lookahead_boost=_lookahead_boost,
+            consecutive_failures=track.consecutive_failures,
         )
         if task_value < TASK_VALUE_THRESHOLD:
             return CollectionDecision(
@@ -392,6 +401,7 @@ def plan_collection(
             new_uncertainty=new_uncertainty,
         )
 
+    track.record_failure(current_time)
     return CollectionDecision(
         action="TASK",
         action_reason=action_reason,

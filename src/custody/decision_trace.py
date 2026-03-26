@@ -46,6 +46,8 @@ class DecisionInputs:
                             collection suppresses re-tasking urgency.
         sensor_access_count: Number of sensors in this vessel's pre-arbitration
                              pool (orbit-access filtered from its position).
+        consecutive_failures: Number of consecutive failed collection attempts.
+                              0 when no failures or after a successful collection.
     """
     anomaly_score: float
     anomaly_norm: float
@@ -53,6 +55,7 @@ class DecisionInputs:
     compound_boost: float
     freshness: float
     sensor_access_count: int
+    consecutive_failures: int = 0
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,7 @@ class PriorityBreakdown:
 class TaskValueBreakdown:
     """Component breakdown of compute_task_value.
 
-    total = base - freshness_decay + worsening_boost + lookahead_boost
+    total = base - freshness_decay + worsening_boost + lookahead_boost + failure_boost
 
     Attributes:
         base:            Priority-based urgency before freshness adjustment.
@@ -91,11 +94,14 @@ class TaskValueBreakdown:
                          and no sensor is currently available
                          (HOLD_LOOKAHEAD_BOOST when triggered, else 0.0).
                          Non-zero here indicates the lookahead bias fired.
+        failure_boost:   Amount added due to consecutive failed collection
+                         attempts (min(failures, 3) * FAILURE_URGENCY_BOOST).
+                         0.0 when no failures have occurred.
         nearest_pass_time_to_start_seconds:
                          Seconds until the nearest upcoming orbital pass
                          that triggered the lookahead bias, or None if the
                          bias did not fire.
-        total:           Final task-value score (includes lookahead_boost).
+        total:           Final task-value score (includes all boosts).
         hold_threshold:  TASK_VALUE_THRESHOLD used for the HOLD gate.
         hold_eligible:   True when total < hold_threshold (HOLD would fire
                          if should_consider_tasking is also True).
@@ -108,6 +114,7 @@ class TaskValueBreakdown:
     hold_eligible: bool
     lookahead_boost: float = 0.0
     nearest_pass_time_to_start_seconds: Optional[float] = None
+    failure_boost: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -185,7 +192,8 @@ def traces_to_rows(traces: list[DecisionTrace]) -> list[dict]:
           Time, Vessel, Action, Hold Reason, Chosen Sensor,
           Priority, Priority Anomaly, Priority Uncertainty, Priority Compound,
           Task Value, Task Base, Freshness Decay, Worsening Boost,
-          Lookahead Boost, Nearest Pass TTS, Hold Eligible,
+          Lookahead Boost, Failure Boost, Nearest Pass TTS, Hold Eligible,
+          Consecutive Failures,
           Accessible Sensors, Claimed Higher, Final Pool, Sensor Access Count
     """
     rows = []
@@ -205,8 +213,10 @@ def traces_to_rows(traces: list[DecisionTrace]) -> list[dict]:
             "Freshness Decay": round(t.task_value.freshness_decay, 4),
             "Worsening Boost": round(t.task_value.worsening_boost, 4),
             "Lookahead Boost": round(t.task_value.lookahead_boost, 4),
+            "Failure Boost": round(t.task_value.failure_boost, 4),
             "Nearest Pass TTS": t.task_value.nearest_pass_time_to_start_seconds,
             "Hold Eligible": t.task_value.hold_eligible,
+            "Consecutive Failures": t.inputs.consecutive_failures,
             "Accessible Sensors": ", ".join(t.arbitration.accessible_sensor_ids),
             "Claimed Higher": ", ".join(t.arbitration.claimed_by_higher_priority),
             "Final Pool": ", ".join(t.arbitration.final_sensor_pool),
@@ -287,11 +297,13 @@ def build_decision_trace(
     )
 
     hours_since = track.hours_since_collection(timestamp)
+    _cons_failures = getattr(track, "consecutive_failures", 0)
     _, task_value_bd = compute_task_value(
         score, confidence, hours_since, track.last_collection_anomaly_score,
         compound_boost,
         lookahead_boost=lookahead_boost,
         nearest_pass_tts=nearest_pass_tts,
+        consecutive_failures=_cons_failures,
         return_breakdown=True,
     )
 
@@ -315,6 +327,7 @@ def build_decision_trace(
             compound_boost=compound_boost,
             freshness=freshness,
             sensor_access_count=len(accessible_opportunities),
+            consecutive_failures=_cons_failures,
         ),
         priority=priority_bd,
         task_value=task_value_bd,
