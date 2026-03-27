@@ -23,42 +23,44 @@ class TestDeriveDisplayStatus:
             "deferred_for": deferred_for,
         }
 
-    def test_lost_custody_is_needs_action(self):
-        assert derive_display_status(self._r(health="LOST")) == "NEEDS ACTION"
+    # ── Anomaly-driven statuses ────────────────────────────────────
 
     def test_very_high_anomaly_is_needs_action(self):
-        assert derive_display_status(self._r(anomaly=2.0)) == "NEEDS ACTION"
+        assert derive_display_status(self._r(anomaly=2.5)) == "NEEDS ACTION"
 
-    def test_preempted_action(self):
-        assert derive_display_status(self._r(action="PREEMPTED")) == "PREEMPTED"
-
-    def test_deferred_for_set(self):
-        assert derive_display_status(self._r(deferred_for="BRAVO-1")) == "PREEMPTED"
-
-    def test_neglect_flag_true(self):
-        assert derive_display_status(self._r(neglect_flag=True)) == "NEGLECTED"
-
-    def test_stale_health(self):
-        assert derive_display_status(self._r(health="STALE")) == "STALE"
-
-    def test_degrading_health(self):
-        assert derive_display_status(self._r(health="DEGRADING")) == "WATCH"
+    def test_below_needs_action_threshold(self):
+        assert derive_display_status(self._r(anomaly=2.0)) != "NEEDS ACTION"
 
     def test_moderate_anomaly_is_watch(self):
-        assert derive_display_status(self._r(anomaly=0.5)) == "WATCH"
+        """anomaly >= 1.5 → WATCH (meaningful multi-signal anomaly)."""
+        assert derive_display_status(self._r(anomaly=1.8)) == "WATCH"
+
+    def test_low_anomaly_is_healthy(self):
+        """anomaly below 1.5 → HEALTHY."""
+        assert derive_display_status(self._r(anomaly=1.0)) == "HEALTHY"
 
     def test_healthy_baseline(self):
         assert derive_display_status(self._r()) == "HEALTHY"
 
-    def test_priority_needs_action_over_neglect(self):
-        """NEEDS ACTION should win over NEGLECTED."""
-        r = self._r(health="LOST", neglect_flag=True)
-        assert derive_display_status(r) == "NEEDS ACTION"
+    # ── Custody/scheduling do NOT drive visual status ────────────
 
-    def test_priority_preempted_over_neglected(self):
-        """PREEMPTED should win over NEGLECTED when both apply."""
-        r = self._r(action="PREEMPTED", neglect_flag=True)
-        assert derive_display_status(r) == "PREEMPTED"
+    def test_lost_custody_alone_is_healthy(self):
+        """LOST custody without anomaly is operational, not visual importance."""
+        assert derive_display_status(self._r(health="LOST")) == "HEALTHY"
+
+    def test_preempted_does_not_affect_status(self):
+        assert derive_display_status(self._r(action="PREEMPTED")) == "HEALTHY"
+
+    def test_neglect_does_not_affect_status(self):
+        assert derive_display_status(self._r(neglect_flag=True)) == "HEALTHY"
+
+    def test_stale_does_not_affect_status(self):
+        assert derive_display_status(self._r(health="STALE")) == "HEALTHY"
+
+    def test_anomaly_drives_needs_action_regardless_of_custody(self):
+        """Very high anomaly → NEEDS ACTION even with good custody."""
+        r = self._r(anomaly=3.0, health="HEALTHY")
+        assert derive_display_status(r) == "NEEDS ACTION"
 
     def test_deferred_for_none_string_not_preempted(self):
         assert derive_display_status(self._r(deferred_for=None)) != "PREEMPTED"
@@ -103,20 +105,13 @@ class TestDeriveDisplayStatus:
         assert result != "APPROACHING"
 
     def test_approaching_loses_to_needs_action(self):
-        r = self._r_approaching(custody_health="LOST")
+        """Very high anomaly still wins over approaching."""
+        r = self._r_approaching(anomaly_score=3.0)
         assert derive_display_status(r) == "NEEDS ACTION"
 
-    def test_approaching_loses_to_neglected(self):
-        r = self._r_approaching(neglect_flag=True, attention_state="ACTIVE_CUSTODY")
-        assert derive_display_status(r) == "NEGLECTED"
-
-    def test_approaching_loses_to_stale(self):
-        r = self._r_approaching(custody_health="STALE")
-        assert derive_display_status(r) == "STALE"
-
     def test_approaching_beats_watch(self):
-        r = self._r_approaching(custody_health="DEGRADING")
-        # APPROACHING should fire before WATCH in the priority chain
+        """Approaching fires before WATCH when anomaly is low."""
+        r = self._r_approaching(anomaly_score=0.3)
         assert derive_display_status(r) == "APPROACHING"
 
 
@@ -167,16 +162,14 @@ class TestComputeKpiCounts:
         counts = compute_kpi_counts(_make_ts_df(10))
         assert counts["total"] == 10
 
-    def test_neglected_count(self):
+    def test_neglected_count_is_zero(self):
+        """Neglect is operational, not a display status — count is always 0."""
         df = pd.DataFrame([{
             "target_id": "A", "anomaly_score": 0.1, "custody_health": "HEALTHY",
             "action": "NONE", "neglect_flag": True, "deferred_for": None,
-        }, {
-            "target_id": "B", "anomaly_score": 0.1, "custody_health": "HEALTHY",
-            "action": "NONE", "neglect_flag": False, "deferred_for": None,
         }])
         counts = compute_kpi_counts(df)
-        assert counts["neglected"] == 1
+        assert counts["neglected"] == 0
 
     def test_needs_action_count(self):
         df = pd.DataFrame([{

@@ -207,10 +207,12 @@ USE_RELATIVE_ML_THRESHOLD = False
 
 # Heuristic anomaly score (normalised by CRITICAL_ANOMALY_THRESHOLD)
 # threshold for "high" classification in agreement logic.
-HEURISTIC_ANOMALY_HIGH_THRESHOLD = 0.5
+# At 0.7, a raw anomaly_score of ~1.05 is required (e.g. zone + loitering).
+HEURISTIC_ANOMALY_HIGH_THRESHOLD = 0.7
 
 # Minimum consecutive hours above ML threshold to qualify as "sustained".
-SUSTAINED_ANOMALY_MIN_HOURS = 3
+# Increased from 3 to 5 so short excursions don't escalate.
+SUSTAINED_ANOMALY_MIN_HOURS = 5
 
 # Escalation boost added to fused_score per sustained hour (capped).
 ESCALATION_BOOST_PER_HOUR = 0.02

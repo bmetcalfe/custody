@@ -7,7 +7,7 @@ from __future__ import annotations
 import pandas as pd
 
 ALL_STATUSES: list[str] = [
-    "NEEDS ACTION", "PREEMPTED", "NEGLECTED", "STALE", "WATCH", "HEALTHY"
+    "NEEDS ACTION", "APPROACHING", "WATCH", "HEALTHY"
 ]
 
 

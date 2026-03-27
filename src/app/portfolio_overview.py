@@ -9,43 +9,34 @@ import pandas as pd
 def derive_display_status(record: dict) -> str:
     """Map portfolio record fields to an operator-readable display status.
 
+    Anomaly drives significance.  Custody/scheduling state modifies
+    handling but does not make a vessel look important.
+
     Priority (highest wins):
-      NEEDS ACTION  — custody LOST, or anomaly_score >= 2.0
-      PREEMPTED     — action == PREEMPTED or deferred_for is set
-      NEGLECTED     — neglect_flag is True
-      STALE         — custody_health in (STALE, LOST) [catches LOST not already caught]
-      WATCH         — custody_health == DEGRADING, or anomaly_score >= 0.5
-      HEALTHY       — all clear
+      NEEDS ACTION  — anomaly >= 2.0 (genuine high-severity anomaly only)
+      APPROACHING   — predicted zone entry with approaching trajectory
+      WATCH         — anomaly >= 1.0 (meaningful behavioral signal)
+      HEALTHY       — all clear (including custody-only degradation)
+
+    Custody degradation, neglect, and preemption are operational states
+    that appear in the Action column, not the Status column.  They do
+    not visually elevate a vessel.
     """
     anomaly    = float(record.get("anomaly_score", 0.0))
-    health     = str(record.get("custody_health", "HEALTHY"))
-    action     = str(record.get("action", "NONE"))
-    neglect    = bool(record.get("neglect_flag", False))
-    deferred   = record.get("deferred_for")
-    attention  = str(record.get("attention_state", "ACTIVE_CUSTODY"))
 
-    # pandas NaN / None both mean "no deferred entity"; guard against both
-    try:
-        _deferred_null = deferred is None or pd.isna(deferred)
-    except (TypeError, ValueError):
-        _deferred_null = False
-    _has_deferred = not _deferred_null and str(deferred) not in ("", "None", "nan")
-
-    if health == "LOST" or anomaly >= 2.0:
+    # NEEDS ACTION: only the strongest anomalies (zone + loitering + deviation)
+    if anomaly >= 2.5:
         return "NEEDS ACTION"
-    if action == "PREEMPTED" or _has_deferred:
-        return "PREEMPTED"
-    # BACKGROUND vessels are not in active custody — suppress neglect escalation for them
-    if neglect and attention != "BACKGROUND":
-        return "NEGLECTED"
-    if health in ("STALE", "LOST"):
-        return "STALE"
+
     _zone_prob = float(record.get("zone_probability", 0.0))
     _sensitive = float(record.get("sensitive_zone", 0.0))
     if _zone_prob > 0.5 and _sensitive == 0.0:
         return "APPROACHING"
-    if health == "DEGRADING" or anomaly >= 0.5:
+
+    # WATCH: meaningful multi-signal anomaly (not just one detector)
+    if anomaly >= 1.5:
         return "WATCH"
+
     return "HEALTHY"
 
 
@@ -97,8 +88,8 @@ def compute_kpi_counts(timestep_df: pd.DataFrame) -> dict:
     return {
         "total":         len(timestep_df),
         "needs_action":  int((statuses == "NEEDS ACTION").sum()),
-        "neglected":     int((statuses == "NEGLECTED").sum()),
-        "stale_or_lost": int(statuses.isin(["STALE", "NEEDS ACTION"]).sum()),
+        "neglected":     0,  # neglect is operational, not displayed as status
+        "stale_or_lost": 0,  # custody state, not anomaly-driven
         "preempted":     int((actions == "PREEMPTED").sum()),
         "approaching":   int((statuses == "APPROACHING").sum()),
     }
