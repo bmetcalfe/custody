@@ -39,6 +39,19 @@ from custody.prediction import predict_entity
 from custody.config import ZONES
 from custody.fusion import build_fusion_assessment
 from custody.decision import build_decision
+from custody.reasoning import enrich_record as _enrich_reasoning
+from custody.solar import sensor_suitability as _sensor_suitability
+from custody.swath import assess_swath as _assess_swath
+from custody.tasking_policy import compute_policy as _compute_policy
+from custody.confidence import (
+    compute_overall_confidence as _compute_confidence,
+    apply_confidence_to_priority as _apply_conf_priority,
+    confidence_action_bias as _conf_action_bias,
+)
+from custody.observation import (
+    derive_observation_state as _derive_obs_state,
+    apply_observation_to_policy as _apply_obs_policy,
+)
 
 
 def _trigger_satisfied(
@@ -173,9 +186,10 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
     tracks: dict[str, TrackState] = {}
     timelines: dict[str, list[dict]] = {}
     spec_by_id: dict[str, VesselSpec] = {}
-    # Per-vessel trigger latch state and consecutive-no-task counter
+    # Per-vessel trigger latch state, consecutive-no-task counter, and anomaly state
     latched: dict[str, set[int]] = {}
     consecutive_no_task: dict[str, int] = {}
+    anomaly_states: dict[str, str | None] = {}
 
     for spec in vessel_specs:
         vid = spec.vessel_id
@@ -192,6 +206,7 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
         spec_by_id[vid] = spec
         latched[vid] = set()
         consecutive_no_task[vid] = 0
+        anomaly_states[vid] = None
 
     # ── Main simulation loop ─────────────────────────────────────────────────
     current_time = scenario.start_time
@@ -469,6 +484,8 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 "hours_since_collection":  track.hours_since_collection(current_time),
                 # Consecutive failed collection attempts (0 after success)
                 "consecutive_failures":    track.consecutive_failures,
+                # ML anomaly score (0.0 in simulation; populated by AIS ML pipeline)
+                "ml_anomaly_score":        0.0,
                 # Operator tracking directive from vessel spec (NONE | MAINTAIN_CUSTODY)
                 "tracking_directive":      spec_by_id[vid].tracking_directive,
                 # Real pairwise proximity score (0.0 / 0.5 / 1.0)
@@ -516,6 +533,65 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
             record["fusion_assessment"] = _fa
             record["mission_decision"]  = _mission_dec
 
+            # ── Temporal anomaly reasoning ──────────────────────────────
+            # Enrich with agreement, persistence, escalation, and state.
+            # timelines[vid] does not yet include the current record.
+            _enriched = _enrich_reasoning(
+                record, timelines[vid], previous_state=anomaly_states[vid],
+            )
+            for _k in ("anomaly_agreement", "ml_anomaly_duration_hours",
+                        "fused_anomaly_duration_hours", "is_sustained_anomaly",
+                        "anomaly_onset_timestamp", "escalation_boost", "anomaly_state"):
+                record[_k] = _enriched[_k]
+            anomaly_states[vid] = record["anomaly_state"]
+
+            # ── Solar suitability + tasking policy ──────────────────────
+            _solar = _sensor_suitability(current_time, state["rec_lat"], state["rec_lon"])
+            record["sun_elevation_deg"]  = _solar["sun_elevation_deg"]
+            record["solar_condition"]    = _solar["solar_condition"]
+            record["eo_suitability"]     = _solar["eo_suitability"]
+            record["sar_suitability"]    = _solar["sar_suitability"]
+
+            _policy = _compute_policy(record)
+            record["tasking_tier"]                = _policy.tasking_tier
+            record["desired_revisit_hours"]       = _policy.desired_revisit_hours
+            record["monitoring_action"]           = _policy.monitoring_action
+            record["sensor_preference"]           = _policy.sensor_preference
+            record["effective_sensor_preference"] = _policy.effective_sensor_preference
+            record["tasking_rationale"]           = _policy.rationale
+            record["sensor_rationale"]            = _policy.sensor_rationale
+
+            # ── Confidence modeling ─────────────────────────────────────
+            _conf = _compute_confidence(record, timelines[vid][:-1] if timelines[vid] else [])
+            record["history_confidence"]    = _conf["history_confidence"]
+            record["baseline_confidence"]   = _conf["baseline_confidence"]
+            record["sensor_confidence"]     = _conf["sensor_confidence"]
+            record["overall_confidence"]    = _conf["overall_confidence"]
+            record["confidence_category"]   = _conf["confidence_category"]
+            record["confidence_rationale"]  = _conf["confidence_rationale"]
+
+            # Confidence-adjusted monitoring action
+            record["monitoring_action"] = _conf_action_bias(
+                record["monitoring_action"], _conf["overall_confidence"]
+            )
+
+            # ── Observation-aware reasoning ─────────────────────────────
+            # Derives collection intent from observation history and adjusts
+            # sensor preference for cross-sensor confirmation.
+            _obs = _derive_obs_state(record, timelines[vid])
+            _obs_adjusted = _apply_obs_policy(record, _obs)
+            for _ok in ("collection_intent", "observation_rationale",
+                         "needs_cross_sensor", "last_sensor_type",
+                         "hours_since_observation"):
+                record[_ok] = _obs_adjusted[_ok]
+            # Apply cross-sensor and stale-observation adjustments
+            if _obs_adjusted.get("effective_sensor_preference") != record.get("effective_sensor_preference"):
+                record["effective_sensor_preference"] = _obs_adjusted["effective_sensor_preference"]
+            if _obs_adjusted.get("sensor_rationale") != record.get("sensor_rationale"):
+                record["sensor_rationale"] = _obs_adjusted["sensor_rationale"]
+            if _obs_adjusted.get("desired_revisit_hours") != record.get("desired_revisit_hours"):
+                record["desired_revisit_hours"] = _obs_adjusted["desired_revisit_hours"]
+
             # Update consecutive-no-task counter for trigger evaluation.
             # Only a *successful* TASK resets the counter; a failed TASK still
             # counts as "no successful task" for trigger purposes.
@@ -550,6 +626,70 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
                 record["deferred_for"]       = item.deferred_for
                 record["attention_state"]    = item.attention_state
                 record["attention_basis"]    = item.attention_basis
+
+        # ── Swath assessment (post-portfolio) ────────────────────────────────
+        # Runs after portfolio has set portfolio_score on all records, so
+        # grouped value uses real priority information.
+        for record in current_timestep_records:
+            if record.get("action") == "TASK" and record.get("sensor_type"):
+                _sw = _assess_swath(record, record["sensor_type"], current_timestep_records)
+                record["swath_width_km"]        = _sw.swath_width_km
+                record["swath_length_km"]       = _sw.swath_length_km
+                record["covered_target_count"]  = _sw.covered_target_count
+                record["covered_targets"]       = ",".join(_sw.covered_target_ids)
+                record["covered_priority_sum"]      = _sw.covered_priority_sum
+                record["mean_covered_confidence"]  = _sw.mean_covered_confidence
+                record["swath_task_value"]         = _sw.swath_task_value
+                record["swath_value_uplift"]    = _sw.value_uplift
+                record["swath_rationale"]       = _sw.rationale
+            else:
+                record["swath_width_km"]        = None
+                record["swath_length_km"]       = None
+                record["covered_target_count"]  = 0
+                record["covered_targets"]       = ""
+                record["covered_priority_sum"]      = 0.0
+                record["mean_covered_confidence"]  = 0.0
+                record["swath_task_value"]         = 0.0
+                record["swath_value_uplift"]    = 0.0
+                record["swath_rationale"]       = ""
+
+        # ── Effective task value (post-swath) ────────────────────────────────
+        # Combines the planner's base task value with swath uplift to produce
+        # the final decision-bearing value and an effective ranking.
+        _task_this_step = [r for r in current_timestep_records if r.get("action") == "TASK"]
+        for record in current_timestep_records:
+            trace = record.get("decision_trace")
+            base_tv = trace.task_value.total if trace else 0.0
+            uplift = float(record.get("swath_value_uplift", 0.0))
+            eff = round(base_tv + uplift, 4)
+            record["base_task_value"]     = round(base_tv, 4)
+            record["effective_task_value"] = eff
+
+            if uplift > 0.01:
+                record["effective_task_rationale"] = (
+                    f"grouped swath uplift +{uplift:.3f} "
+                    f"(covers {record.get('covered_target_count', 1)} targets) "
+                    f"raised effective value from {base_tv:.3f} to {eff:.3f}"
+                )
+            else:
+                record["effective_task_rationale"] = ""
+
+        # Effective rank among TASK records (1 = highest effective value)
+        if _task_this_step:
+            _sorted_tasks = sorted(_task_this_step,
+                                    key=lambda r: r["effective_task_value"],
+                                    reverse=True)
+            for rank, r in enumerate(_sorted_tasks, 1):
+                r["effective_task_rank"] = rank
+        for record in current_timestep_records:
+            if "effective_task_rank" not in record:
+                record["effective_task_rank"] = None
+
+        # ── Confidence-adjusted priority ─────────────────────────────────
+        for record in current_timestep_records:
+            ps = float(record.get("portfolio_score", 0.0))
+            oc = float(record.get("overall_confidence", 1.0))
+            record["confidence_adjusted_priority"] = _apply_conf_priority(ps, oc)
 
         current_time += timedelta(hours=scenario.dt_hours)
 

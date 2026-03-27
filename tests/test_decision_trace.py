@@ -351,7 +351,9 @@ EXPECTED_ROW_KEYS = {
     "Priority", "Priority Anomaly", "Priority Uncertainty", "Priority Compound",
     "Task Value", "Task Base", "Freshness Decay", "Worsening Boost",
     "Lookahead Boost", "Failure Boost", "Nearest Pass TTS", "Hold Eligible",
-    "Consecutive Failures",
+    "Consecutive Failures", "ML Anomaly Score",
+    "Anomaly Agreement", "Anomaly State", "Escalation Boost",
+    "Tasking Tier", "Monitoring Action", "Desired Revisit (h)",
     "Accessible Sensors", "Claimed Higher", "Final Pool", "Sensor Access Count",
 }
 

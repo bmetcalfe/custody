@@ -148,3 +148,72 @@ RENDEZVOUS_MIN_DWELL_STEPS = 2
 # Below this value the vessel is considered too far from a zone to warrant
 # a compound signal.
 ZONE_COMPOUND_MIN_SCORE = 0.5
+
+# ---------------------------------------------------------------------------
+# Swath / grouped collection
+# ---------------------------------------------------------------------------
+
+# Weight applied to covered-target bonus when computing swath_task_value.
+# Each covered non-center target contributes its priority_score × this weight.
+SWATH_BONUS_WEIGHT = 0.3
+
+# Maximum swath uplift that can be added to a candidate's effective value.
+# Prevents grouped value from completely dominating single-target scoring.
+SWATH_UPLIFT_CAP = 0.25
+
+# ---------------------------------------------------------------------------
+# Fusion layer weights
+# ---------------------------------------------------------------------------
+#
+# fused_score = W_HEURISTIC * anomaly_norm
+#             + W_ML        * ml_anomaly_score
+#             + W_COMPOUND  * top_compound_confidence
+#             + W_CUSTODY   * (1 - custody_confidence)
+#
+# When W_ML = 0.0 the system behaves identically to the pre-ML baseline.
+# The remaining weights (0.45 + 0.35 + 0.20 = 1.0) match the original
+# formula exactly.  Enabling ML (e.g. W_ML = 0.15) should be accompanied
+# by reducing W_HEURISTIC proportionally to keep the sum near 1.0.
+
+FUSION_W_HEURISTIC = 0.45     # heuristic anomaly contribution (original: 0.45)
+FUSION_W_ML        = 0.0      # ML anomaly contribution (default OFF)
+FUSION_W_COMPOUND  = 0.35     # compound signal contribution (original: 0.35)
+FUSION_W_CUSTODY   = 0.20     # custody weakness contribution (original: 0.20)
+
+# ---------------------------------------------------------------------------
+# Anomaly reasoning thresholds
+# ---------------------------------------------------------------------------
+
+# ML score threshold for "high" classification in agreement logic.
+ML_ANOMALY_HIGH_THRESHOLD = 0.8
+
+# Per-vessel relative score threshold (used when ML_SIGNAL_MODE includes
+# relative scoring).
+RELATIVE_ML_HIGH_THRESHOLD = 0.95
+
+# Which ML signal to use for agreement/persistence/escalation reasoning.
+#   "absolute"  — ml_anomaly_score >= ML_ANOMALY_HIGH_THRESHOLD
+#   "relative"  — ml_anomaly_relative >= RELATIVE_ML_HIGH_THRESHOLD
+#   "combined"  — max(ml_anomaly_score, ml_anomaly_relative) >= COMBINED_ML_HIGH_THRESHOLD
+# Default "absolute" preserves pre-normalization behavior.
+ML_SIGNAL_MODE = "absolute"
+
+# Threshold for the combined signal (max of absolute and relative).
+COMBINED_ML_HIGH_THRESHOLD = 0.8
+
+# Legacy alias — kept for backward compatibility with existing tests.
+# True is equivalent to ML_SIGNAL_MODE = "relative".
+USE_RELATIVE_ML_THRESHOLD = False
+
+# Heuristic anomaly score (normalised by CRITICAL_ANOMALY_THRESHOLD)
+# threshold for "high" classification in agreement logic.
+HEURISTIC_ANOMALY_HIGH_THRESHOLD = 0.5
+
+# Minimum consecutive hours above ML threshold to qualify as "sustained".
+SUSTAINED_ANOMALY_MIN_HOURS = 3
+
+# Escalation boost added to fused_score per sustained hour (capped).
+ESCALATION_BOOST_PER_HOUR = 0.02
+
+# Maximum escalation boost from persistence alone.
+ESCALATION_BOOST_CAP = 0.10

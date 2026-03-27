@@ -83,22 +83,32 @@ def _compute_fused_score(
     anomaly_score: float,
     top_compound_confidence: float,
     custody_confidence: float,
+    ml_anomaly_score: float = 0.0,
 ) -> float:
-    """Weighted combination of the three primary evidence dimensions.
+    """Weighted combination of the primary evidence dimensions.
+
+    When ``config.FUSION_W_ML`` is 0.0 (the default), this produces
+    identical output to the pre-ML formula:
+        0.45 * anomaly_norm + 0.35 * compound + 0.20 * (1 - custody)
+
+    When ML is enabled, the ML score contributes as a fourth term using
+    the weights defined in config.py.
 
     Args:
         anomaly_score:          Composite behavioural anomaly score, clamped [0, 1].
         top_compound_confidence: Confidence of the strongest active compound signal,
                                  or 0.0 if no compounds are active.
         custody_confidence:     Current track confidence in [0, 1].
+        ml_anomaly_score:       ML anomaly score in [0, 1], or 0.0 if unavailable.
 
     Returns:
         fused_score in [0, 1].
     """
     return round(_clamp01(
-        0.45 * min(anomaly_score, 1.0)
-        + 0.35 * top_compound_confidence
-        + 0.20 * (1.0 - custody_confidence)
+        config.FUSION_W_HEURISTIC * min(anomaly_score, 1.0)
+        + config.FUSION_W_ML * _clamp01(ml_anomaly_score)
+        + config.FUSION_W_COMPOUND * top_compound_confidence
+        + config.FUSION_W_CUSTODY * (1.0 - custody_confidence)
     ), 3)
 
 
@@ -153,10 +163,22 @@ def _compute_source_agreement(
             # No sensor accessible despite elevated anomaly → source gap, reduce
             sensor_factor = 0.8
 
-    agreement = _clamp01(
-        0.60 * compound_alignment
-        + 0.40 * custody_contribution
-    ) * sensor_factor
+    # ML–heuristic alignment: when both ML and heuristic agree on severity,
+    # agreement rises.  When they disagree, uncertainty increases.
+    # Only considered when ML weight is enabled and ML score is present.
+    ml_score = float(record.get("ml_anomaly_score", 0.0))
+    if config.FUSION_W_ML > 0.0 and ml_score > 0.0:
+        ml_alignment = 1.0 - abs(anom_norm - ml_score)
+        agreement = _clamp01(
+            0.45 * compound_alignment
+            + 0.25 * ml_alignment
+            + 0.30 * custody_contribution
+        ) * sensor_factor
+    else:
+        agreement = _clamp01(
+            0.60 * compound_alignment
+            + 0.40 * custody_contribution
+        ) * sensor_factor
 
     return round(agreement, 3)
 
@@ -329,8 +351,11 @@ def build_fusion_assessment(
 
     evidence_gap_score = min(len(missing_evidence) / 4.0, 1.0)
 
+    ml_anomaly_score = float(record.get("ml_anomaly_score") or 0.0)
+
     fused_score = _compute_fused_score(
-        anomaly_score, top_compound_confidence, custody_confidence
+        anomaly_score, top_compound_confidence, custody_confidence,
+        ml_anomaly_score=ml_anomaly_score,
     )
 
     uncertainty = _compute_uncertainty(

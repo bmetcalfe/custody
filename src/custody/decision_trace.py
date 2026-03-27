@@ -48,6 +48,18 @@ class DecisionInputs:
                              pool (orbit-access filtered from its position).
         consecutive_failures: Number of consecutive failed collection attempts.
                               0 when no failures or after a successful collection.
+        ml_anomaly_score:   ML anomaly score in [0, 1], or 0.0 if ML is not
+                              available or not enabled.
+        anomaly_agreement:  ML/heuristic agreement classification
+                              (confirmed, emerging, rule_triggered, normal).
+        anomaly_state:      Temporal anomaly state
+                              (normal, emerging, confirmed, sustained, critical, recovering).
+        escalation_boost:   Persistence-driven escalation boost [0, CAP].
+        tasking_tier:       Adaptive policy tier
+                              (routine, elevated, priority, urgent, critical).
+        monitoring_action:  Policy action
+                              (maintain, increase_attention, confirm, intensify, cooldown).
+        desired_revisit_hours: Recommended revisit interval in hours.
     """
     anomaly_score: float
     anomaly_norm: float
@@ -56,6 +68,13 @@ class DecisionInputs:
     freshness: float
     sensor_access_count: int
     consecutive_failures: int = 0
+    ml_anomaly_score: float = 0.0
+    anomaly_agreement: str = "normal"
+    anomaly_state: str = "normal"
+    escalation_boost: float = 0.0
+    tasking_tier: str = "routine"
+    monitoring_action: str = "maintain"
+    desired_revisit_hours: float = 12.0
 
 
 @dataclass(frozen=True)
@@ -217,6 +236,13 @@ def traces_to_rows(traces: list[DecisionTrace]) -> list[dict]:
             "Nearest Pass TTS": t.task_value.nearest_pass_time_to_start_seconds,
             "Hold Eligible": t.task_value.hold_eligible,
             "Consecutive Failures": t.inputs.consecutive_failures,
+            "ML Anomaly Score": round(t.inputs.ml_anomaly_score, 4),
+            "Anomaly Agreement": t.inputs.anomaly_agreement,
+            "Anomaly State": t.inputs.anomaly_state,
+            "Escalation Boost": round(t.inputs.escalation_boost, 4),
+            "Tasking Tier": t.inputs.tasking_tier,
+            "Monitoring Action": t.inputs.monitoring_action,
+            "Desired Revisit (h)": t.inputs.desired_revisit_hours,
             "Accessible Sensors": ", ".join(t.arbitration.accessible_sensor_ids),
             "Claimed Higher": ", ".join(t.arbitration.claimed_by_higher_priority),
             "Final Pool": ", ".join(t.arbitration.final_sensor_pool),
@@ -244,6 +270,13 @@ def build_decision_trace(
     lookahead_boost: float = 0.0,
     nearest_pass_tts: Optional[float] = None,
     hold_reason: Optional[str] = None,
+    ml_anomaly_score: float = 0.0,
+    anomaly_agreement: str = "normal",
+    anomaly_state: str = "normal",
+    escalation_boost: float = 0.0,
+    tasking_tier: str = "routine",
+    monitoring_action: str = "maintain",
+    desired_revisit_hours: float = 12.0,
 ) -> "DecisionTrace":
     """Construct a DecisionTrace from planner inputs and arbitration state.
 
@@ -328,6 +361,13 @@ def build_decision_trace(
             freshness=freshness,
             sensor_access_count=len(accessible_opportunities),
             consecutive_failures=_cons_failures,
+            ml_anomaly_score=ml_anomaly_score,
+            anomaly_agreement=anomaly_agreement,
+            anomaly_state=anomaly_state,
+            escalation_boost=escalation_boost,
+            tasking_tier=tasking_tier,
+            monitoring_action=monitoring_action,
+            desired_revisit_hours=desired_revisit_hours,
         ),
         priority=priority_bd,
         task_value=task_value_bd,

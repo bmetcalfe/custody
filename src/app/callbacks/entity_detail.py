@@ -33,6 +33,7 @@ from layout.entity_detail import (
     DETAIL_SUMMARY,
     PRED_ZONE_PROB, PRED_TIME_TO_ZONE, PRED_FUTURE_ANOMALY,
     PRED_CONFIDENCE, PRED_HORIZON,
+    ML_ANOMALY_SCORE, ANOMALY_AGREEMENT_BADGE, ANOMALY_STATE_BADGE, ANOMALY_DURATION,
     FUSION_SCORE, FUSION_UNCERTAINTY, FUSION_AGREEMENT,
     FUSION_SOURCE, FUSION_MISSING,
     DETAIL_HEADING,
@@ -130,6 +131,12 @@ def register(app: Dash) -> None:
         Output(PRED_FUTURE_ANOMALY, "children"),
         Output(PRED_CONFIDENCE, "children"),
         Output(PRED_HORIZON, "children"),
+        Output(ANOMALY_AGREEMENT_BADGE, "children"),
+        Output(ANOMALY_AGREEMENT_BADGE, "style"),
+        Output(ANOMALY_STATE_BADGE, "children"),
+        Output(ANOMALY_STATE_BADGE, "style"),
+        Output(ML_ANOMALY_SCORE, "children"),
+        Output(ANOMALY_DURATION, "children"),
         Output(FUSION_SCORE, "children"),
         Output(FUSION_UNCERTAINTY, "children"),
         Output(FUSION_AGREEMENT, "children"),
@@ -152,16 +159,26 @@ def register(app: Dash) -> None:
         Input(app_state.SELECTED_ENTITY, "data"),
     )
     def update_reasoning(scenario_key, timestep_idx, entity_id):
-        blank = ("Entity Detail",  # heading
-                 "Select an entity to see its reasoning chain.",
-                 *["—"] * 10,
-                 "—",   # action text
-                 {"fontSize": "1.0rem", "fontWeight": "700", "padding": "4px 14px",
-                  "borderRadius": "5px", "backgroundColor": "#555", "color": "#fff"},
-                 "—", "—",
-                 "—",   # why
-                 "",     # fallbacks
-                 "No task recommendations.")
+        _blank_badge = {"fontSize": "0.8rem", "fontWeight": "600",
+                        "padding": "2px 8px", "borderRadius": "3px"}
+        _blank_action = {"fontSize": "1.0rem", "fontWeight": "700", "padding": "4px 14px",
+                         "borderRadius": "5px", "backgroundColor": "#555", "color": "#fff"}
+        blank = (
+            "Entity Detail",                    # heading
+            "Select an entity to see its reasoning chain.",  # summary
+            "—", "—", "—", "—", "—",           # 5 prediction metrics
+            "—", _blank_badge,                  # agreement badge + style
+            "—", _blank_badge,                  # state badge + style
+            "—",                                # ML anomaly score
+            "—",                                # duration
+            "—", "—", "—",                      # fused, uncertainty, agreement
+            "—", "—",                           # source, missing
+            "—", _blank_action,                 # action text + style
+            "—", "—",                           # priority, confidence
+            "—",                                # why
+            "",                                 # fallbacks
+            "No task recommendations.",         # task queue
+        )
 
         if not scenario_key or timestep_idx is None or entity_id is None:
             return blank
@@ -290,10 +307,40 @@ def register(app: Dash) -> None:
         else:
             task_queue_el = "No task recommendations."
 
+        # Anomaly reasoning fields
+        _agr = current.get("anomaly_agreement", "normal")
+        _agr_colors = {
+            "confirmed": {"backgroundColor": "#4d1a1a", "color": "#f88"},
+            "emerging": {"backgroundColor": "#3d3520", "color": "#e8c547"},
+            "rule_triggered": {"backgroundColor": "#2d2d3d", "color": "#8af"},
+            "normal": {"backgroundColor": "#1e1e1e", "color": "#888"},
+        }
+        _agr_style = {**{"fontSize": "0.8rem", "fontWeight": "600",
+                         "padding": "2px 8px", "borderRadius": "3px"},
+                      **_agr_colors.get(_agr, _agr_colors["normal"])}
+        _state = current.get("anomaly_state", "normal")
+        _state_colors = {
+            "critical": {"backgroundColor": "#5a1010", "color": "#f66"},
+            "sustained": {"backgroundColor": "#4d1a1a", "color": "#f88"},
+            "confirmed": {"backgroundColor": "#3d2020", "color": "#fa8"},
+            "emerging": {"backgroundColor": "#3d3520", "color": "#e8c547"},
+            "recovering": {"backgroundColor": "#1f3d2d", "color": "#6c6"},
+            "normal": {"backgroundColor": "#1e1e1e", "color": "#888"},
+        }
+        _state_style = {**{"fontSize": "0.8rem", "fontWeight": "600",
+                           "padding": "2px 8px", "borderRadius": "3px"},
+                        **_state_colors.get(_state, _state_colors["normal"])}
+        _ml_dur = current.get("ml_anomaly_duration_hours", 0)
+        _dur_str = f"{_ml_dur}h" if _ml_dur > 0 else "—"
+
         return (
             entity_id,  # heading
             summary,
             pred_zp, pred_tte, pred_fa, pred_conf, pred_hz,
+            _agr.upper(), _agr_style,           # agreement badge
+            _state.upper(), _state_style,        # state badge
+            _fmt(current.get("ml_anomaly_score", 0.0)),  # ML score
+            _dur_str,                            # duration
             fs, fu, fag, f_src, f_miss,
             action_label, action_style,
             priority, confidence,

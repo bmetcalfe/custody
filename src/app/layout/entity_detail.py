@@ -20,6 +20,10 @@ PRED_FUTURE_ANOMALY = "pred-future-anomaly"
 PRED_CONFIDENCE = "pred-confidence"
 PRED_HORIZON = "pred-horizon"
 
+ML_ANOMALY_SCORE = "ml-anomaly-score"
+ANOMALY_AGREEMENT_BADGE = "anomaly-agreement-badge"
+ANOMALY_STATE_BADGE = "anomaly-state-badge"
+ANOMALY_DURATION = "anomaly-duration"
 FUSION_SCORE = "fusion-score"
 FUSION_UNCERTAINTY = "fusion-uncertainty"
 FUSION_AGREEMENT = "fusion-agreement"
@@ -116,6 +120,30 @@ def build_entity_detail_layout() -> html.Div:
                     _metric("Future Anomaly", PRED_FUTURE_ANOMALY),
                     _metric("Confidence", PRED_CONFIDENCE),
                     _metric("Horizon", PRED_HORIZON),
+                ],
+                className="g-3 mb-2",
+            ),
+
+            # ── Anomaly Reasoning ────────────────────────────────────────
+            _section_label("Anomaly Reasoning"),
+            dbc.Row(
+                [
+                    dbc.Col([
+                        html.P("Agreement", style={"fontSize": "0.62rem", "color": "#999", "margin": 0}),
+                        html.Span("—", id=ANOMALY_AGREEMENT_BADGE, style={
+                            "fontSize": "0.8rem", "fontWeight": "600",
+                            "padding": "2px 8px", "borderRadius": "3px",
+                        }),
+                    ], width="auto", style={"minWidth": "90px"}),
+                    dbc.Col([
+                        html.P("State", style={"fontSize": "0.62rem", "color": "#999", "margin": 0}),
+                        html.Span("—", id=ANOMALY_STATE_BADGE, style={
+                            "fontSize": "0.8rem", "fontWeight": "600",
+                            "padding": "2px 8px", "borderRadius": "3px",
+                        }),
+                    ], width="auto", style={"minWidth": "90px"}),
+                    _metric("ML Score", ML_ANOMALY_SCORE),
+                    _metric("Duration", ANOMALY_DURATION),
                 ],
                 className="g-3 mb-2",
             ),
