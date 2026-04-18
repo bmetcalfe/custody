@@ -16,3 +16,4 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0003 — Rename fusion.py to belief_assessment.py to free the fusion/ namespace](0003-rename-fusion-to-belief-assessment.md)
 - [0004 — Rename ObservationState to CollectionIntent; reserve Observation for raw detections](0004-rename-observationstate-to-collectionintent.md)
 - [0005 — Replace scalar-radius track model with EKF; retain uncertainty_km and add position_sigma_km as shim properties](0005-ekf-tracks-with-scalar-radius-shim.md)
+- [0006 — TrackState converted from @dataclass to a plain class](0006-trackstate-plain-class.md)
