@@ -1,0 +1,1536 @@
+diff --git a/README.md b/README.md
+index 1006c14..598feeb 100644
+--- a/README.md
++++ b/README.md
+@@ -130,8 +130,9 @@ Three abstract sensor types are resolved against real orbital pass windows using
+ 
+ | Abstract label | Satellites | Orbit | Passes on 2026-03-23 |
+ |---|---|---|---|
+-| `OPTICAL` | SAT-A, SAT-A2, SAT-A3 | 51.6° LEO ~400 km | 11:57z, 14:16z, 18:56z |
+-| `SAR` | SAT-B, SAT-B2, SAT-B3 | 97.8° SSO ~700 km | 12:22z, 14:00z, 14:49z, 16:29z, 18:08z |
++| `OPTICAL` | EO-MIO-1, EO-MIO-2 | 51.6° MIO ~400 km | 11:33z, 13:51z |
++| `OPTICAL` | EO-SSO-1, EO-SSO-2 | 97.8° SSO ~600 km | 10:00z, 18:00z |
++| `SAR` | SAR-1, SAR-2 | 97.8° SSO ~700 km | 12:21z, 13:59z (SAR-1) · 16:29z, 18:08z (SAR-2) |
+ | `AIS_REFRESH` | — | Immediate | Always (synthetic 30-min window) |
+ | `MONITOR` | — | Passive | Always (synthetic 2-hr window) |
+ 
+diff --git a/src/app/orbital_passes_panel.py b/src/app/orbital_passes_panel.py
+index 0ef35c2..9dd8722 100644
+--- a/src/app/orbital_passes_panel.py
++++ b/src/app/orbital_passes_panel.py
+@@ -7,8 +7,9 @@ of display-ready dicts that streamlit_app.py renders as a dataframe.
+ Public API
+ ----------
+ build_orbital_passes_rows : (lat, lon, timestamp) -> list[dict]
+-    Returns one row per orbital satellite (SAT-A, SAT-B) describing the
+-    next pass window from the given observer position and time.
++    Returns one row per orbital satellite (EO-MIO-1, EO-MIO-2, EO-SSO-1,
++    EO-SSO-2, SAR-1, SAR-2) describing the next pass window from the given
++    observer position and time.
+ """
+ from datetime import datetime
+ 
+@@ -17,7 +18,7 @@ from custody.sensors import next_pass_window
+ 
+ # Orbital satellites exposed in the panel — schedule-based sensors (A1, B1, C1)
+ # are intentionally excluded because they have no orbital geometry.
+-_ORBITAL_SATELLITES = ["SAT-A", "SAT-B"]
++_ORBITAL_SATELLITES = ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2", "SAR-1", "SAR-2"]
+ 
+ # Sort key constants (lower = more actionable)
+ _SORT_IN_VIEW = 0
+@@ -47,7 +48,7 @@ def build_orbital_passes_rows(
+     Returns:
+         List of dicts — one entry per satellite in _ORBITAL_SATELLITES — with keys:
+ 
+-            Satellite           – satellite identifier ("SAT-A" or "SAT-B")
++            Satellite           – satellite identifier (e.g. "EO-MIO-1", "SAR-1")
+             Start               – datetime of pass start, or None if no pass found
+             End                 – datetime of pass end, or None if no pass found
+             Duration (min)      – pass duration in minutes (float), or None
+diff --git a/src/custody/sensors.py b/src/custody/sensors.py
+index 490e979..e8560d5 100644
+--- a/src/custody/sensors.py
++++ b/src/custody/sensors.py
+@@ -15,22 +15,29 @@ Two kinds of sensor are supported:
+     is given, orbital sensors are omitted entirely so that the returned
+     list matches the pre-Step-20 result exactly.
+ 
+-Prototype satellite catalog
+----------------------------
+-Two synthetic prototype orbital assets are bundled; no live TLE fetch is
+-performed.  Their orbital parameters were chosen to give meaningfully
+-different coverage patterns:
+-
+-  SAT-A  ISS-like LEO orbit (inclination 51.6°, ~400 km altitude).
+-         Sensor type: high_resolution.  Covers mid-latitude ground tracks.
+-         TLE epoch: 2026-03-23 (day 82), RAAN 220°.
+-
+-  SAT-B  Sun-synchronous LEO orbit (inclination 97.8°, ~700 km altitude).
+-         Sensor type: all_weather (SAR-like — complements SAT-A's optical).
+-         TLE epoch: 2026-03-23 (day 82), RAAN 40° (~180° offset from SAT-A),
+-         ensuring the two satellites occupy different parts of the sky and
+-         produce non-overlapping visibility windows over the default
+-         simulation date.
++Satellite catalog
++-----------------
++Six synthetic orbital assets are bundled; no live TLE fetch is performed.
++Their orbital parameters were chosen to give meaningfully different coverage
++patterns over the default simulation date (2026-03-23):
++
++  EO-MIO-1  Medium-inclination LEO (51.6°, ~400 km).  High-resolution optical.
++             RAAN 0°.  Passes equatorial observers ~11:33z.
++
++  EO-MIO-2  Medium-inclination LEO (51.6°, ~400 km).  High-resolution optical.
++             RAAN 220°.  Passes equatorial observers ~13:51z.
++
++  EO-SSO-1  Sun-synchronous LEO (97.8°, ~600 km).  High-resolution optical.
++             RAAN 320°.  Passes equatorial observers ~10:00z.
++
++  EO-SSO-2  Sun-synchronous LEO (97.8°, ~600 km).  High-resolution optical.
++             RAAN 100°.  Passes equatorial observers ~18:00z.
++
++  SAR-1     Sun-synchronous LEO (97.8°, ~700 km).  All-weather (SAR).
++             RAAN 200°.  Two passes: ~12:21z and ~13:59z.
++
++  SAR-2     Sun-synchronous LEO (97.8°, ~700 km).  All-weather (SAR).
++             RAAN 80°.  Two passes: ~16:29z and ~18:08z.
+ """
+ from dataclasses import dataclass, field
+ from datetime import datetime, timedelta
+@@ -43,74 +50,72 @@ from custody.orbit import is_in_view, load_tle
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# Prototype satellite TLE catalog
++# Satellite TLE catalog
+ # ---------------------------------------------------------------------------
+ 
+-# SAT-A: ISS-like LEO asset (epoch 2026-03-23, NORAD 25544).
+-# Prototype high-resolution optical LEO asset; inclination 51.6°, ~400 km.
+-# RAAN 220° places visible passes over equatorial observers at ~14:16-14:21 UTC
+-# on the default simulation date (2026-03-23).
+-_TLE_SAT_A = (
+-    "SAT-A",
+-    "1 25544U 98067A   26082.50000000  .00001764  00000-0  38792-4 0  0007",
+-    "2 25544  51.6000 220.0000 0001000  90.0000 270.0000 15.50103472000016",
++# EO-MIO-1: Medium-inclination optical asset (NORAD 99910).
++# High-resolution optical LEO; inclination 51.6°, ~400 km.  RAAN 0°.
++# Passes equatorial observers at ~11:33z on 2026-03-23.
++_TLE_EO_MIO_1 = (
++    "EO-MIO-1",
++    "1 99910U 98067B   26082.50000000  .00000034  00000-0  25000-4 0  0002",
++    "2 99910 51.6000   0.0000 0001000  90.0000   0.0000 15.50103472000000",
+ )
+ 
+-# SAT-A2: Second optical LEO asset (NORAD 25545, RAAN 0°).
+-# Same orbital plane family as SAT-A but RAAN offset to produce passes over
+-# equatorial observers at ~11:57-12:04 UTC on 2026-03-23, filling the morning
+-# gap in the simulation window.
+-_TLE_SAT_A2 = (
+-    "SAT-A2",
+-    "1 25545U 98067B   26082.50000000  .00001764  00000-0  38792-4 0  0008",
+-    "2 25545  51.6000   0.0000 0001000  90.0000 270.0000 15.50103472000013",
++# EO-MIO-2: Second medium-inclination optical asset (NORAD 99911).
++# High-resolution optical LEO; inclination 51.6°, ~400 km.  RAAN 220°.
++# Passes equatorial observers at ~13:51z on 2026-03-23.
++_TLE_EO_MIO_2 = (
++    "EO-MIO-2",
++    "1 99911U 98067C   26082.50000000  .00000034  00000-0  25000-4 0  0003",
++    "2 99911 51.6000 220.0000 0001000  90.0000   0.0000 15.50103472000005",
+ )
+ 
+-# SAT-A3: Third optical LEO asset (NORAD 25546, RAAN 280°).
+-# RAAN 280° produces passes over equatorial observers at ~18:56-19:02 UTC
+-# on 2026-03-23, covering the evening portion of the simulation window.
+-_TLE_SAT_A3 = (
+-    "SAT-A3",
+-    "1 25546U 98067C   26082.50000000  .00001764  00000-0  38792-4 0  0009",
+-    "2 25546  51.6000 280.0000 0001000  90.0000 270.0000 15.50103472000014",
++# EO-SSO-1: First sun-synchronous optical asset (NORAD 99920).
++# High-resolution optical LEO; inclination 97.8°, ~600 km.  RAAN 320°.
++# Passes equatorial observers at ~10:00z on 2026-03-23.
++_TLE_EO_SSO_1 = (
++    "EO-SSO-1",
++    "1 99920U 26010A   26082.50000000  .00000034  00000-0  25000-4 0  0002",
++    "2 99920 97.8000 320.0000 0001000  90.0000   0.0000 14.88000000000001",
+ )
+ 
+-# SAT-B: Synthetic sun-synchronous orbit (epoch 2026-03-23, NORAD 99901).
+-# Prototype all-weather (SAR-like) asset; inclination 97.8°, ~700 km.
+-# RAAN 40° produces passes at ~14:49-14:57 UTC on 2026-03-23.
+-_TLE_SAT_B = (
+-    "SAT-B",
+-    "1 99901U 26001A   26082.50000000  .00000034  00000-0  25000-4 0  0001",
+-    "2 99901  97.8000  40.0000 0001000  90.0000   0.0000 14.57650000000017",
++# EO-SSO-2: Second sun-synchronous optical asset (NORAD 99921).
++# High-resolution optical LEO; inclination 97.8°, ~600 km.  RAAN 100°.
++# Passes equatorial observers at ~18:00z on 2026-03-23.
++_TLE_EO_SSO_2 = (
++    "EO-SSO-2",
++    "1 99921U 26010B   26082.50000000  .00000034  00000-0  25000-4 0  0003",
++    "2 99921 97.8000 100.0000 0001000  90.0000   0.0000 14.88000000000008",
+ )
+ 
+-# SAT-B2: Second SAR asset (NORAD 99902, RAAN 200°).
+-# Produces two passes over equatorial observers on 2026-03-23: ~12:22-12:29 UTC
+-# and ~14:00-14:07 UTC, covering the late-morning portion of the window.
+-_TLE_SAT_B2 = (
+-    "SAT-B2",
+-    "1 99902U 26002A   26082.50000000  .00000034  00000-0  25000-4 0  0003",
+-    "2 99902  97.8000 200.0000 0001000  90.0000   0.0000 14.57650000000016",
++# SAR-1: First SAR asset (NORAD 99930).
++# All-weather SSO LEO; inclination 97.8°, ~700 km.  RAAN 200°.
++# Two passes over equatorial observers on 2026-03-23: ~12:21z and ~13:59z.
++_TLE_SAR_1 = (
++    "SAR-1",
++    "1 99930U 26002A   26082.50000000  .00000034  00000-0  25000-4 0  0004",
++    "2 99930 97.8000 200.0000 0001000  90.0000   0.0000 14.57650000000006",
+ )
+ 
+-# SAT-B3: Third SAR asset (NORAD 99903, RAAN 80°).
+-# Produces two passes over equatorial observers on 2026-03-23: ~16:29-16:37 UTC
+-# and ~18:08-18:13 UTC, covering the afternoon/evening portion of the window.
+-_TLE_SAT_B3 = (
+-    "SAT-B3",
+-    "1 99903U 26003A   26082.50000000  .00000034  00000-0  25000-4 0  0005",
+-    "2 99903  97.8000  80.0000 0001000  90.0000   0.0000 14.57650000000013",
++# SAR-2: Second SAR asset (NORAD 99931).
++# All-weather SSO LEO; inclination 97.8°, ~700 km.  RAAN 80°.
++# Two passes over equatorial observers on 2026-03-23: ~16:29z and ~18:08z.
++_TLE_SAR_2 = (
++    "SAR-2",
++    "1 99931U 26003A   26082.50000000  .00000034  00000-0  25000-4 0  0006",
++    "2 99931 97.8000  80.0000 0001000  90.0000   0.0000 14.57650000000003",
+ )
+ 
+ # Parse TLEs once at import time.  Satrec objects are immutable and safe to
+ # share across threads.
+ _SATREC_CACHE: dict[str, Satrec] = {
+-    "SAT-A":  load_tle(*_TLE_SAT_A),
+-    "SAT-A2": load_tle(*_TLE_SAT_A2),
+-    "SAT-A3": load_tle(*_TLE_SAT_A3),
+-    "SAT-B":  load_tle(*_TLE_SAT_B),
+-    "SAT-B2": load_tle(*_TLE_SAT_B2),
+-    "SAT-B3": load_tle(*_TLE_SAT_B3),
++    "EO-MIO-1": load_tle(*_TLE_EO_MIO_1),
++    "EO-MIO-2": load_tle(*_TLE_EO_MIO_2),
++    "EO-SSO-1": load_tle(*_TLE_EO_SSO_1),
++    "EO-SSO-2": load_tle(*_TLE_EO_SSO_2),
++    "SAR-1":    load_tle(*_TLE_SAR_1),
++    "SAR-2":    load_tle(*_TLE_SAR_2),
+ }
+ 
+ 
+@@ -276,36 +281,95 @@ def get_sensor_opportunities(
+ 
+     if observer_lat is not None and observer_lon is not None:
+ 
+-        # SAT-A: prototype LEO high-resolution optical asset (~400 km, 51.6° inc.)
+-        if _satellite_in_view("SAT-A", observer_lat, observer_lon, current_time):
++        # EO-MIO-1: medium-inclination optical asset (~400 km, 51.6° inc., RAAN 0°).
++        if _satellite_in_view("EO-MIO-1", observer_lat, observer_lon, current_time):
+             opportunities.append(
+                 SensorOpportunity(
+-                    sensor_id="SAT-A",
++                    sensor_id="EO-MIO-1",
+                     sensor_type="high_resolution",
+                     success_prob=0.70,
+                     resolution="high",
+                     cost=2.5,
+                     available_from=current_time,
+                     available_to=current_time,
+-                    satellite_id="SAT-A",
++                    satellite_id="EO-MIO-1",
++                )
++            )
++
++        # EO-MIO-2: medium-inclination optical asset (~400 km, 51.6° inc., RAAN 220°).
++        if _satellite_in_view("EO-MIO-2", observer_lat, observer_lon, current_time):
++            opportunities.append(
++                SensorOpportunity(
++                    sensor_id="EO-MIO-2",
++                    sensor_type="high_resolution",
++                    success_prob=0.70,
++                    resolution="high",
++                    cost=2.5,
++                    available_from=current_time,
++                    available_to=current_time,
++                    satellite_id="EO-MIO-2",
++                )
++            )
++
++        # EO-SSO-1: sun-synchronous optical asset (~600 km, 97.8° inc., RAAN 320°).
++        if _satellite_in_view("EO-SSO-1", observer_lat, observer_lon, current_time):
++            opportunities.append(
++                SensorOpportunity(
++                    sensor_id="EO-SSO-1",
++                    sensor_type="high_resolution",
++                    success_prob=0.68,
++                    resolution="high",
++                    cost=2.8,
++                    available_from=current_time,
++                    available_to=current_time,
++                    satellite_id="EO-SSO-1",
++                )
++            )
++
++        # EO-SSO-2: sun-synchronous optical asset (~600 km, 97.8° inc., RAAN 100°).
++        if _satellite_in_view("EO-SSO-2", observer_lat, observer_lon, current_time):
++            opportunities.append(
++                SensorOpportunity(
++                    sensor_id="EO-SSO-2",
++                    sensor_type="high_resolution",
++                    success_prob=0.68,
++                    resolution="high",
++                    cost=2.8,
++                    available_from=current_time,
++                    available_to=current_time,
++                    satellite_id="EO-SSO-2",
++                )
++            )
++
++        # SAR-1: all-weather SSO asset (~700 km, 97.8° inc., RAAN 200°).
++        # Complements EO assets: usable regardless of cloud cover.
++        if _satellite_in_view("SAR-1", observer_lat, observer_lon, current_time):
++            opportunities.append(
++                SensorOpportunity(
++                    sensor_id="SAR-1",
++                    sensor_type="all_weather",
++                    success_prob=0.80,
++                    resolution="medium",
++                    cost=2.0,
++                    available_from=current_time,
++                    available_to=current_time,
++                    satellite_id="SAR-1",
+                 )
+             )
+ 
+-        # SAT-B: prototype sun-synchronous all-weather (SAR-like) asset
+-        # (~700 km, 97.8° inc., RAAN ~138° offset from SAT-A).
+-        # Complements SAT-A: visible from different ground tracks at the
+-        # same time, and usable regardless of cloud cover.
+-        if _satellite_in_view("SAT-B", observer_lat, observer_lon, current_time):
++        # SAR-2: all-weather SSO asset (~700 km, 97.8° inc., RAAN 80°).
++        # Provides afternoon/evening coverage complementing SAR-1.
++        if _satellite_in_view("SAR-2", observer_lat, observer_lon, current_time):
+             opportunities.append(
+                 SensorOpportunity(
+-                    sensor_id="SAT-B",
++                    sensor_id="SAR-2",
+                     sensor_type="all_weather",
+                     success_prob=0.80,
+                     resolution="medium",
+                     cost=2.0,
+                     available_from=current_time,
+                     available_to=current_time,
+-                    satellite_id="SAT-B",
++                    satellite_id="SAR-2",
+                 )
+             )
+ 
+@@ -331,7 +395,7 @@ def next_pass_window(
+     to the first step at which the satellite drops below the elevation mask.
+ 
+     Args:
+-        satellite_id:     Catalog identifier ("SAT-A" or "SAT-B").
++        satellite_id:     Catalog identifier (e.g. "EO-MIO-1", "SAR-1").
+                           Returns None for unknown identifiers.
+         observer_lat:     Observer geodetic latitude in degrees (+N).
+         observer_lon:     Observer geodetic longitude in degrees (+E).
+@@ -397,8 +461,9 @@ def nearest_orbital_pass(
+ ) -> Optional[PassWindow]:
+     """Return the soonest upcoming pass across all orbital satellites, or None.
+ 
+-    Inspects only orbital assets registered in _SATREC_CACHE (SAT-A and
+-    SAT-B).  Schedule-based sensors (A1, B1, C1) are not considered — they
++    Inspects only orbital assets registered in _SATREC_CACHE (EO-MIO-1,
++    EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).  Schedule-based sensors
++    (A1, B1, C1) are not considered — they
+     have no orbital geometry and are always available on a fixed timetable.
+ 
+     Args:
+diff --git a/src/custody/taskrecommendation.py b/src/custody/taskrecommendation.py
+index 7b24974..cd83bc3 100644
+--- a/src/custody/taskrecommendation.py
++++ b/src/custody/taskrecommendation.py
+@@ -26,8 +26,9 @@ Layer boundary
+ 
+ Sensor vocabulary
+ -----------------
+-  OPTICAL    → SAT-A (high-resolution, ISS-like LEO, 51.6°)
+-  SAR        → SAT-B (all-weather, sun-synchronous, 97.8°)
++  OPTICAL    → EO-MIO-1, EO-MIO-2 (high-resolution, MIO 51.6°, ~400 km)
++               EO-SSO-1, EO-SSO-2 (high-resolution, SSO 97.8°, ~600 km)
++  SAR        → SAR-1, SAR-2 (all-weather, SSO 97.8°, ~700 km)
+   AIS_REFRESH → immediate AIS reacquisition window
+   MONITOR    → passive monitoring (always available)
+ 
+@@ -65,8 +66,8 @@ from custody.sensors import PassWindow, next_pass_window
+ # Abstract sensor label → ordered list of satellite ids for orbital window lookup.
+ # All satellites of a type are searched; the nearest upcoming pass is selected.
+ _SAT_FOR_SENSOR: dict[str, list[str]] = {
+-    "OPTICAL": ["SAT-A", "SAT-A2", "SAT-A3"],
+-    "SAR":     ["SAT-B", "SAT-B2", "SAT-B3"],
++    "OPTICAL": ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"],
++    "SAR":     ["SAR-1", "SAR-2"],
+ }
+ 
+ # Candidate sensor ordering per decision action
+diff --git a/tests/test_ais_orbital_access.py b/tests/test_ais_orbital_access.py
+index 86083a7..a822c13 100644
+--- a/tests/test_ais_orbital_access.py
++++ b/tests/test_ais_orbital_access.py
+@@ -3,7 +3,7 @@ Tests for opt-in orbital sensor access during AIS replay.
+ 
+ observer_position_from_obs=False (default):
+   - current behavior preserved exactly
+-  - orbital sensors (SAT-A / SAT-B) never appear
++  - orbital sensors (EO-MIO-1 / SAR-1 etc.) never appear
+   - lookahead fields remain 0.0 / None
+ 
+ observer_position_from_obs=True:
+@@ -38,7 +38,7 @@ from custody.sensors import PassWindow, SensorOpportunity
+ # Shared helpers
+ # ---------------------------------------------------------------------------
+ 
+-# 14:00 on 2026-03-23 — near the known SAT-A window (~14:15 UTC at lat/lon ~0.5)
++# 14:00 on 2026-03-23 — near a known orbital window (SAR-1 in view at ~14:00 UTC at lat/lon ~0.5)
+ _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
+ # 10:00 — outside any orbital window
+ _T_FAR = datetime(2026, 3, 23, 10, 0, tzinfo=UTC)
+@@ -68,20 +68,20 @@ def _two_obs(t0=_T_FAR, lat=_LAT, lon=_LON, vid="V001"):
+     ]
+ 
+ 
+-# A fake SAT-A opportunity that get_sensor_opportunities would return when in view.
++# A fake EO-MIO-1 opportunity that get_sensor_opportunities would return when in view.
+ _FAKE_SAT_A_OPP = SensorOpportunity(
+-    sensor_id="SAT-A",
++    sensor_id="EO-MIO-1",
+     sensor_type="high_resolution",
+     success_prob=0.70,
+     resolution="high",
+     cost=2.5,
+     available_from=_T_NEAR,
+     available_to=_T_NEAR,
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+ )
+ 
+ _FAKE_NEAR_PASS = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=_T_NEAR + timedelta(minutes=15),
+     end_time=_T_NEAR + timedelta(minutes=22),
+     duration_seconds=420.0,
+@@ -133,12 +133,12 @@ class TestDefaultModeNoOrbitalSensors:
+     def test_sat_a_never_assigned_in_default_mode(self):
+         obs = _two_obs(t0=_T_NEAR)
+         records = ingest_ais_track(obs, observer_position_from_obs=False)
+-        assert "SAT-A" not in self._all_sensor_ids(records)
++        assert "EO-MIO-1" not in self._all_sensor_ids(records)
+ 
+     def test_sat_b_never_assigned_in_default_mode(self):
+         obs = _two_obs(t0=_T_NEAR)
+         records = ingest_ais_track(obs, observer_position_from_obs=False)
+-        assert "SAT-B" not in self._all_sensor_ids(records)
++        assert "SAR-1" not in self._all_sensor_ids(records)
+ 
+     def test_default_mode_uses_no_observer_position(self):
+         """In default mode, get_sensor_opportunities is called without lat/lon."""
+@@ -161,7 +161,7 @@ class TestDefaultModeNoOrbitalSensors:
+ 
+ class TestOptInOrbitalAccess:
+     def test_sat_a_can_appear_in_opt_in_mode(self):
+-        """When SAT-A is in view and opt-in is enabled, it can be assigned."""
++        """When EO-MIO-1 is in view and opt-in is enabled, it can be assigned."""
+         obs = _two_obs(t0=_T_NEAR)
+ 
+         def fake_opps(t, lat=None, lon=None):
+@@ -173,11 +173,11 @@ class TestOptInOrbitalAccess:
+             records = ingest_ais_track(obs, observer_position_from_obs=True)
+ 
+         sensor_ids = {r["sensor_id"] for r in records if r["sensor_id"] is not None}
+-        # SAT-A must appear in the opportunity pool; whether it's assigned depends
++        # EO-MIO-1 must appear in the opportunity pool; whether it's assigned depends
+         # on planner thresholds — check the trace instead of the action directly.
+         traces = [r["decision_trace"] for r in records if isinstance(r.get("decision_trace"), DecisionTrace)]
+         accessible = {sid for t in traces for sid in t.arbitration.accessible_sensor_ids}
+-        assert "SAT-A" in accessible
++        assert "EO-MIO-1" in accessible
+ 
+     def test_opt_in_passes_observer_position_to_get_sensor_opportunities(self):
+         """With opt-in, lat/lon are forwarded (not None) for non-first records."""
+@@ -229,8 +229,8 @@ class TestOptInNoFalsePositives:
+             records = ingest_ais_track(obs, observer_position_from_obs=True)
+ 
+         sensor_ids = {r["sensor_id"] for r in records if r["sensor_id"] is not None}
+-        assert "SAT-A" not in sensor_ids
+-        assert "SAT-B" not in sensor_ids
++        assert "EO-MIO-1" not in sensor_ids
++        assert "SAR-1" not in sensor_ids
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/tests/test_decision_trace.py b/tests/test_decision_trace.py
+index c09696b..0374f2c 100644
+--- a/tests/test_decision_trace.py
++++ b/tests/test_decision_trace.py
+@@ -210,7 +210,7 @@ class TestTaskValueBreakdown:
+ 
+ class TestArbitrationBreakdown:
+     def test_final_pool_is_accessible_minus_claimed(self):
+-        accessible = ("A1", "B1", "SAT-A")
++        accessible = ("A1", "B1", "EO-MIO-1")
+         claimed = ("A1",)
+         final = tuple(s for s in accessible if s not in claimed)
+         t = _make_trace(accessible=accessible, claimed=claimed, final_pool=final)
+diff --git a/tests/test_hold_reason.py b/tests/test_hold_reason.py
+index 6f73a6d..2ed6825 100644
+--- a/tests/test_hold_reason.py
++++ b/tests/test_hold_reason.py
+@@ -36,7 +36,7 @@ import custody.config as config
+ 
+ T0 = datetime(2026, 3, 23, 10, 0, tzinfo=UTC)
+ 
+-# 14:00 — SAT-A pass ~15 min away → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS
++# 14:00 — SAR-1 already in view (tts=0) → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS
+ _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
+ _OBS_LAT, _OBS_LON = 0.5, 0.5
+ 
+@@ -55,7 +55,7 @@ _ONE_SENSOR = [
+ ]
+ 
+ _FAKE_NEAR_PASS = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=_T_NEAR + timedelta(minutes=15),
+     end_time=_T_NEAR + timedelta(minutes=22),
+     duration_seconds=420.0,
+@@ -116,7 +116,7 @@ class TestLookaheadHold:
+         assert d.hold_reason == "lookahead"
+ 
+     def test_real_orbital_timing_lookahead_hold_reason(self):
+-        """Integration: at 14:00, SAT-A pass ~15 min away → hold_reason='lookahead'."""
++        """Integration: at 14:00, SAR-1 is already in view (tts=0) → hold_reason='lookahead'."""
+         d = plan_collection(
+             _fresh_track(), score=1.0, confidence=0.4,
+             breakdown=_NOMINAL_BD, current_time=_T_NEAR,
+diff --git a/tests/test_lookahead.py b/tests/test_lookahead.py
+index be82bee..37ca2e6 100644
+--- a/tests/test_lookahead.py
++++ b/tests/test_lookahead.py
+@@ -39,15 +39,16 @@ import custody.config as config
+ # ---------------------------------------------------------------------------
+ 
+ # (0.5, 0.5) is the observer from test_orbit_forecast:
+-#   SAT-A visible ~14:15–14:22 UTC on 2026-03-23  (tts from 13:00 ≈ 75 min)
+-#   SAT-A tts from 14:00 ≈ 15 min  → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS=1800s
++#   EO-MIO-2 visible ~13:52–13:57 UTC on 2026-03-23  (tts from 13:00 ≈ 52 min)
++#   SAR-1    visible ~13:59–14:06 UTC on 2026-03-23  (tts from 13:00 ≈ 59.5 min)
++#   SAR-1 tts from 14:00 = 0 (already in view)  → within HOLD_LOOKAHEAD_THRESHOLD_SECONDS=1800s
+ _OBS_LAT = 0.5
+ _OBS_LON = 0.5
+ 
+-# 13:00 — both passes are > 30 min away (SAT-A ~75 min, SAT-B ~115 min)
++# 13:00 — all passes are > 30 min away (EO-MIO-2 ~52 min, SAR-1 ~59.5 min)
+ _T_FAR = datetime(2026, 3, 23, 13, 0, tzinfo=UTC)
+ 
+-# 14:00 — SAT-A pass is ~15 min away → within 30-min threshold
++# 14:00 — SAR-1 is already in view (tts=0) → within 30-min threshold
+ _T_NEAR = datetime(2026, 3, 23, 14, 0, tzinfo=UTC)
+ 
+ _NOMINAL_BD = {
+@@ -70,7 +71,7 @@ _ONE_SENSOR = [
+ 
+ # A fake near pass (15 min away) for mock-based tests
+ _FAKE_NEAR_PASS = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=_T_NEAR + timedelta(minutes=15),
+     end_time=_T_NEAR + timedelta(minutes=22),
+     duration_seconds=420.0,
+@@ -79,7 +80,7 @@ _FAKE_NEAR_PASS = PassWindow(
+ 
+ # A fake far pass (45 min away) for mock-based tests
+ _FAKE_FAR_PASS = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=_T_FAR + timedelta(minutes=45),
+     end_time=_T_FAR + timedelta(minutes=52),
+     duration_seconds=420.0,
+@@ -164,7 +165,7 @@ class TestNoPassWithinThreshold:
+         assert decision.action == "NO_SENSOR"
+ 
+     def test_real_orbital_timing_far_is_no_sensor(self):
+-        """Integration: at 13:00, both orbital passes are >30 min away → NO_SENSOR."""
++        """Integration: at 13:00, all orbital passes are >30 min away → NO_SENSOR."""
+         decision = plan_collection(
+             _fresh_track(), score=1.0, confidence=0.4,
+             breakdown=_NOMINAL_BD, current_time=_T_FAR,
+@@ -204,7 +205,7 @@ class TestHoldBiasApplies:
+         assert "orbital" in decision.action_reason.lower()
+ 
+     def test_real_orbital_timing_near_is_hold(self):
+-        """Integration: at 14:00, SAT-A pass is ~15 min away → HOLD."""
++        """Integration: at 14:00, SAR-1 is already in view (tts=0) → HOLD."""
+         decision = plan_collection(
+             _fresh_track(), score=1.0, confidence=0.4,
+             breakdown=_NOMINAL_BD, current_time=_T_NEAR,
+@@ -234,7 +235,7 @@ class TestHoldBiasDoesNotApply:
+     def test_no_sensor_at_threshold_boundary(self):
+         """A pass just beyond the threshold (threshold + 1s) → NO_SENSOR."""
+         just_outside = PassWindow(
+-            satellite_id="SAT-A",
++            satellite_id="EO-MIO-1",
+             start_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 60),
+             end_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 480),
+             duration_seconds=420.0,
+@@ -253,7 +254,7 @@ class TestHoldBiasDoesNotApply:
+     def test_hold_fires_at_threshold_boundary(self):
+         """A pass exactly at the threshold → HOLD (condition is <=)."""
+         at_threshold = PassWindow(
+-            satellite_id="SAT-A",
++            satellite_id="EO-MIO-1",
+             start_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS),
+             end_time=_T_FAR + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 420),
+             duration_seconds=420.0,
+@@ -278,41 +279,41 @@ class TestNearestPassSelection:
+     def test_nearest_orbital_pass_returns_soonest(self):
+         """nearest_orbital_pass returns the satellite with the smallest tts."""
+         near = PassWindow(
+-            satellite_id="SAT-A",
++            satellite_id="EO-MIO-1",
+             start_time=_T_FAR + timedelta(minutes=10),
+             end_time=_T_FAR + timedelta(minutes=17),
+             duration_seconds=420.0,
+             time_to_start_seconds=600.0,
+         )
+         far = PassWindow(
+-            satellite_id="SAT-B",
++            satellite_id="SAR-1",
+             start_time=_T_FAR + timedelta(minutes=25),
+             end_time=_T_FAR + timedelta(minutes=32),
+             duration_seconds=420.0,
+             time_to_start_seconds=1500.0,
+         )
+         # Both within threshold — nearest should be returned.
+-        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
++        # side_effect covers all 6 catalog entries (EO-MIO-1, EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).
+         with patch("custody.sensors.next_pass_window", side_effect=[near, None, None, far, None, None]):
+             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
+         assert result is not None
+-        assert result.satellite_id == "SAT-A"
++        assert result.satellite_id == "EO-MIO-1"
+         assert result.time_to_start_seconds == 600.0
+ 
+     def test_nearest_orbital_pass_ignores_none(self):
+         """If one satellite has no upcoming pass, the other's window is used."""
+         far = PassWindow(
+-            satellite_id="SAT-B",
++            satellite_id="SAR-1",
+             start_time=_T_FAR + timedelta(minutes=20),
+             end_time=_T_FAR + timedelta(minutes=27),
+             duration_seconds=420.0,
+             time_to_start_seconds=1200.0,
+         )
+-        # side_effect covers all 6 catalog entries (SAT-A, SAT-A2, SAT-A3, SAT-B, SAT-B2, SAT-B3).
++        # side_effect covers all 6 catalog entries (EO-MIO-1, EO-MIO-2, EO-SSO-1, EO-SSO-2, SAR-1, SAR-2).
+         with patch("custody.sensors.next_pass_window", side_effect=[None, None, None, far, None, None]):
+             result = nearest_orbital_pass(_OBS_LAT, _OBS_LON, _T_FAR)
+         assert result is not None
+-        assert result.satellite_id == "SAT-B"
++        assert result.satellite_id == "SAR-1"
+ 
+     def test_nearest_orbital_pass_returns_none_when_all_none(self):
+         """nearest_orbital_pass returns None when no satellite has an upcoming pass."""
+diff --git a/tests/test_orbit_forecast.py b/tests/test_orbit_forecast.py
+index 7245ec7..40defba 100644
+--- a/tests/test_orbit_forecast.py
++++ b/tests/test_orbit_forecast.py
+@@ -8,7 +8,7 @@ Covers:
+   - start_time < end_time for every returned window
+   - duration_seconds == (end_time - start_time).total_seconds()
+   - time_to_start_seconds == (start_time - from_time).total_seconds()
+-  - SAT-A and SAT-B return different windows from the same observer/time
++  - EO-MIO-2 and SAR-1 return different windows from the same observer/time
+   - Unknown satellite_id returns None
+   - Observer-location sensitivity: same satellite, different positions → different windows
+   - PassWindow.satellite_id matches the requested satellite_id
+@@ -23,8 +23,8 @@ from custody.sensors import PassWindow, next_pass_window
+ # Observer and time constants
+ #
+ # The 2026-epoch TLEs were tuned so that from observer (0.5, 0.5):
+-#   SAT-A: visible ~14:15–14:22 UTC on 2026-03-23  (step-quantised to 30s)
+-#   SAT-B: visible ~14:49–14:57 UTC on 2026-03-23
++#   EO-MIO-2: visible ~13:52–13:57 UTC on 2026-03-23  (step-quantised to 30s)
++#   SAR-1:    visible ~13:59–14:06 UTC on 2026-03-23
+ #
+ # All tests that check exact timestamps allow ±60 seconds of tolerance
+ # (two scan steps) to stay robust against minor TLE-propagation differences.
+@@ -33,19 +33,19 @@ from custody.sensors import PassWindow, next_pass_window
+ _OBS_LAT = 0.5
+ _OBS_LON = 0.5
+ _T13 = datetime(2026, 3, 23, 13, 0, tzinfo=UTC)  # search start, before both passes
+-_T_IN_VIEW = datetime(2026, 3, 23, 14, 52, tzinfo=UTC)  # mid-pass for SAT-B
++_T_IN_VIEW = datetime(2026, 3, 23, 14, 3, tzinfo=UTC)  # mid-pass for SAR-1
+ 
+ _TOL = timedelta(seconds=60)  # ±1 step tolerance for timestamp assertions
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# Pass found — SAT-A
++# Pass found — EO-MIO-2 and SAR-1
+ # ---------------------------------------------------------------------------
+ 
+ class TestPassFound:
+     def setup_method(self):
+-        self.w_a = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+-        self.w_b = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
++        self.w_a = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
++        self.w_b = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
+ 
+     def test_sat_a_returns_pass_window(self):
+         assert self.w_a is not None
+@@ -56,8 +56,8 @@ class TestPassFound:
+         assert isinstance(self.w_b, PassWindow)
+ 
+     def test_satellite_id_matches_request(self):
+-        assert self.w_a.satellite_id == "SAT-A"
+-        assert self.w_b.satellite_id == "SAT-B"
++        assert self.w_a.satellite_id == "EO-MIO-2"
++        assert self.w_b.satellite_id == "SAR-1"
+ 
+     def test_start_before_end(self):
+         assert self.w_a.start_time < self.w_a.end_time
+@@ -75,16 +75,16 @@ class TestPassFound:
+         expected_b = (self.w_b.start_time - _T13).total_seconds()
+         assert self.w_b.time_to_start_seconds == pytest.approx(expected_b)
+ 
+-    def test_sat_a_starts_around_1415_utc(self):
+-        expected = datetime(2026, 3, 23, 14, 15, tzinfo=UTC)
++    def test_sat_a_starts_around_1352_utc(self):
++        expected = datetime(2026, 3, 23, 13, 52, tzinfo=UTC)
+         assert abs(self.w_a.start_time - expected) <= _TOL, (
+-            f"SAT-A start {self.w_a.start_time} not within {_TOL} of {expected}"
++            f"EO-MIO-2 start {self.w_a.start_time} not within {_TOL} of {expected}"
+         )
+ 
+-    def test_sat_b_starts_around_1448_utc(self):
+-        expected = datetime(2026, 3, 23, 14, 48, tzinfo=UTC)
++    def test_sat_b_starts_around_1400_utc(self):
++        expected = datetime(2026, 3, 23, 13, 59, tzinfo=UTC)
+         assert abs(self.w_b.start_time - expected) <= _TOL, (
+-            f"SAT-B start {self.w_b.start_time} not within {_TOL} of {expected}"
++            f"SAR-1 start {self.w_b.start_time} not within {_TOL} of {expected}"
+         )
+ 
+     def test_duration_is_positive(self):
+@@ -107,18 +107,18 @@ class TestPassFound:
+ 
+ class TestNoPass:
+     def test_short_horizon_returns_none_for_sat_a(self):
+-        # SAT-A pass is ~75 min away; a 60-min horizon must miss it.
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=60)
++        # EO-MIO-2 pass is ~52 min away; a 45-min horizon must miss it.
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=45)
+         assert w is None
+ 
+     def test_short_horizon_returns_none_for_sat_b(self):
+-        # SAT-B pass is ~115 min away; a 60-min horizon must miss it.
+-        w = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=60)
++        # SAR-1 pass is ~59.5 min away; a 55-min horizon must miss it.
++        w = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=55)
+         assert w is None
+ 
+     def test_zero_horizon_returns_none_when_not_in_view(self):
+         # at 13:00 neither satellite is overhead; horizon=0 → no scan at all
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=0)
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13, horizon_minutes=0)
+         assert w is None
+ 
+     def test_unknown_satellite_id_returns_none(self):
+@@ -134,8 +134,8 @@ class TestNoPass:
+ 
+ class TestAlreadyInView:
+     def setup_method(self):
+-        # _T_IN_VIEW (14:52 UTC) is mid-pass for SAT-B from (0.5, 0.5)
+-        self.w = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T_IN_VIEW,
++        # _T_IN_VIEW (14:03 UTC) is mid-pass for SAR-1 from (0.5, 0.5)
++        self.w = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T_IN_VIEW,
+                                    horizon_minutes=30)
+ 
+     def test_returns_pass_window(self):
+@@ -151,23 +151,23 @@ class TestAlreadyInView:
+         assert self.w.end_time > self.w.start_time
+ 
+     def test_satellite_id_correct(self):
+-        assert self.w.satellite_id == "SAT-B"
++        assert self.w.satellite_id == "SAR-1"
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# SAT-A and SAT-B produce distinct windows
++# EO-MIO-2 and SAR-1 produce distinct windows
+ # ---------------------------------------------------------------------------
+ 
+ class TestSatABDistinct:
+     def setup_method(self):
+-        self.w_a = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
+-        self.w_b = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
++        self.w_a = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
++        self.w_b = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
+ 
+     def test_different_start_times(self):
+         assert self.w_a.start_time != self.w_b.start_time
+ 
+     def test_sat_a_pass_earlier_than_sat_b(self):
+-        # From (0.5, 0.5) on 2026-03-23, SAT-A passes ~14:15, SAT-B ~14:49
++        # From (0.5, 0.5) on 2026-03-23, EO-MIO-2 passes ~13:52, SAR-1 ~13:59
+         assert self.w_a.start_time < self.w_b.start_time
+ 
+     def test_windows_do_not_overlap(self):
+@@ -187,8 +187,8 @@ class TestObserverSensitivity:
+     def test_different_observers_see_sat_b_at_different_times(self):
+         # Two observers separated by 10 degrees longitude see the same satellite
+         # at a slightly different time (or possibly not at all in one case).
+-        w1 = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13)
+-        w2 = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON + 10.0, _T13)
++        w1 = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13)
++        w2 = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON + 10.0, _T13)
+         # At least one should find a pass; if both do, start times should differ.
+         assert w1 is not None or w2 is not None
+         if w1 is not None and w2 is not None:
+@@ -197,31 +197,31 @@ class TestObserverSensitivity:
+     def test_distant_observer_gets_different_window(self):
+         # An observer 90° of longitude away sees the satellite's passes at
+         # a systematically different local time.  Use a 720-minute horizon
+-        # (≈7 orbital periods for SAT-B) to guarantee a pass is found from
++        # (≈7 orbital periods for SAR-1) to guarantee a pass is found from
+         # either location.
+-        w_near = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON, _T13,
++        w_near = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON, _T13,
+                                    horizon_minutes=720)
+-        w_far = next_pass_window("SAT-B", _OBS_LAT, _OBS_LON + 90.0, _T13,
++        w_far = next_pass_window("SAR-1", _OBS_LAT, _OBS_LON + 90.0, _T13,
+                                   horizon_minutes=720)
+         assert w_near is not None
+         assert w_far is not None
+         assert w_near.start_time != w_far.start_time
+ 
+     def test_sat_a_not_visible_from_subsat_sat_b_point_same_time(self):
+-        """From SAT-B's sub-satellite point, SAT-A may not be in its same window.
++        """From SAR-1's sub-satellite point, EO-MIO-2 may not be in its same window.
+ 
+         This is the ground-track separation test: the two satellites occupy
+         different orbital planes, so being under one doesn't guarantee the
+-        other is nearby.  We verify by checking that next_pass_window for SAT-A
+-        and SAT-B from SAT-B's sub-satellite point return different start times.
++        other is nearby.  We verify by checking that next_pass_window for EO-MIO-2
++        and SAR-1 from SAR-1's sub-satellite point return different start times.
+         """
+         from custody.orbit import _gmst_rad, _jd_from_datetime, _teme_to_ecef
+         from custody.sensors import _SATREC_CACHE
+         import math
+ 
+-        # Compute SAT-B's sub-satellite point at the start of SAT-B's pass
+-        t_mid = datetime(2026, 3, 23, 14, 53, tzinfo=UTC)  # mid-pass
+-        satrec_b = _SATREC_CACHE["SAT-B"]
++        # Compute SAR-1's sub-satellite point at the start of SAR-1's pass
++        t_mid = datetime(2026, 3, 23, 14, 3, tzinfo=UTC)  # mid-pass
++        satrec_b = _SATREC_CACHE["SAR-1"]
+         jd, fr = _jd_from_datetime(t_mid)
+         _, r_teme, _ = satrec_b.sgp4(jd, fr)
+         gmst = _gmst_rad(jd + fr)
+@@ -231,10 +231,10 @@ class TestObserverSensitivity:
+         sub_lat = math.degrees(math.asin(z / r))
+         sub_lon = math.degrees(math.atan2(y, x))
+ 
+-        w_b = next_pass_window("SAT-B", sub_lat, sub_lon, _T13)
+-        w_a = next_pass_window("SAT-A", sub_lat, sub_lon, _T13)
++        w_b = next_pass_window("SAR-1", sub_lat, sub_lon, _T13)
++        w_a = next_pass_window("EO-MIO-2", sub_lat, sub_lon, _T13)
+         # Both may find passes, but at different times
+-        assert w_b is not None  # SAT-B is visible from its own sub-sat point
++        assert w_b is not None  # SAR-1 is visible from its own sub-sat point
+         if w_a is not None:
+             assert w_a.start_time != w_b.start_time
+ 
+@@ -245,13 +245,13 @@ class TestObserverSensitivity:
+ 
+ class TestPassWindowDataclass:
+     def test_pass_window_is_frozen(self):
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+         assert w is not None
+         with pytest.raises((AttributeError, TypeError)):
+             w.satellite_id = "OTHER"  # type: ignore[misc]
+ 
+     def test_pass_window_fields_present(self):
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+         assert w is not None
+         assert hasattr(w, "satellite_id")
+         assert hasattr(w, "start_time")
+@@ -260,11 +260,11 @@ class TestPassWindowDataclass:
+         assert hasattr(w, "time_to_start_seconds")
+ 
+     def test_duration_is_float(self):
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+         assert w is not None
+         assert isinstance(w.duration_seconds, float)
+ 
+     def test_time_to_start_is_float(self):
+-        w = next_pass_window("SAT-A", _OBS_LAT, _OBS_LON, _T13)
++        w = next_pass_window("EO-MIO-2", _OBS_LAT, _OBS_LON, _T13)
+         assert w is not None
+         assert isinstance(w.time_to_start_seconds, float)
+diff --git a/tests/test_orbital_passes_panel.py b/tests/test_orbital_passes_panel.py
+index b3446b8..65de9f5 100644
+--- a/tests/test_orbital_passes_panel.py
++++ b/tests/test_orbital_passes_panel.py
+@@ -2,7 +2,7 @@
+ Tests for orbital_passes_panel.build_orbital_passes_rows.
+ 
+ Coverage:
+-  1. Returns exactly two rows — one for SAT-A, one for SAT-B
++  1. Returns exactly six rows — one per satellite in the new constellation
+   2. Output row keys match the expected column schema
+   3. "In View Now" status when satellite is already overhead
+   4. "Upcoming" status for a near-future pass
+@@ -42,8 +42,11 @@ EXPECTED_COLUMNS = {
+     "Within Threshold",
+ }
+ 
++# New constellation: 6 satellites
++_ALL_SATS = ["EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2", "SAR-1", "SAR-2"]
++
+ _PASS_IN_VIEW = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=T0,
+     end_time=T0 + timedelta(minutes=7),
+     duration_seconds=420.0,
+@@ -51,7 +54,7 @@ _PASS_IN_VIEW = PassWindow(
+ )
+ 
+ _PASS_UPCOMING_NEAR = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=T0 + timedelta(minutes=20),
+     end_time=T0 + timedelta(minutes=27),
+     duration_seconds=420.0,
+@@ -59,7 +62,7 @@ _PASS_UPCOMING_NEAR = PassWindow(
+ )
+ 
+ _PASS_UPCOMING_FAR = PassWindow(
+-    satellite_id="SAT-B",
++    satellite_id="SAR-1",
+     start_time=T0 + timedelta(minutes=60),
+     end_time=T0 + timedelta(minutes=67),
+     duration_seconds=420.0,
+@@ -68,7 +71,7 @@ _PASS_UPCOMING_FAR = PassWindow(
+ 
+ # Exactly at the threshold boundary (1800 s == HOLD_LOOKAHEAD_THRESHOLD_SECONDS)
+ _PASS_AT_THRESHOLD = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS),
+     end_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 420),
+     duration_seconds=420.0,
+@@ -77,7 +80,7 @@ _PASS_AT_THRESHOLD = PassWindow(
+ 
+ # One second past the threshold
+ _PASS_JUST_OVER_THRESHOLD = PassWindow(
+-    satellite_id="SAT-A",
++    satellite_id="EO-MIO-1",
+     start_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 1),
+     end_time=T0 + timedelta(seconds=config.HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 421),
+     duration_seconds=420.0,
+@@ -85,27 +88,33 @@ _PASS_JUST_OVER_THRESHOLD = PassWindow(
+ )
+ 
+ 
+-def _make_rows(sat_a_pw, sat_b_pw):
+-    """Return rows with controlled PassWindow returns for both satellites."""
++def _make_rows(eo_mio_1_pw, eo_mio_2_pw, eo_sso_1_pw=None, eo_sso_2_pw=None,
++               sar_1_pw=None, sar_2_pw=None):
++    """Return rows with controlled PassWindow returns for all six satellites."""
++    pw_map = {
++        "EO-MIO-1": eo_mio_1_pw,
++        "EO-MIO-2": eo_mio_2_pw,
++        "EO-SSO-1": eo_sso_1_pw,
++        "EO-SSO-2": eo_sso_2_pw,
++        "SAR-1":    sar_1_pw,
++        "SAR-2":    sar_2_pw,
++    }
++
+     def fake_next_pass(sat_id, lat, lon, from_time, horizon_minutes=180):
+-        if sat_id == "SAT-A":
+-            return sat_a_pw
+-        if sat_id == "SAT-B":
+-            return sat_b_pw
+-        return None
++        return pw_map.get(sat_id)
+ 
+     with patch("orbital_passes_panel.next_pass_window", side_effect=fake_next_pass):
+         return build_orbital_passes_rows(_LAT, _LON, T0)
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# 1 & 2. Structure: two rows, correct columns
++# 1 & 2. Structure: six rows, correct columns
+ # ---------------------------------------------------------------------------
+ 
+ class TestOutputSchema:
+-    def test_returns_two_rows(self):
++    def test_returns_six_rows(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
+-        assert len(rows) == 2
++        assert len(rows) == 6
+ 
+     def test_row_keys_match_expected_columns(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
+@@ -116,10 +125,10 @@ class TestOutputSchema:
+         rows = _make_rows(None, None)
+         assert isinstance(rows, list)
+ 
+-    def test_both_satellites_present(self):
++    def test_all_satellites_present(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
+         satellites = {r["Satellite"] for r in rows}
+-        assert satellites == {"SAT-A", "SAT-B"}
++        assert satellites == set(_ALL_SATS)
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -129,23 +138,23 @@ class TestOutputSchema:
+ class TestInViewNow:
+     def test_status_is_in_view_now(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Status"] == "In View Now"
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Status"] == "In View Now"
+ 
+     def test_time_to_start_is_zero(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Time to Start (min)"] == 0.0
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Time to Start (min)"] == 0.0
+ 
+     def test_start_equals_from_time(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Start"] == T0
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Start"] == T0
+ 
+     def test_duration_is_positive(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Duration (min)"] > 0
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Duration (min)"] > 0
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -155,23 +164,23 @@ class TestInViewNow:
+ class TestUpcoming:
+     def test_status_is_upcoming(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Status"] == "Upcoming"
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Status"] == "Upcoming"
+ 
+     def test_time_to_start_is_correct(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Time to Start (min)"] == pytest.approx(20.0, abs=0.1)
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Time to Start (min)"] == pytest.approx(20.0, abs=0.1)
+ 
+     def test_start_is_datetime(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert isinstance(sat_a["Start"], datetime)
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert isinstance(sat["Start"], datetime)
+ 
+     def test_end_is_after_start(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["End"] > sat_a["Start"]
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["End"] > sat["Start"]
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -206,16 +215,16 @@ class TestNoPassInHorizon:
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# Mixed: one satellite in view, one no pass
++# Mixed: one satellite in view, others no pass
+ # ---------------------------------------------------------------------------
+ 
+ class TestMixedStatuses:
+     def test_independent_per_satellite(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        sat_b = next(r for r in rows if r["Satellite"] == "SAT-B")
+-        assert sat_a["Status"] == "In View Now"
+-        assert sat_b["Status"] == "No Pass In Horizon"
++        sat_eo = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        sat_sar = next(r for r in rows if r["Satellite"] == "SAR-1")
++        assert sat_eo["Status"] == "In View Now"
++        assert sat_sar["Status"] == "No Pass In Horizon"
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -226,20 +235,20 @@ class TestWithinThreshold:
+     def test_within_threshold_true_for_near_upcoming(self):
+         """20-min pass is inside the 30-min lookahead threshold."""
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Within Threshold"] is True
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Within Threshold"] is True
+ 
+     def test_within_threshold_false_for_far_upcoming(self):
+         """60-min pass is outside the 30-min lookahead threshold."""
+         rows = _make_rows(_PASS_UPCOMING_FAR, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Within Threshold"] is False
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Within Threshold"] is False
+ 
+     def test_within_threshold_false_for_in_view(self):
+         """Already-in-view satellite: tts == 0, not a future pass → False."""
+         rows = _make_rows(_PASS_IN_VIEW, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Within Threshold"] is False
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Within Threshold"] is False
+ 
+     def test_within_threshold_false_for_no_pass(self):
+         rows = _make_rows(None, None)
+@@ -249,24 +258,24 @@ class TestWithinThreshold:
+     def test_within_threshold_true_at_exact_boundary(self):
+         """tts == HOLD_LOOKAHEAD_THRESHOLD_SECONDS (≤) → True."""
+         rows = _make_rows(_PASS_AT_THRESHOLD, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Within Threshold"] is True
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Within Threshold"] is True
+ 
+     def test_within_threshold_false_one_second_over(self):
+         """tts == HOLD_LOOKAHEAD_THRESHOLD_SECONDS + 1 (>) → False."""
+         rows = _make_rows(_PASS_JUST_OVER_THRESHOLD, None)
+-        sat_a = next(r for r in rows if r["Satellite"] == "SAT-A")
+-        assert sat_a["Within Threshold"] is False
++        sat = next(r for r in rows if r["Satellite"] == "EO-MIO-1")
++        assert sat["Within Threshold"] is False
+ 
+     def test_within_threshold_uses_config_constant(self):
+         """Flag uses HOLD_LOOKAHEAD_THRESHOLD_SECONDS, not a hardcoded value."""
+         # Verify: at threshold → True, one second past → False.
+         rows_at = _make_rows(_PASS_AT_THRESHOLD, None)
+         rows_over = _make_rows(_PASS_JUST_OVER_THRESHOLD, None)
+-        sat_a_at = next(r for r in rows_at if r["Satellite"] == "SAT-A")
+-        sat_a_over = next(r for r in rows_over if r["Satellite"] == "SAT-A")
+-        assert sat_a_at["Within Threshold"] is True
+-        assert sat_a_over["Within Threshold"] is False
++        sat_at = next(r for r in rows_at if r["Satellite"] == "EO-MIO-1")
++        sat_over = next(r for r in rows_over if r["Satellite"] == "EO-MIO-1")
++        assert sat_at["Within Threshold"] is True
++        assert sat_over["Within Threshold"] is False
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -282,32 +291,34 @@ class TestSortOrder:
+     def test_in_view_comes_before_no_pass(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+         assert rows[0]["Status"] == "In View Now"
+-        assert rows[1]["Status"] == "No Pass In Horizon"
++        # All others are "No Pass In Horizon"
++        assert rows[-1]["Status"] == "No Pass In Horizon"
+ 
+     def test_upcoming_comes_before_no_pass(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, None)
+         assert rows[0]["Status"] == "Upcoming"
+-        assert rows[1]["Status"] == "No Pass In Horizon"
++        assert rows[-1]["Status"] == "No Pass In Horizon"
+ 
+     def test_nearer_upcoming_comes_first(self):
+-        """SAT-B is 60 min away, SAT-A is 20 min away → SAT-A first."""
++        """EO-MIO-2 is 60 min away, EO-MIO-1 is 20 min away → EO-MIO-1 first."""
+         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
+-        assert rows[0]["Satellite"] == "SAT-A"
+-        assert rows[1]["Satellite"] == "SAT-B"
++        assert rows[0]["Satellite"] == "EO-MIO-1"
++        assert rows[1]["Satellite"] in ("EO-MIO-2", "SAR-1")
+ 
+     def test_farther_upcoming_comes_second(self):
+         rows = _make_rows(_PASS_UPCOMING_NEAR, _PASS_UPCOMING_FAR)
++        # First row is the near upcoming, second is far upcoming
+         assert rows[1]["Time to Start (min)"] > rows[0]["Time to Start (min)"]
+ 
+     def test_no_pass_last_when_mixed(self):
+         rows = _make_rows(_PASS_IN_VIEW, None)
+         assert rows[-1]["Status"] == "No Pass In Horizon"
+ 
+-    def test_both_no_pass_stable_order(self):
+-        """When both are No Pass In Horizon, both satellites still present."""
++    def test_all_no_pass_returns_all_satellites(self):
++        """When all are No Pass In Horizon, all six satellites still present."""
+         rows = _make_rows(None, None)
+-        satellites = [r["Satellite"] for r in rows]
+-        assert set(satellites) == {"SAT-A", "SAT-B"}
++        satellites = {r["Satellite"] for r in rows}
++        assert satellites == set(_ALL_SATS)
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/tests/test_sensors.py b/tests/test_sensors.py
+index 105b794..928258d 100644
+--- a/tests/test_sensors.py
++++ b/tests/test_sensors.py
+@@ -6,11 +6,11 @@ Covers:
+     pre-Step-20 schedule-only result (no orbital sensors)
+   - Schedule-based sensors (satellite_id=None) are always returned when
+     the schedule condition is met, regardless of observer position
+-  - Orbital sensor (SAT-A) is returned only when the observer is in view
+-  - Orbital sensor (SAT-B) is returned only when the observer is in view
++  - Orbital sensor (EO-MIO-1) is returned only when the observer is in view
++  - Orbital sensor (SAR-1) is returned only when the observer is in view
+   - Orbital sensors are absent when the observer is on the opposite side
+     of the Earth from the satellite
+-  - SAT-A and SAT-B can have different availability for the same
++  - EO-MIO-1 and SAR-1 can have different availability for the same
+     observer/time (distinct ground tracks due to different inclination
+     and RAAN)
+   - The filtered (distant observer) result is a subset of the full result
+@@ -37,11 +37,11 @@ from custody.orbit import (
+ 
+ # Same TLEs used by sensors.py — kept in sync with the catalog there.
+ # Epoch: 2026-03-23 noon UTC (day 82 of 2026).
+-_SAT_A_LINE1 = "1 25544U 98067A   26082.50000000  .00001764  00000-0  38792-4 0  0007"
+-_SAT_A_LINE2 = "2 25544  51.6000 220.0000 0001000  90.0000 270.0000 15.50103472000016"
++_SAT_A_LINE1 = "1 99910U 98067B   26082.50000000  .00000034  00000-0  25000-4 0  0002"
++_SAT_A_LINE2 = "2 99910 51.6000   0.0000 0001000  90.0000   0.0000 15.50103472000000"
+ 
+-_SAT_B_LINE1 = "1 99901U 26001A   26082.50000000  .00000034  00000-0  25000-4 0  0001"
+-_SAT_B_LINE2 = "2 99901  97.8000  40.0000 0001000  90.0000   0.0000 14.57650000000017"
++_SAT_B_LINE1 = "1 99930U 26002A   26082.50000000  .00000034  00000-0  25000-4 0  0004"
++_SAT_B_LINE2 = "2 99930 97.8000 200.0000 0001000  90.0000   0.0000 14.57650000000006"
+ 
+ # T_ORBIT: 5 hours after TLE epoch (2026-03-23 noon) — propagation error is minimal.
+ # hour=17 → schedule yields B1 only (A1 needs even hour; C1 needs hour%3==0).
+@@ -58,15 +58,15 @@ T_NO_SCHEDULE = datetime(2026, 3, 23, 11, 0, 0, tzinfo=UTC)
+ # Helper — sub-satellite point at a given time
+ # ---------------------------------------------------------------------------
+ 
+-def _subsat_point(t: datetime, name: str = "SAT-A") -> tuple[float, float]:
++def _subsat_point(t: datetime, name: str = "EO-MIO-1") -> tuple[float, float]:
+     """Return (lat_deg, lon_deg) directly below a satellite at time t.
+ 
+-    Defaults to SAT-A; pass name="SAT-B" for the second orbital asset.
++    Defaults to EO-MIO-1; pass name="SAR-1" for the SAR orbital asset.
+     """
+-    if name == "SAT-A":
+-        sat = load_tle("SAT-A", _SAT_A_LINE1, _SAT_A_LINE2)
++    if name == "EO-MIO-1":
++        sat = load_tle("EO-MIO-1", _SAT_A_LINE1, _SAT_A_LINE2)
+     else:
+-        sat = load_tle("SAT-B", _SAT_B_LINE1, _SAT_B_LINE2)
++        sat = load_tle("SAR-1", _SAT_B_LINE1, _SAT_B_LINE2)
+     jd, fr = _jd_from_datetime(t)
+     error_code, r_teme, _ = sat.sgp4(jd, fr)
+     assert error_code == 0, f"SGP4 propagation failed (error {error_code})"
+@@ -81,7 +81,10 @@ def _subsat_point(t: datetime, name: str = "SAT-A") -> tuple[float, float]:
+ 
+ def _antipodal(lat: float, lon: float) -> tuple[float, float]:
+     """Return the point on the opposite side of the Earth."""
+-    return -lat, (lon + 180.0) % 360.0 - 180.0
++    anti_lon = lon + 180.0
++    if anti_lon > 180.0:
++        anti_lon -= 360.0
++    return -lat, anti_lon
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -95,16 +98,16 @@ class TestBackwardCompat:
+         sat_ids = {o.satellite_id for o in opportunities}
+         assert None in sat_ids or len(sat_ids) == 0  # only schedule-based
+         sensor_ids = {o.sensor_id for o in opportunities}
+-        assert "SAT-A" not in sensor_ids
+-        assert "SAT-B" not in sensor_ids
++        assert "EO-MIO-1" not in sensor_ids
++        assert "SAR-1" not in sensor_ids
+ 
+     def test_no_observer_hour17_returns_b1_only(self):
+-        """hour=17 schedule: B1 is the only sensor, no SAT-A."""
++        """hour=17 schedule: B1 is the only sensor, no EO-MIO-1."""
+         ids = [o.sensor_id for o in get_sensor_opportunities(T_ORBIT)]
+         assert ids == ["B1"]
+ 
+     def test_no_observer_even_hour_returns_a1_c1(self):
+-        """hour=0 schedule: A1 and C1, no SAT-A."""
++        """hour=0 schedule: A1 and C1, no EO-MIO-1."""
+         ids = {o.sensor_id for o in get_sensor_opportunities(T_EVEN)}
+         assert ids == {"A1", "C1"}
+ 
+@@ -116,15 +119,15 @@ class TestBackwardCompat:
+         """Providing only lat (no lon) preserves backward-compat — no orbit filter."""
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, observer_lat=51.5)}
+-        assert "SAT-A" not in ids
+-        assert "SAT-B" not in ids
++        assert "EO-MIO-1" not in ids
++        assert "SAR-1" not in ids
+ 
+     def test_no_observer_only_lon_provided_also_skips_orbit(self):
+         """Providing only lon (no lat) preserves backward-compat — no orbit filter."""
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, observer_lon=-0.1)}
+-        assert "SAT-A" not in ids
+-        assert "SAT-B" not in ids
++        assert "EO-MIO-1" not in ids
++        assert "SAR-1" not in ids
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -172,27 +175,27 @@ class TestScheduleSensorsUnaffected:
+ 
+ class TestOrbitalSensorFiltering:
+     def test_sat_a_present_when_observer_at_subsat_point(self):
+-        """SAT-A must be returned when the observer is directly below it."""
++        """EO-MIO-1 must be returned when the observer is directly below it."""
+         sub_lat, sub_lon = _subsat_point(T_ORBIT)
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        assert "SAT-A" in ids
++        assert "EO-MIO-1" in ids
+ 
+     def test_sat_a_absent_when_observer_at_antipode(self):
+-        """SAT-A must not be returned when the observer is on the far side."""
++        """EO-MIO-1 must not be returned when the observer is on the far side."""
+         sub_lat, sub_lon = _subsat_point(T_ORBIT)
+         anti_lat, anti_lon = _antipodal(sub_lat, sub_lon)
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, anti_lat, anti_lon)}
+-        assert "SAT-A" not in ids
++        assert "EO-MIO-1" not in ids
+ 
+     def test_sat_a_satellite_id_field(self):
+-        """Returned SAT-A opportunity must carry satellite_id='SAT-A'."""
++        """Returned EO-MIO-1 opportunity must carry satellite_id='EO-MIO-1'."""
+         sub_lat, sub_lon = _subsat_point(T_ORBIT)
+         opps = {o.sensor_id: o for o in
+                 get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        assert "SAT-A" in opps
+-        assert opps["SAT-A"].satellite_id == "SAT-A"
++        assert "EO-MIO-1" in opps
++        assert opps["EO-MIO-1"].satellite_id == "EO-MIO-1"
+ 
+     def test_subsat_list_larger_than_antipodal_list(self):
+         """Observer at sub-satellite point sees more sensors than at antipode."""
+@@ -245,8 +248,8 @@ class TestOpportunityFields:
+         sub_lat, sub_lon = _subsat_point(T_ORBIT)
+         opps = {o.sensor_id: o for o in
+                 get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        sat_a = opps["SAT-A"]
+-        assert sat_a.satellite_id == "SAT-A"
++        sat_a = opps["EO-MIO-1"]
++        assert sat_a.satellite_id == "EO-MIO-1"
+         assert isinstance(sat_a.sensor_type, str)
+         assert 0.0 <= sat_a.success_prob <= 1.0
+         assert isinstance(sat_a.resolution, str)
+@@ -263,45 +266,45 @@ class TestOpportunityFields:
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# SAT-B orbital sensor — in-view, out-of-view, and field validation
++# SAR-1 orbital sensor — in-view, out-of-view, and field validation
+ # ---------------------------------------------------------------------------
+ 
+ class TestSatBFiltering:
+     def test_sat_b_present_when_observer_at_subsat_point(self):
+-        """SAT-B must be returned when the observer is directly below it."""
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        """SAR-1 must be returned when the observer is directly below it."""
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        assert "SAT-B" in ids
++        assert "SAR-1" in ids
+ 
+     def test_sat_b_absent_when_observer_at_antipode(self):
+-        """SAT-B must not be returned when the observer is on the far side."""
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        """SAR-1 must not be returned when the observer is on the far side."""
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         anti_lat, anti_lon = _antipodal(sub_lat, sub_lon)
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, anti_lat, anti_lon)}
+-        assert "SAT-B" not in ids
++        assert "SAR-1" not in ids
+ 
+     def test_sat_b_absent_without_observer_position(self):
+-        """SAT-B must never appear when no observer position is provided."""
++        """SAR-1 must never appear when no observer position is provided."""
+         ids = {o.sensor_id for o in get_sensor_opportunities(T_ORBIT)}
+-        assert "SAT-B" not in ids
++        assert "SAR-1" not in ids
+ 
+     def test_sat_b_satellite_id_field(self):
+-        """Returned SAT-B opportunity must carry satellite_id='SAT-B'."""
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        """Returned SAR-1 opportunity must carry satellite_id='SAR-1'."""
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         opps = {o.sensor_id: o for o in
+                 get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        assert "SAT-B" in opps
+-        assert opps["SAT-B"].satellite_id == "SAT-B"
++        assert "SAR-1" in opps
++        assert opps["SAR-1"].satellite_id == "SAR-1"
+ 
+     def test_sat_b_all_fields_present(self):
+-        """SAT-B opportunity must carry all required SensorOpportunity fields."""
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        """SAR-1 opportunity must carry all required SensorOpportunity fields."""
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         opps = {o.sensor_id: o for o in
+                 get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        sat_b = opps["SAT-B"]
+-        assert sat_b.satellite_id == "SAT-B"
++        sat_b = opps["SAR-1"]
++        assert sat_b.satellite_id == "SAR-1"
+         assert isinstance(sat_b.sensor_type, str)
+         assert 0.0 <= sat_b.success_prob <= 1.0
+         assert isinstance(sat_b.resolution, str)
+@@ -311,56 +314,56 @@ class TestSatBFiltering:
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# SAT-A and SAT-B differential availability — distinct ground-track coverage
++# EO-MIO-1 and SAR-1 differential availability — distinct ground-track coverage
+ # ---------------------------------------------------------------------------
+ 
+ class TestSatABDiffer:
+     def test_sat_b_visible_from_its_own_subsat_sat_a_is_not(self):
+-        """From SAT-B's sub-satellite point, SAT-B is in view but SAT-A is not.
++        """From SAR-1's sub-satellite point, SAR-1 is in view but EO-MIO-1 is not.
+ 
+-        SAT-A and SAT-B have different inclinations (51.6° vs 97.8°) and RAAN
+-        values ~180° apart (220° vs 40°).  Their ground tracks are in different
++        EO-MIO-1 and SAR-1 have different inclinations (51.6° vs 97.8°) and RAAN
++        values substantially apart (0° vs 200°).  Their ground tracks are in different
+         parts of the sky at the same epoch, so observing from below one
+         satellite does not imply the other is also overhead.
+         """
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         ids = {o.sensor_id for o in
+                get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)}
+-        assert "SAT-B" in ids, "SAT-B must be visible from its own sub-sat point"
+-        assert "SAT-A" not in ids, (
+-            "SAT-A should not be visible from SAT-B's sub-sat point "
++        assert "SAR-1" in ids, "SAR-1 must be visible from its own sub-sat point"
++        assert "EO-MIO-1" not in ids, (
++            "EO-MIO-1 should not be visible from SAR-1's sub-sat point "
+             "(different orbital plane)"
+         )
+ 
+     def test_sat_a_and_sat_b_can_be_simultaneously_visible(self):
+         """There exists at least one observer position where both are in view.
+ 
+-        From directly below SAT-A, SAT-A is always visible.  We verify
+-        that SAT-B can also be in view from some location (its sub-sat
++        From directly below EO-MIO-1, EO-MIO-1 is always visible.  We verify
++        that SAR-1 can also be in view from some location (its sub-sat
+         point), confirming both participate in the sensor pool.
+         """
+-        sub_a = _subsat_point(T_ORBIT, name="SAT-A")
+-        sub_b = _subsat_point(T_ORBIT, name="SAT-B")
++        sub_a = _subsat_point(T_ORBIT, name="EO-MIO-1")
++        sub_b = _subsat_point(T_ORBIT, name="SAR-1")
+         ids_from_a = {o.sensor_id for o in
+                       get_sensor_opportunities(T_ORBIT, *sub_a)}
+         ids_from_b = {o.sensor_id for o in
+                       get_sensor_opportunities(T_ORBIT, *sub_b)}
+-        assert "SAT-A" in ids_from_a
+-        assert "SAT-B" in ids_from_b
++        assert "EO-MIO-1" in ids_from_a
++        assert "SAR-1" in ids_from_b
+ 
+     def test_orbital_assets_increase_pool_size_when_in_view(self):
+         """When an observer is below an orbital satellite, the sensor pool is
+         larger than the schedule-only baseline for the same time slot.
+ 
+         T_ORBIT is hour=17, which yields only B1 from the schedule.
+-        From SAT-B's sub-satellite point at T_ORBIT, SAT-B is also in view,
++        From SAR-1's sub-satellite point at T_ORBIT, SAR-1 is also in view,
+         so the pool size increases by at least 1 compared to no-position call.
+         """
+-        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAT-B")
++        sub_lat, sub_lon = _subsat_point(T_ORBIT, name="SAR-1")
+         no_pos = get_sensor_opportunities(T_ORBIT)
+         with_pos = get_sensor_opportunities(T_ORBIT, sub_lat, sub_lon)
+         assert len(with_pos) > len(no_pos), (
+             "pool with observer position should include at least one "
+             "orbital sensor beyond the schedule-only result"
+         )
+-        assert "SAT-B" in {o.sensor_id for o in with_pos}
++        assert "SAR-1" in {o.sensor_id for o in with_pos}
+diff --git a/tests/test_taskrecommendation.py b/tests/test_taskrecommendation.py
+index 4486ab5..093b819 100644
+--- a/tests/test_taskrecommendation.py
++++ b/tests/test_taskrecommendation.py
+@@ -128,7 +128,7 @@ def _track(**kwargs) -> TrackState:
+     return TrackState(**defaults)
+ 
+ 
+-def _pass_window(sat_id="SAT-B", tts=300.0, duration=600.0) -> PassWindow:
++def _pass_window(sat_id="SAR-1", tts=300.0, duration=600.0) -> PassWindow:
+     start = _T0 + timedelta(seconds=tts)
+     end   = start + timedelta(seconds=duration)
+     return PassWindow(
+@@ -177,7 +177,7 @@ class TestTaskRecommendationSchema:
+ class TestCandidateSelection:
+     def test_task_sar_yields_sar_as_rank1_when_window_exists(self):
+         def fake_pass(sat_id, lat, lon, from_time, *args, **kwargs):
+-            return _pass_window(sat_id=sat_id, tts=300) if sat_id == "SAT-B" else None
++            return _pass_window(sat_id=sat_id, tts=300) if sat_id in ("SAR-1", "SAR-2") else None
+ 
+         with patch("custody.taskrecommendation.next_pass_window", side_effect=fake_pass):
+             recs = _build(decision=_decision(action=TASK_SAR))
+@@ -186,7 +186,7 @@ class TestCandidateSelection:
+ 
+     def test_task_optical_yields_optical_as_rank1_when_window_exists(self):
+         def fake_pass(sat_id, lat, lon, from_time, *args, **kwargs):
+-            return _pass_window(sat_id=sat_id, tts=300) if sat_id == "SAT-A" else None
++            return _pass_window(sat_id=sat_id, tts=300) if sat_id in ("EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2") else None
+ 
+         with patch("custody.taskrecommendation.next_pass_window", side_effect=fake_pass):
+             recs = _build(decision=_decision(action=TASK_OPTICAL),
+@@ -264,10 +264,10 @@ class TestTimingScore:
+ 
+     def test_earlier_window_beats_later_window(self):
+         def fake_pass_early_sar(sat_id, lat, lon, from_time, *args, **kwargs):
+-            if sat_id == "SAT-B":
+-                return _pass_window(sat_id="SAT-B", tts=300)    # 5 min
+-            if sat_id == "SAT-A":
+-                return _pass_window(sat_id="SAT-A", tts=5400)   # 90 min
++            if sat_id in ("SAR-1", "SAR-2"):
++                return _pass_window(sat_id=sat_id, tts=300)    # 5 min
++            if sat_id in ("EO-MIO-1", "EO-MIO-2", "EO-SSO-1", "EO-SSO-2"):
++                return _pass_window(sat_id=sat_id, tts=5400)   # 90 min
+             return None
+ 
+         with patch("custody.taskrecommendation.next_pass_window",

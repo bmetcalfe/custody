@@ -1,0 +1,84 @@
+============================================================
+Step A -- top-level tasks/ folders (human names live here)
+============================================================
+Total top-level task folders: 79
+Human-named folders: 74
+
+SCS-keyword matches in tasks/ folder names:
+   sar-data/tasks/Port of Singapore, Singapore/
+
+First 20 human-named folders for eyeballing:
+   sar-data/tasks/AIR/
+   sar-data/tasks/Atmospheric-River_Nov-2025/
+   sar-data/tasks/BM BRC/
+   sar-data/tasks/Beet Piler - ND/
+   sar-data/tasks/Beet Piler Field - ND/
+   sar-data/tasks/Bingham Copper Mine/
+   sar-data/tasks/Buenos Aires, ARG/
+   sar-data/tasks/Campo, Cameroon A/
+   sar-data/tasks/Centerfield, Utah/
+   sar-data/tasks/Chaffee_ND/
+   sar-data/tasks/David Fuentes Airbase, Chile/
+   sar-data/tasks/Diavik Diamond Mine, Canada/
+   sar-data/tasks/ENV/
+   sar-data/tasks/Greenbushes Mine, Australia/
+   sar-data/tasks/Hetch Hetchy Reservoir/
+   sar-data/tasks/Hillsboro_ND/
+   sar-data/tasks/Hillsboro_ND_2/
+   sar-data/tasks/Houston_TX/
+   sar-data/tasks/IND/
+   sar-data/tasks/Intel Ohio One/
+
+============================================================
+Step B -- ship_detection_testdata scene centroids
+============================================================
+Task folders under ship_detection_testdata: 999
+Finding metadata JSONs (one list_objects per folder)...
+  100/999 folders scanned
+  200/999 folders scanned
+  300/999 folders scanned
+  400/999 folders scanned
+  500/999 folders scanned
+  600/999 folders scanned
+  700/999 folders scanned
+  800/999 folders scanned
+  900/999 folders scanned
+Total metadata files: 995
+Downloading centroids (parallel)...
+  200/995 centroids fetched
+  400/995 centroids fetched
+  600/995 centroids fetched
+  800/995 centroids fetched
+Wrote ship_detection_centroids.csv (995 rows)
+
+Scenes inside Spratly AOI (114.5-117.5E, 8.5-11.0N): 8
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/00dee081-76ee-413a-8af2-e6be1c6ab8d0/2023-08-07-13-53-00_UMBRA-04/2023-08-07-13-53-00_UMBRA-04_METADATA.json
+   114.632, 9.969   sar-data/tasks/ship_detection_testdata/1e1f051d-4c81-4640-997d-1a03e967ad6a/2023-12-06-02-06-24_UMBRA-04/2023-12-06-02-06-24_UMBRA-04_METADATA.json
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/645d903f-ced5-40d9-94ed-6e4e91977c97/2023-08-13-15-00-09_UMBRA-06/2023-08-13-15-00-09_UMBRA-06_METADATA.json
+   114.642, 9.985   sar-data/tasks/ship_detection_testdata/92c2b446-415c-4d26-88bc-70fdb652e852/2024-03-20-02-09-55_UMBRA-05/2024-03-20-02-09-55_UMBRA-05_METADATA.json
+   114.639, 9.984   sar-data/tasks/ship_detection_testdata/9e48504b-450c-4fd1-90b5-973ca409f58c/2023-12-06-02-07-18_UMBRA-04/2023-12-06-02-07-18_UMBRA-04_METADATA.json
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/a9fceda5-7fa5-4849-b76b-dd6d7a50dae9/2023-07-23-14-02-49_UMBRA-05/2023-07-23-14-02-49_UMBRA-05_METADATA.json
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/b422de0d-b6fc-4340-aa85-6c87f3805175/2023-08-09-02-23-25_UMBRA-06/2023-08-09-02-23-25_UMBRA-06_METADATA.json
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/f0730a1d-2bf7-4193-b2fe-ec8bfb2e1aef/2023-07-02-14-00-55_UMBRA-05/2023-07-02-14-00-55_UMBRA-05_METADATA.json
+
+Scenes inside broader SCS bbox (109-121E, 5-22N): 103
+   114.665, 8.856   sar-data/tasks/ship_detection_testdata/00dee081-76ee-413a-8af2-e6be1c6ab8d0/2023-08-07-13-53-00_UMBRA-04/2023-08-07-13-53-00_UMBRA-04_METADATA.json
+   112.345, 16.834   sar-data/tasks/ship_detection_testdata/0f460414-e738-4f8a-88e4-f773caae115c/2023-06-18-02-00-47_UMBRA-04/2023-06-18-02-00-47_UMBRA-04_METADATA.json
+   120.967, 14.600   sar-data/tasks/ship_detection_testdata/0f24b2df-38aa-4677-b3e9-99c92788383a/2023-12-01-01-52-43_UMBRA-06/2023-12-01-01-52-43_UMBRA-06_METADATA.json
+   109.691, 18.204   sar-data/tasks/ship_detection_testdata/102009aa-a30f-4421-ab95-cc67c0eb065a/2023-02-02-02-44-25_UMBRA-05/2023-02-02-02-44-25_UMBRA-05_METADATA.json
+   112.341, 16.835   sar-data/tasks/ship_detection_testdata/0df14886-1768-40ca-b3e7-aa4ccee5daf1/2023-09-23-14-19-36_UMBRA-04/2023-09-23-14-19-36_UMBRA-04_METADATA.json
+   110.434, 21.222   sar-data/tasks/ship_detection_testdata/01d0cc4e-80fb-4c32-8eb4-3d9f6cc8fe1b/2023-03-06-02-08-59_UMBRA-04/2023-03-06-02-08-59_UMBRA-04_METADATA.json
+   111.741, 16.463   sar-data/tasks/ship_detection_testdata/05fcce82-5d88-4938-b34e-d35ae6f57ac0/2023-06-19-13-50-07_UMBRA-04/2023-06-19-13-50-07_UMBRA-04_METADATA.json
+   111.673, 16.575   sar-data/tasks/ship_detection_testdata/12031f3c-1720-45ed-8665-9b157df92f4f/2023-07-14-02-30-13_UMBRA-05/2023-07-14-02-30-13_UMBRA-05_METADATA.json
+   109.683, 18.211   sar-data/tasks/ship_detection_testdata/181c4f79-b330-4366-a064-85006de452a2/2024-02-13-02-26-30_UMBRA-04/2024-02-13-02-26-30_UMBRA-04_METADATA.json
+   109.691, 18.204   sar-data/tasks/ship_detection_testdata/18af9cab-1369-4761-8e64-4fe4d33e6d77/2023-11-29-02-44-02_UMBRA-04/2023-11-29-02-44-02_UMBRA-04_METADATA.json
+   109.561, 18.185   sar-data/tasks/ship_detection_testdata/0b0358be-5b9b-4f76-b7f3-fe3b48e88948/2023-01-23-13-46-55_UMBRA-04/2023-01-23-13-46-55_UMBRA-04_METADATA.json
+   112.341, 16.835   sar-data/tasks/ship_detection_testdata/19bea8db-41c0-4816-8ccb-93986e4b3bed/2023-08-26-02-21-55_UMBRA-05/2023-08-26-02-21-55_UMBRA-05_METADATA.json
+   111.741, 16.463   sar-data/tasks/ship_detection_testdata/1a281433-f0a0-4bb1-961d-339b7f2f49d7/2023-06-16-02-28-03_UMBRA-04/2023-06-16-02-28-03_UMBRA-04_METADATA.json
+   114.632, 9.969   sar-data/tasks/ship_detection_testdata/1e1f051d-4c81-4640-997d-1a03e967ad6a/2023-12-06-02-06-24_UMBRA-04/2023-12-06-02-06-24_UMBRA-04_METADATA.json
+   109.548, 18.233   sar-data/tasks/ship_detection_testdata/1f115b8e-dcde-42be-9388-7f955c0af3a0/2024-02-10-13-49-40_UMBRA-05/2024-02-10-13-49-40_UMBRA-05_METADATA.json
+   109.561, 18.185   sar-data/tasks/ship_detection_testdata/230053ee-4b63-4a41-872d-9fc89972c256/2023-02-02-02-44-09_UMBRA-05/2023-02-02-02-44-09_UMBRA-05_METADATA.json
+   112.261, 21.706   sar-data/tasks/ship_detection_testdata/28a8231a-26d6-491d-8e6d-d35ce4f2678c/2023-10-11-02-32-45_UMBRA-04/2023-10-11-02-32-45_UMBRA-04_METADATA.json
+   109.689, 18.190   sar-data/tasks/ship_detection_testdata/27f6cb09-192b-400a-878c-fb40ff0a44f8/2023-07-21-02-31-16_UMBRA-04/2023-07-21-02-31-16_UMBRA-04_METADATA.json
+   109.551, 18.190   sar-data/tasks/ship_detection_testdata/2d5dc664-593c-4ec9-aca3-9650ec282b9e/2023-12-20-03-20-16_UMBRA-06/2023-12-20-03-20-16_UMBRA-06_METADATA.json
+   109.550, 18.208   sar-data/tasks/ship_detection_testdata/31b88cf1-262c-4e3e-abe1-3b24465fecbb/2023-09-04-01-54-44_UMBRA-05/2023-09-04-01-54-44_UMBRA-05_METADATA.json

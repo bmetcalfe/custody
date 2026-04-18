@@ -1,0 +1,79 @@
+﻿                           PRE 3e56976b-fa2b-4035-bb71-385efde84c4a/
+                           PRE AIR/
+                           PRE Atmospheric-River_Nov-2025/
+                           PRE BM BRC/
+                           PRE Beet Piler - ND/
+                           PRE Beet Piler Field - ND/
+                           PRE Bingham Copper Mine/
+                           PRE Buenos Aires, ARG/
+                           PRE Campo, Cameroon A/
+                           PRE Centerfield, Utah/
+                           PRE Chaffee_ND/
+                           PRE David Fuentes Airbase, Chile/
+                           PRE Diavik Diamond Mine, Canada/
+                           PRE ENV/
+                           PRE Greenbushes Mine, Australia/
+                           PRE Hetch Hetchy Reservoir/
+                           PRE Hillsboro_ND/
+                           PRE Hillsboro_ND_2/
+                           PRE Houston_TX/
+                           PRE IND/
+                           PRE Intel Ohio One/
+                           PRE Jamaica-2025-10/
+                           PRE Jeddah Tower, Saudi Arabia/
+                           PRE Johnston, Iowa Farm/
+                           PRE Kalgoorlie Super Pit, Australia/
+                           PRE Khavda Solar Park, India/
+                           PRE Komati Power Station, S Africa/
+                           PRE Kourou, French Guiana/
+                           PRE Lynchburg, ND/
+                           PRE MIL/
+                           PRE Magui Payan, Colombia/
+                           PRE Mamh/
+                           PRE Mapleton_ND/
+                           PRE Melbourne, Australia/
+                           PRE Myra, ND/
+                           PRE New Highmark Stadium, New York, United States/
+                           PRE New Las Vegas Stadium, Nevada, United States/
+                           PRE North Dakota State University Plot/
+                           PRE PRT/
+                           PRE Panama Canal, Panama/
+                           PRE Papua, Indonesia/
+                           PRE Port of Antwerp, Belgium/
+                           PRE Port of Busan, South Korea/
+                           PRE Port of Hamburg, Germany/
+                           PRE Port of Hong Kong, Hong Kong/
+                           PRE Port of Jebel Ali, United Arab Emirates/
+                           PRE Port of Long Beach, California, United States/
+                           PRE Port of Newark (NY/
+                           PRE Port of Rotterdam, Netherlands/
+                           PRE Port of Savannah, Georgia, United States/
+                           PRE Port of Singapore, Singapore/
+                           PRE Puerto Maldonado, Peru/
+                           PRE Purdue University Farm Plot/
+                           PRE Rumangabo, DRC/
+                           PRE Silver Peak Mine, Nevada, United States/
+                           PRE Sugar Beet processing plant, ND/
+                           PRE Suvarnabhumi International Airport, Thailand/
+                           PRE Sydney International Airport, Australia/
+                           PRE Tanna Island, Vanuatu/
+                           PRE Taparal, Colombia/
+                           PRE Tesla Semi Factory, Nevada, United States/
+                           PRE Texas A&M Farm Plot/
+                           PRE Texas_Floods_2025-08/
+                           PRE Thacker Pass Lithium Mine, Nevada, United States/
+                           PRE The Red Sea Project - Shura Island, Saudi Arabia/
+                           PRE Thermal Club/
+                           PRE UC Davis Ag Plot/
+                           PRE URB/
+                           PRE Volcanoes/
+                           PRE Walrus/
+                           PRE Washington_State_Atmospheric_River_DEC-2025/
+                           PRE Wheatland_ND/
+                           PRE Willow_River_MN/
+                           PRE Yapacana, Venezuela/
+                           PRE ad hoc/
+                           PRE cc683051-4cd7-4814-95e1-a3b1aba8a5cd/
+                           PRE cdbb7880-9cb2-440c-af7d-f75fcb7935f0/
+                           PRE d9bb4d9d-7c91-4db8-8754-9ce05f02c9b4/
+                           PRE ship_detection_testdata/
