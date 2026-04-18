@@ -19,7 +19,6 @@ from datetime import timedelta
 from typing import Optional
 
 from custody.models import Vessel, TrackState
-from custody.tracks import update_position, update_uncertainty
 from custody.anomalies import anomaly_score, anomaly_breakdown
 from custody.planner import plan_collection, compute_target_priority
 from custody.behavior.state_machine import infer_state
@@ -238,11 +237,9 @@ def run_multi_target_simulation(scenario: Optional[ScenarioConfig] = None) -> li
 
             phase = _current_phase(spec, hour_index, _trig_state, latched[vid])
             vessel = _apply_profile(vessel, phase, rng)
-            vessel = update_position(vessel, hours=scenario.dt_hours)
+            vessel = vessel.step(hours=scenario.dt_hours)
             vessel.last_seen = current_time
-            track.uncertainty_km = update_uncertainty(
-                track.uncertainty_km, hours=scenario.dt_hours
-            )
+            track.predict(dt_seconds=scenario.dt_hours * 3600.0)
 
             confidence = track.confidence
             breakdown = anomaly_breakdown(vessel)

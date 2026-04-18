@@ -36,7 +36,6 @@ from custody.features.proximity_features import group_records_by_time, nearest_v
 from custody.models import BehaviorState, HistoryEntry, TrackState, Vessel
 from custody.planner import plan_collection
 from custody.sensors import get_sensor_opportunities
-from custody.tracks import update_uncertainty
 
 
 _REQUIRED_COLUMNS = {"vessel_id", "timestamp", "lat", "lon", "speed_knots", "heading_deg"}
@@ -288,7 +287,7 @@ def ingest_ais_track(
         # Elapsed time drives uncertainty growth — never assume a fixed interval.
         gap_seconds = (curr_obs.timestamp - prev_obs.timestamp).total_seconds()
         hours_elapsed = gap_seconds / 3600
-        track.uncertainty_km = update_uncertainty(track.uncertainty_km, hours_elapsed)
+        track.predict(dt_seconds=gap_seconds)
 
         # Update vessel fields from incoming observation.
         vessel.lat = curr_obs.lat

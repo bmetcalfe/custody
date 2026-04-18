@@ -158,8 +158,6 @@ def test_ingest_uncertainty_grows_between_observations():
 
 def test_ingest_uncertainty_growth_uses_elapsed_hours_not_fixed_one():
     """30-minute intervals should grow uncertainty at half the 1-hour rate."""
-    from custody.tracks import update_uncertainty
-
     obs_30min = _normal_track(n=3, spacing_hours=0.5)
     obs_1hr = _normal_track(n=3, spacing_hours=1.0)
 

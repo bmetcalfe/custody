@@ -155,9 +155,10 @@ class TestReplayRecordsDecayedConfidence:
         # Second record: gap == threshold → no decay
         second = records[1]
         # confidence in record should equal track.confidence (no staleness penalty)
-        from custody.tracks import custody_confidence, update_uncertainty
-        expected_uncertainty = update_uncertainty(5.0, config.AIS_STALE_GAP_SECONDS / 3600)
-        expected_confidence = custody_confidence(expected_uncertainty)
+        from custody.models import TrackState
+        t = TrackState(uncertainty_km=5.0)
+        t.predict(dt_seconds=config.AIS_STALE_GAP_SECONDS)
+        expected_confidence = t.confidence
         assert second["custody_confidence"] == pytest.approx(expected_confidence, abs=1e-6)
 
     def test_long_gap_record_confidence_is_lower_than_short_gap(self):
@@ -203,9 +204,10 @@ class TestPlannerReceivesDecayedConfidence:
 
         assert plan_calls, "plan_collection was never called"
         # The confidence passed must be the decayed value, not raw track.confidence
-        from custody.tracks import custody_confidence, update_uncertainty
-        raw_uncertainty = update_uncertainty(5.0, stale_gap / 3600)
-        raw_confidence = custody_confidence(raw_uncertainty)
+        from custody.models import TrackState
+        t = TrackState(uncertainty_km=5.0)
+        t.predict(dt_seconds=stale_gap)
+        raw_confidence = t.confidence
         decayed = _stale_confidence(raw_confidence, stale_gap)
         assert plan_calls[0] == pytest.approx(decayed, abs=1e-6)
 

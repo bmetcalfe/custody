@@ -49,7 +49,6 @@ from custody.decision_trace import (
     build_decision_trace,
     traces_to_rows,
 )
-from custody.tracks import custody_confidence
 
 UTC = timezone.utc
 _T0 = datetime(2026, 3, 23, 10, 0, tzinfo=UTC)
@@ -260,11 +259,11 @@ class TestDecisionTraceVisibility:
 class TestPropagation:
 
     def test_failure_raises_uncertainty_lowers_confidence(self):
-        """Failure penalty on uncertainty should lower custody_confidence."""
+        """Failure penalty on uncertainty should lower track.confidence."""
         track = TrackState(uncertainty_km=15.0)
-        conf_before = custody_confidence(track.uncertainty_km)
+        conf_before = track.confidence
         track.record_failure(_T0)
-        conf_after = custody_confidence(track.uncertainty_km)
+        conf_after = track.confidence
         assert conf_after < conf_before
 
     def test_failure_raises_fused_score(self):
