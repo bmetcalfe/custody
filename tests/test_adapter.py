@@ -41,7 +41,7 @@ from adapter import (
     timestep_as_dataframe,
     entity_timeline_as_dataframe,
 )
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.decision import Decision
 
 

@@ -28,7 +28,7 @@ from custody.config import ZONES
 from custody.simulate import run_simulation
 from custody.compounds import evaluate_compounds
 from custody.decision import build_decision
-from custody.fusion import build_fusion_assessment
+from custody.belief_assessment import build_fusion_assessment
 from custody.models import TrackState
 from custody.taskrecommendation import build_task_recommendations
 

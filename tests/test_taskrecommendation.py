@@ -53,7 +53,7 @@ import pytest
 
 import custody.config as config
 from custody.decision import Decision, PASSIVE_MONITOR, ELEVATE, TASK_OPTICAL, TASK_SAR, ESCALATE
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.models import TrackState
 from custody.sensors import PassWindow
 from custody.taskrecommendation import (
@@ -559,7 +559,7 @@ def test_end_to_end_with_simulation():
     """run_simulation → FA → Decision → TaskRecommendations for all vessels."""
     from collections import defaultdict
     from custody.simulate import run_simulation
-    from custody.fusion import fusion_for_timeline
+    from custody.belief_assessment import fusion_for_timeline
     from custody.decision import decision_for_timeline
 
     records = run_simulation()

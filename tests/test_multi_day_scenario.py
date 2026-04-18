@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.decision import Decision
 from custody.simulation.scenarios import PhaseTrigger
 

@@ -37,7 +37,7 @@ from custody.simulation.generator import build_vessel_list
 from custody.orchestration.portfolio import rank_portfolio
 from custody.prediction import predict_entity
 from custody.config import ZONES
-from custody.fusion import build_fusion_assessment
+from custody.belief_assessment import build_fusion_assessment
 from custody.decision import build_decision
 from custody.reasoning import enrich_record as _enrich_reasoning
 from custody.solar import sensor_suitability as _sensor_suitability

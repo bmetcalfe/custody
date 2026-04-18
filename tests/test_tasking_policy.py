@@ -107,7 +107,7 @@ class TestTierClassification:
 
     def test_high_fused_score_with_anomaly_raises_tier(self):
         """High fused score + anomaly evidence → elevated or priority."""
-        from custody.fusion import FusionAssessment
+        from custody.belief_assessment import FusionAssessment
         from datetime import datetime, timezone
         r = _rec(priority=0.9, state="normal")
         r["anomaly_score"] = 1.0  # above ANOMALY_THRESHOLD

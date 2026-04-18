@@ -58,7 +58,7 @@ from custody.decision import (
     _build_why, _build_next_best_actions,
     build_decision, decision_for_timeline,
 )
-from custody.fusion import FusionAssessment, build_fusion_assessment
+from custody.belief_assessment import FusionAssessment, build_fusion_assessment
 from custody.models import TrackState
 
 
@@ -474,7 +474,7 @@ class TestPredictionPriority:
 def test_end_to_end_with_simulation():
     """run_simulation → FusionAssessments → Decisions: all valid."""
     from custody.simulate import run_simulation
-    from custody.fusion import fusion_for_timeline
+    from custody.belief_assessment import fusion_for_timeline
 
     records = run_simulation()
 

@@ -21,7 +21,7 @@ import pytest
 
 from custody.compounds import evaluate_compounds
 from custody.decision import Decision, build_decision
-from custody.fusion import FusionAssessment, build_fusion_assessment
+from custody.belief_assessment import FusionAssessment, build_fusion_assessment
 from custody.models import TrackState
 from custody.orchestration.portfolio import _portfolio_score
 

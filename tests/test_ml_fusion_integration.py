@@ -21,7 +21,7 @@ import pytest
 
 import custody.config as config
 from custody.compounds import CompoundSignal
-from custody.fusion import _compute_fused_score, _compute_source_agreement, build_fusion_assessment
+from custody.belief_assessment import _compute_fused_score, _compute_source_agreement, build_fusion_assessment
 from custody.models import TrackState
 
 UTC = timezone.utc

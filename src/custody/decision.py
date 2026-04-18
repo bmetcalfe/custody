@@ -55,7 +55,7 @@ from typing import Optional
 import custody.config as config
 from custody.compounds import CompoundSignal
 from custody.decision_trace import DecisionTrace
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.models import TrackState
 
 

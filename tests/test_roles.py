@@ -14,7 +14,7 @@ from custody.decision import (
     TASK_SAR,
     Decision,
 )
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.roles import (
     RoleRecommendation,
     Synthesis,

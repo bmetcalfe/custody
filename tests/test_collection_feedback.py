@@ -269,7 +269,7 @@ class TestPropagation:
 
     def test_failure_raises_fused_score(self):
         """Lower confidence after failure should raise fused_score."""
-        from custody.fusion import _compute_fused_score
+        from custody.belief_assessment import _compute_fused_score
         conf_good = 0.7
         conf_degraded = 0.5  # as if failure penalty lowered it
         fs_good = _compute_fused_score(anomaly_score=0.5, top_compound_confidence=0.0,

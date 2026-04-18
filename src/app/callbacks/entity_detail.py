@@ -19,7 +19,7 @@ from custody.alerts import alerts_for_timeline
 from custody.compounds import evaluate_compounds
 from custody.decision import build_decision
 from custody.decision_trace import traces_to_rows
-from custody.fusion import build_fusion_assessment
+from custody.belief_assessment import build_fusion_assessment
 from custody.roles import build_deliberation
 from custody.taskrecommendation import build_task_recommendations
 

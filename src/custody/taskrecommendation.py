@@ -55,7 +55,7 @@ from typing import Optional
 import custody.config as config
 from custody.decision import Decision, PASSIVE_MONITOR, ELEVATE, TASK_OPTICAL, TASK_SAR, ESCALATE
 from custody.decision_trace import DecisionTrace
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.models import TrackState
 from custody.sensors import PassWindow, next_pass_window
 

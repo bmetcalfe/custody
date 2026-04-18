@@ -45,7 +45,7 @@ import pytest
 
 import custody.config as config
 from custody.compounds import CompoundSignal
-from custody.fusion import (
+from custody.belief_assessment import (
     FusionAssessment,
     _compute_fused_score,
     _compute_source_agreement,

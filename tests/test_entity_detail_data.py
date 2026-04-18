@@ -26,7 +26,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "app"))
 
 from entity_detail_data import entity_id, derive_track_state, panel_summary
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.decision import Decision
 
 UTC = timezone.utc

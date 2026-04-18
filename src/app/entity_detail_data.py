@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional
 
 from custody.decision import Decision
-from custody.fusion import FusionAssessment
+from custody.belief_assessment import FusionAssessment
 from custody.models import TrackState
 
 
