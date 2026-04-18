@@ -17,4 +17,4 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0004 — Rename ObservationState to CollectionIntent; reserve Observation for raw detections](0004-rename-observationstate-to-collectionintent.md)
 - [0005 — Replace scalar-radius track model with EKF; retain uncertainty_km and add position_sigma_km as shim properties](0005-ekf-tracks-with-scalar-radius-shim.md)
 - [0006 — TrackState converted from @dataclass to a plain class](0006-trackstate-plain-class.md)
-- [0007 — Tune EKF process noise to match Phase 2 heuristic in demo operational range](0007-ekf-q-tuned-to-phase2-heuristic.md)
+- [0007 — Default EKF velocity prior produces Phase 2 linear-σ envelope via F-coupling](0007-ekf-velocity-prior-for-phase2-envelope.md)
