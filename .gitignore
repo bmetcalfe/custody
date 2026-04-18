@@ -2,7 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-.env
+.env*
+!.env.example
 .DS_Store
 .claude/
 .pytest_cache/
@@ -20,3 +21,7 @@ data/raw/
 
 # Intermediate Parquet + COG outputs (regeneratable from raw/)
 data/processed/
+
+# Day-0 scratch workspace — rerun outputs, ad-hoc probes
+day0/scratch/*
+!day0/scratch/.gitkeep
