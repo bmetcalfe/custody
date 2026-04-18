@@ -72,7 +72,7 @@ def _validate_timestamps(acquisition_time: float, ingestion_time: float) -> None
 class PositionObservation:
     obs_id: str
     source_id: str
-    modality: Literal["SAR", "EO"]
+    modality: Literal["SAR", "EO", "AIS"]
     acquisition_time: float  # UTC epoch seconds
     ingestion_time: float
     lat: float
