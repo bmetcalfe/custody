@@ -1,162 +1,160 @@
 # Custody
 
-> ## 🛰 Migration in progress: v3 SDA-Custody-Layer reference implementation
->
-> This repository is actively migrating from its Phase 2 architecture (ML-based maritime ISR reasoning, described below) to a v3 architecture aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/).
->
-> **What v3 is:** an open-source reference implementation of multi-phenomenology fusion and legible tip-and-cue orchestration for maritime domain awareness. It applies architectural patterns from the SDA Custody Layer capability vectors — multi-sensor fusion, hypothesis management, low-latency exploitation — to a domain where open data (Umbra SAR, Sentinel-1/2, Global Fishing Watch AIS) enables public validation.
->
-> **What v3 is not:** a hypersonic or missile tracking system. SDA's Custody Layer primarily addresses ballistic and hypersonic threats, which have kinematics that do not translate to ships. Custody applies the *architectural patterns* described in those capability vectors to the maritime domain. See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping story.
->
-> **Hero capability:** covariance-aware, explainable tip-and-cue orchestration. Every cueing decision emits both a tasking action and a reasoning trace — selected collect, expected information gain, feasibility priors, rejected alternatives with scores, plain-language justification.
->
-> **Demo scenario:** Spratly Islands, June–August 2023. AIS-dark vessel persistence at Cuarteron-area feature across 5 Umbra SAR scenes spanning 41 days, ending in a cued 48-hour revisit. Grounded in published [CSIS AMTI methodology](https://amti.csis.org/) on Chinese maritime militia presence in the South China Sea.
->
-> **Composition with Phase 2:** the Phase 2 portfolio/attention engine described below is preserved. v3 adds a `fusion/` package (multi-sensor observation model with covariance and provenance), a `tipcue/` package (per-track collection scoring by information gain), and a new frontend. Portfolio picks the track; tipcue picks the collect. See [ADR-0001](docs/decisions/0001-rename-v3-orchestration-to-tipcue.md).
->
-> **Current migration state (Week 1):** Scenario locked. Positioning locked. Seven architecture decisions recorded in [`docs/decisions/`](docs/decisions/). EKF-based belief state replaces the Phase 2 scalar-radius track model with ~2,069 tests green. Portfolio, attention, ML, and the Streamlit/Dash UI described below remain operational during the migration.
->
-> **Canonical v3 references:**
-> - [`docs/positioning.md`](docs/positioning.md) — the public-facing "why this exists"
-> - [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_implementation_guide_v3.md) — full v3 architecture and 10-week sequence
-> - [`docs/scenario.md`](docs/scenario.md) — locked AOI, time window, Umbra inventory
-> - [`docs/decisions/`](docs/decisions/) — architecture decision log
->
-> The remainder of this README describes the Phase 2 implementation as it currently exists on disk. Full v3 rewrite is scheduled for end of Week 1 once the new module scaffolding lands.
+**An open-source reference implementation of multi-phenomenology fusion and legible tip-and-cue orchestration for maritime domain awareness**
+
+Aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/). Grounded in a real scenario: AIS-dark vessel persistence in the Spratly Islands, June–August 2023, validated against [CSIS AMTI methodology](https://amti.csis.org/) on Chinese maritime militia presence.
+
+[![Custody demo](https://github.com/bmetcalfe/custody/raw/main/docs/progression.gif)](/bmetcalfe/custody/blob/main/docs/progression.gif)
+*Demo GIF above is the Phase 2 Streamlit UI. The v3 belief-state visualization is scheduled for Week 6–7 and will replace this asset.*
 
 ---
 
-**Closed-loop maritime ISR reasoning system** *(Phase 2 — see migration notice above)*
+## What this is
 
-Custody screens vessel populations, detects anomalous behavior using ML and heuristic signals, and converts that detection into prioritized, sensor-aware collection decisions — with a full reasoning chain behind every recommendation.
+An open-source reference implementation of multi-sensor fusion and legible tip-and-cue orchestration, built on open commercial and public data:
 
-![Custody demo](docs/progression.gif)
+- **Umbra SAR Open Data** (CC BY 4.0) — high-resolution (25 cm–1 m) SAR imagery
+- **Sentinel-1 GRD** — baseline 10 m SAR via Earth Search STAC
+- **Sentinel-2 L2A** — opportunistic 10 m optical
+- **Global Fishing Watch AIS** — research API
 
----
+Custody applies architectural patterns described in SDA's Custody Layer capability vectors — **multi-phenomenology fusion**, **hypothesis management**, **low-latency exploitation** — to a domain where open data enables public validation.
 
-## The Problem
+### Hero capability: covariance-aware, explainable tip-and-cue orchestration
 
-Maritime surveillance generates far more targets than sensors can observe. An analyst watching 30 vessels needs to answer three questions every hour:
+Every cueing decision the system emits is accompanied by a reasoning trace — what was selected, what alternatives were considered, what the expected information gain was, why rejected candidates were rejected, and a plain-language justification. Commercial systems generally expose the decision. Custody exposes the reasoning.
 
-1. Which vessels are actually behaving unusually?
-2. How confident should I be in that assessment?
-3. What should I collect next, with which sensor, and why?
+### What this is *not*
 
-Most anomaly detection systems answer the first question and stop. Custody answers all three — and feeds collection outcomes back into the next decision cycle.
+**Not a hypersonic or missile tracking system.** SDA's Custody Layer primarily addresses ballistic and hypersonic threats with kinematics that do not translate to maritime vessels. Custody applies the *architectural patterns* from those capability vectors to the maritime domain. The threat model is AIS-dark commercial and militia vessel traffic, not missile defense.
 
----
+**Not a production system.** The demo runs against pre-computed artifacts produced by a one-shot preprocessing pipeline. Architecture supports live operation; the demo does not.
 
-## How It Works
+**Not a commercial product clone.** Vantor Sentry, BlackSky, Satellogic, and other commercial MDA products have significant internal capabilities and constellations and archives we don't have access to. Custody focuses on the publicly visible gap: making planning decisions and their uncertainty explicit and auditable. Whether or how similar functionality exists inside commercial products is not a claim made either way.
 
-Custody operates as a closed loop. Each stage feeds the next, and collection outcomes update future decisions.
-
-| Stage | What it does |
-|-------|-------------|
-| **Observe** | Ingest AIS tracks, maintain per-vessel behavioral baselines |
-| **Detect** | Score anomalies via ML (Isolation Forest on real NOAA AIS data) and heuristic detectors (zone proximity, loitering, route deviation, vessel proximity) |
-| **Reason** | Evaluate ML/heuristic agreement, track persistence, model state transitions (emerging → confirmed → sustained → recovering), compute confidence across history depth, sensor suitability, and custody strength |
-| **Prioritize** | Rank the fleet by fused anomaly severity, adjusted for confidence |
-| **Task** | Assign monitoring tier, revisit cadence, and sensor preference — respecting EO/SAR constraints, solar conditions, and swath coverage |
-| **Collect** | Execute collection; success resets uncertainty, failure increases urgency and biases the next cycle toward retasking |
+See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping document.
 
 ---
 
-## What Makes It Different
+## Demo scenario
 
-**Per-vessel normalization.** The ML model learns each vessel's baseline. A fishing boat accelerating from 2 to 12 km/h is as notable as a cargo ship doing 35 knots. Detection adapts to the vessel, not a global threshold.
+**Area of interest:** Spratly Islands hotspot, bbox 114.5°E–117.5°E × 8.5°N–11.0°N (~330 km × 280 km).
 
-**Temporal reasoning.** A one-hour spike is not treated the same as a six-hour sustained anomaly. The system tracks agreement between ML and heuristic signals, requires persistence before escalating, and models explicit state transitions with recovery tracking.
+**Time window:** June 1 – August 20, 2023. Driven by Umbra Open Data Program scene availability.
 
-**Sensor-aware tasking.** The system doesn't recommend optical imaging at night. It selects EO or SAR based on solar conditions, suggests cross-sensor confirmation when only one modality has observed the anomaly, and computes swath footprints so one collection can cover multiple nearby targets.
+**Primary narrative:** A persistent AIS-dark target at a Cuarteron-area reef feature (8.856°N, 114.665°E), imaged by Umbra SAR across 5 scenes spanning 41 days. The final three scenes — August 7, 9, and 13 — include a 48-hour revisit cadence that mirrors what a real cued system would produce. The full AOI also carries continuous Sentinel-1 SAR baseline coverage, opportunistic Sentinel-2 optical where cloud permits, and real Global Fishing Watch AIS traffic.
 
-**Confidence-gated escalation.** Thin evidence shifts the system toward confirmation rather than aggressive action. Custody degradation alone — which happens to every vessel over time — does not trigger escalation. Brief spikes do not promote to top tiers. Escalation requires persistent, multi-source evidence.
+**Why the Spratlys.** Published CSIS AMTI methodology documents that a large fraction of Chinese maritime militia vessels systematically operate AIS-dark. This makes the region a canonical real-world test case for SAR/AIS fusion: cooperative vessels appear in AIS, non-cooperative vessels appear only in SAR, and the interesting anomalies are the ones where the two disagree.
 
-**Closed-loop feedback.** Collection outcomes are not discarded. A failed attempt increases urgency and biases the next cycle toward retasking. A successful collection resets the loop.
+The demo does not identify specific flagged vessels. It detects activity consistent with published open-source analytic methodology.
 
----
-
-## Selective Custody
-
-Custody does not attempt to maintain persistent tracking on every vessel. That approach fails at scale.
-
-Instead, the system screens the full population and selectively commits resources to the subset of targets that matter:
-
-| Attention tier | When assigned | Neglect pressure |
-|---|---|---|
-| **Background** | Routine traffic — no behavioral signal, no zone relevance | None |
-| **Watchlist** | Elevated interest — mild anomaly, zone proximity, or degrading custody | Reduced |
-| **Active Custody** | Active tracking — high anomaly, zone entry, weak confidence, or operator directive | Full |
-
-Only Active Custody and Watchlist entities accrue meaningful neglect pressure. A background vessel going unobserved for 100 hours does not crowd out a newly promoted target.
+See [`docs/scenario.md`](docs/scenario.md) for the locked AOI, Umbra scene inventory, and Act-by-Act demo narrative.
 
 ---
 
-## Tuned Behavior
+## Architecture — the two-layer story
 
-The system was explicitly tuned to behave like a disciplined ISR operator: observe broadly, escalate selectively, act rarely.
+Custody has two orchestration-adjacent layers that compose cleanly rather than compete:
 
-| Tasking tier | Distribution | Meaning |
-|---|---|---|
-| Routine | ~81% | Correctly ignored |
-| Elevated | ~16% | Increased monitoring for mild anomalies |
-| Priority | ~2% | Persistent, multi-source, high-confidence anomalies |
-| Urgent | Rare | Sustained anomaly with confirmed state and weak custody |
+```
+                    ┌─────────────────────────────┐
+                    │   N active tracks            │
+                    │   with belief state          │
+                    └──────────────┬───────────────┘
+                                   │
+                  ┌────────────────▼────────────────┐
+                  │   PORTFOLIO LAYER               │
+                  │   (src/custody/orchestration/)  │
+                  │   "Who deserves attention?"     │
+                  │                                 │
+                  │   Attention tiers:              │
+                  │     BACKGROUND                  │
+                  │     WATCHLIST                   │
+                  │     ACTIVE_CUSTODY              │
+                  └────────────────┬────────────────┘
+                                   │
+                                   │  tracks flagged ACTIVE_CUSTODY
+                                   │
+                  ┌────────────────▼────────────────┐
+                  │   TIPCUE LAYER                  │
+                  │   (src/custody/tipcue/)         │
+                  │   "Which collect to use?"       │
+                  │                                 │
+                  │   For each candidate pass:      │
+                  │     expected info gain          │
+                  │     feasibility priors          │
+                  │   Emits cueing decision +       │
+                  │   reasoning trace               │
+                  └─────────────────────────────────┘
+```
 
-Design principles enforced by tuning:
-- Custody degradation alone does not trigger escalation
-- Heuristic-only signals do not escalate without ML persistence or agreement
-- Brief anomaly spikes do not promote to priority
-- Weak custody only raises tier when combined with confirmed anomaly state
+**Portfolio picks the who. Tipcue picks the what.** Portfolio operates at fleet scope over attention tiers; tipcue operates at per-track scope over individual candidate sensor collections. The demo's hero moment happens at the tipcue layer, but it's the portfolio layer that decides the track is worth a cue in the first place. See [ADR-0001](docs/decisions/0001-rename-v3-orchestration-to-tipcue.md).
 
----
+### SDA capability vector alignment
 
-## Key Behaviors
-
-**Rendezvous detection.** Pairwise and sequence-based — the system detects vessel proximity, tracks the converge → dwell → separate sequence, and distinguishes genuine rendezvous from transient crossing.
-
-**Dark-vessel handling.** When AIS drops, position freezes at last-known, uncertainty grows over time, and custody health degrades from HEALTHY through STALE to LOST. Manually directed vessels maintain their attention tier even after going dark.
-
-**Manual tracking directives.** Operators can designate a vessel for persistent Active Custody regardless of anomaly score. The directive sets an attention-tier floor; the vessel still competes for sensors on merit rather than consuming them unconditionally.
-
-**Preemption tradeoffs.** When one entity is serviced and another cannot be, the system records who was deferred, for whom, and why. Preemption is a first-class event, not a silent drop.
-
-**Observation-aware tasking.** The system tracks which sensor last observed a target and how recently, then adjusts collection intent: search (stale), confirm (recent anomaly with low confidence), characterize (sustained high-confidence anomaly), or monitor (routine).
-
----
-
-## Demo Scenario
-
-The default demo runs 24 vessels over 36 hours with four scripted actors:
-
-| Entity | Role | Behavior arc |
-|---|---|---|
-| `BRAVO-1` | Zone loiterer | Approaches ZONE_ALPHA ~h15, loiters h16–28, evasive egress |
-| `ECHO-1/2` | Rendezvous pair | Converge from opposite sides, dwell ~h12–22, separate |
-| `PORT-1` | Manual custody / dark | Slow transit under MAINTAIN_CUSTODY, AIS dropout at h12 |
-| Background ×20 | Mixed archetypes | Transit, patrol, approach — realistic population |
-
-**Narrative arc:**
-- **h0–11**: Fleet is quiet. All vessels routine. PORT-1 tracked under operator directive.
-- **h12**: PORT-1 AIS dropout and ECHO rendezvous fire simultaneously — direct portfolio tradeoff.
-- **h12–22**: Dark-vessel concern, active rendezvous, and BRAVO-1 zone loitering all compete for sensor capacity.
-- **h22+**: ECHO pair separates, PORT-1 track degrades, BRAVO-1 evasive egress. Fleet returns to routine.
-
-The system also supports a **72-hour multi-day scenario** with 30 entities, 6 scripted actors, condition-triggered phase transitions, and a three-act narrative arc.
-
-![Dash dashboard — portfolio table, map, and sidebar controls](docs/screenshot_2.png)
+| SDA Custody Layer capability vector | Custody implementation |
+|---|---|
+| Automated processing and fusion of data from traditional space-based sensing payloads (visible, infrared, RF, SAR, multispectral) | Multi-modal fusion of SAR (Umbra + Sentinel-1), EO (Sentinel-2), and AIS through unified Observation schema |
+| Design of a multi-phenomenology fusion architecture supporting agile incorporation of new algorithms | Pluggable detector interface, per-source STAC adapters, polymorphic Observation type, anomaly scorer registry |
+| Reduction in latency of processing, exploitation, and dissemination | Offline pipeline demonstrates the architectural patterns; production latency work is documented as out of scope for this reference |
+| Memory management and target hypothesis distribution from one satellite node to the next | Covariance-preserving track state serialization; inter-node handoff flagged as a stretch goal |
 
 ---
 
-## Technology
+## What's built (as of Week 1)
 
-| Component | Detail |
-|-----------|--------|
-| Engine | Python 3.12+, deterministic simulation, 72-hour multi-day scenarios |
-| ML | scikit-learn Isolation Forest, trained on 300 vessels × 10 days of NOAA AIS data |
-| AIS data | Real NOAA AIS daily CSVs, preprocessed to hourly cadence |
-| Orbital model | SGP4 propagation, 6 synthetic satellites with real TLE-based pass windows |
-| UI | Dash (portfolio table, pydeck map, entity reasoning panels, decision traces) + Streamlit (legacy) |
-| Tests | ~2,000 passing, covering detection through UI callbacks |
+**The v3 `src/custody/fusion/` package** (~885 LOC, 75 tests):
+- `fusion/geo.py` — AEQD tangent-plane projection anchored at AOI center for meters-basis EKF math
+- `fusion/observations.py` — polymorphic `Observation` sum type: `PositionObservation` (SAR, EO) and `PositionVelocityObservation` (AIS) with honest covariance shapes per sensor
+- `fusion/index.py` — H3 r8 + DuckDB spatial-temporal index over Parquet
+- `fusion/tracker.py` — Hungarian assignment with Mahalanobis gating, N-of-M track lifecycle, EKF predict/update per track
+
+**EKF belief state** (`src/custody/models.py`):
+- 4-dimensional state `[x_east_m, y_north_m, v_north, v_east]` in tangent-plane meters basis
+- 4×4 covariance with Joseph-form updates
+- Process noise tuned so σ growth matches published maritime-tracking envelopes at operational time scales — not by empirical fit but as a direct consequence of CV Kalman F-coupling math. See [ADR-0007](docs/decisions/0007-ekf-velocity-prior-for-phase2-envelope.md).
+
+**Phase 2 portfolio and attention engine** (`src/custody/orchestration/`, `src/custody/anomalies.py`, `src/custody/compounds.py`, ~2000 tests):
+- Per-vessel behavioral baselines with ML (Isolation Forest trained on real NOAA AIS) and heuristic detectors
+- Attention-tier classification, custody-health scoring, neglect pressure, preemption tradeoffs
+- Dash + Streamlit UIs for the Phase 2 demo
+- Preserved and composed with the v3 layers per ADR-0001. Not ancestral, not deprecated — a live subsystem that feeds the v3 tipcue layer.
+
+**Day 0 data reconnaissance:**
+- 56 GB Umbra SAR mirror across 219 files
+- 8 AOI scenes at 2 repeat-imaged Spratly features
+- Scene inventory, GFW AIS token, Sentinel STAC queries all validated
+
+---
+
+## What's coming
+
+**Week 2 (now):** Detection. CA-CFAR over Umbra and Sentinel-1 SAR. AIS passthrough from GFW Parquet. Opportunistic Sentinel-2 EO if cloud-free scenes exist.
+
+**Week 3:** Run the v3 fusion pipeline over the full 11-week window. Validate track lifecycles against known shipping lane patterns.
+
+**Week 4:** Anomaly scoring. Four multi-INT anomalies including SAR-only-dark-vessel (the hero anomaly for the demo narrative).
+
+**Week 5:** The tipcue layer. Covariance-aware candidate scoring via expected information gain, feasibility priors per modality, natural-language reasoning trace for every cueing decision.
+
+**Week 6–7:** Frontend. React + Mapbox + deck.gl + FastAPI. Belief-state uncertainty ellipses, orchestration trace panel, provenance chain. Cesium 3D if belief-state viz lands on time.
+
+**Week 8–9:** Polish and voiceover.
+
+**Week 10:** Publish.
+
+See [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_implementation_guide_v3.md) for the full 10-week plan, design decisions, and honest scoping.
+
+---
+
+## References
+
+- [`docs/positioning.md`](docs/positioning.md) — public-facing "why this exists"
+- [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_implementation_guide_v3.md) — full v3 architecture and weekly sequence
+- [`docs/scenario.md`](docs/scenario.md) — locked AOI, window, Umbra inventory
+- [`docs/decisions/`](docs/decisions/) — 10 architecture decision records from Week 1
+- [SDA Custody Layer](https://www.sda.mil/custody/) — primary community-call reference
+- [CSIS Asia Maritime Transparency Initiative](https://amti.csis.org/) — the methodology grounding the Spratly scenario
 
 ---
 
@@ -164,86 +162,35 @@ The system also supports a **72-hour multi-day scenario** with 30 entities, 6 sc
 
 ```bash
 uv sync
-# Dash UI (current)
-uv run python src/app/dash_app.py
-# Streamlit UI (legacy)
-uv run streamlit run src/app/streamlit_app.py
+uv run pytest tests/                    # full suite, currently ~2156 tests
+uv run python src/app/dash_app.py       # Phase 2 Dash UI
+uv run streamlit run src/app/streamlit_app.py   # Phase 2 Streamlit UI (legacy)
 ```
 
 Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 
----
-
-## Running Tests
-
-```bash
-uv run pytest tests/
-```
+The v3 demo UI (React + Mapbox + deck.gl) ships in Week 6–7.
 
 ---
 
-## Repository Structure
+## Honest limitations
 
-```
-src/
-  custody/
-    ais.py                  AIS CSV ingestion and single-vessel replay
-    alerts.py               Sparse event-style alert layer
-    anomalies.py            Composite anomaly scorer
-    behavior/               Atomic behavior detectors and state machine
-    collection.py           Collection attempt and uncertainty reduction
-    compounds.py            Multi-signal compound behavioral patterns
-    confidence.py           Confidence / uncertainty modeling
-    config.py               All thresholds, zone geometry, sensor constants
-    decision.py             Mission reasoning layer
-    decision_trace.py       Structured planner decision breakdown
-    features/               Motion, zone, and proximity feature extractors
-    fusion.py               Multi-source evidence fusion
-    models.py               Shared dataclasses (TrackState, Vessel, Zone)
-    observation.py          Observation state and cross-sensor reasoning
-    orbit.py                TLE parsing, SGP4 propagation, satellite visibility
-    planner.py              Collection planner (HOLD/TASK/PREEMPTED gate)
-    reasoning.py            Temporal anomaly reasoning (agreement, persistence, escalation)
-    sensors.py              Orbital and schedule-based sensor catalog
-    solar.py                Solar position and sensor suitability
-    swath.py                Sensor footprint geometry and grouped collection value
-    tasking_policy.py       Adaptive tasking policy (tier, revisit, sensor, action)
-    taskrecommendation.py   Collection orchestration → ranked task queue
-    tracks.py               Track position update and uncertainty decay
-    whatif.py               Config-variant comparison engine
-    prediction/             Forward trajectory, zone-crossing probability, anomaly forecast
-    orchestration/          Attention tier classification and portfolio ranking
-    simulation/             Multi-target simulation engine with trigger-based phases
-    ingest/                 NOAA AIS preprocessing pipeline
-    ml/                     ML anomaly scoring, features, normalization, analysis,
-                            injection testing, priority scoring
-  app/
-    dash_app.py             Dash application entrypoint
-    adapter.py              Engine-to-UI adapter layer
-    state.py                Dash store definitions and server-side cache
-    layout/                 Dash layout modules (sidebar, overview, map, entity detail)
-    callbacks/              Dash callback modules (navigation, portfolio, map, entity detail)
-    streamlit_app.py        Legacy Streamlit dashboard
-    portfolio_overview.py   Portfolio table, KPI counts, display status
-    overview_filters.py     Status/tier/top-N filter helpers
-    overview_events.py      Event feed detectors
-    entity_detail_panel.py  Fusion → Decision → Task Queue panel (Streamlit)
-    entity_detail_data.py   Pure data helpers for entity detail display
-    compound_panels.py      Compound signal display helpers
-    orbital_passes_panel.py Orbital pass reference table
-    whatif_panel.py         What-if results display
-    ground_track.py         Orbital ground-track sampling
-scripts/                    Training, scoring, analysis, preprocessing scripts
-models/                     Trained Isolation Forest artifact
-data/                       Preprocessed AIS parquet files
-tests/                      ~2,000 tests
-```
+This is a 10-week evenings-and-weekends project by one engineer. The limitations below are documented in more detail in [`docs/positioning.md`](docs/positioning.md).
+
+- Umbra coverage over the chosen AOI is 8 scenes at 2 features over 9 months. Sentinel-1 provides continuous fill-in at 10 m resolution.
+- Detection uses classical CFAR (SAR) and a pretrained CNN (EO). No fine-tuning on the specific AOI.
+- The EKF uses a constant-velocity motion model. Appropriate for the maritime domain studied; not for high-maneuver targets.
+- Association uses Hungarian with Mahalanobis gating. Multiple Hypothesis Tracking (MHT) is documented as future work, not implemented.
+- Tipcue's feasibility priors are simplified: binary for SAR grazing angle, probabilistic for cloud forecast. Production systems would extend these.
+- Sensor fingerprinting, vessel re-identification from imagery, and 20+ year archive pattern-of-life are commercial capabilities we do not reproduce.
+- The demo does not identify specific flagged vessels and does not make legal or sovereignty claims.
 
 ---
 
-## Future Directions
+## License
 
-- Real-time AIS feed integration
-- Orbital access modeling from live TLEs
-- Multi-INT fusion beyond AIS + overhead
-- Reinforcement learning for tasking optimization
+Code: MIT. Data: respective source licenses (Umbra ODP is CC BY 4.0; Sentinel is Copernicus open; GFW is research license; NOAA AIS is public domain). See `LICENSE` for full terms.
+
+---
+
+*Custody is an open-source reference implementation answering a publicly published community capability call. It is not a pitch, a job application, or a product. If the architectural patterns are useful, fork the repo. If they're not, the postmortem is itself useful.*
