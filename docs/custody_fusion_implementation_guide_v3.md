@@ -396,6 +396,8 @@ for item in candidates:
 
 This composition lowers Week 5 risk: portfolio already exists at 738 LOC and works. Week 5 builds tipcue from scratch against an input the portfolio already produces, instead of reinventing the attention layer.
 
+**Scope — v1 tipcue consumes `ACTIVE_CUSTODY` tracks only.** `WATCHLIST` scoring is a documented extension point: the composition code handles it trivially (the filter predicate is a single line), but scoring passes against tracks we haven't committed to watching adds noise to the demo and undermines the legibility claim. Deferred to a follow-up ADR if post-demo feedback asks for it. See [ADR-0002](decisions/0002-tipcue-v1-active-custody-only.md).
+
 ---
 
 ## 5. Presentation Layer
