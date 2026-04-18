@@ -22,3 +22,4 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0009 — Global tangent-plane anchor at AOI center for lat/lon ↔ meters conversions](0009-global-tangent-plane-anchor-at-aoi-center.md)
 - [0010 — TrackState mean stored in tangent-plane meters, not lat/lon radians](0010-trackstate-mean-in-tangent-plane-meters.md)
 - [0011 — AIS ingestion uses GFW public-tier presence dataset; observations are position-only](0011-gfw-presence-as-position-only.md)
+- [0012 — Scenario reframe: primary narrative is Vietnamese reclamation at Tennent Reef; Whitsun becomes supplementary](0012-scenario-reframe-tennent-whitsun.md)
