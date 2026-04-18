@@ -1,109 +1,78 @@
-# Custody — Project Context for Claude Code
+# CLAUDE.md — Operating Guide for Claude Code CLI Sessions
 
-## What this project is
-Custody is an open-source reference implementation of multi-sensor fusion and legible tip-and-cue orchestration for maritime domain awareness. It applies architectural patterns described in the Space Development Agency's publicly released Custody Layer capability vectors — multi-phenomenology fusion, hypothesis management, low-latency exploitation — to the maritime domain, where open data enables building against the same principles without classified constraints.
+*CC's entry point. Read this first every session. Contains only what CC needs to stay aligned with the project's state and conventions. Full architecture lives in docs/custody_fusion_implementation_guide_v3.md; full positioning lives in docs/positioning.md.*
 
-Primary audiences for the public artifact, in order:
-1. The broader GeoInt engineering community responding to the SDA STEC BAA and similar capability calls (Vantor/Sentry, BlackSky, Satellogic, Ursa, HawkEye 360, and integrating primes).
-2. SDA's Custody & Emerging Capabilities Cell as an open-source reference for the architectural patterns they're soliciting.
-3. Hiring managers at the above commercial entities as a side effect of doing the work honestly.
+---
 
-This is NOT a pitch to any single company. It's a demo answering a publicly published community call.
+## One-line project definition
 
-## What this project is NOT
-- Not a hypersonic or missile tracking system. SDA's Custody Layer operates on ballistic/hypersonic threats with very different kinematics, timescales, and threat models. We apply *architectural patterns* from their capability vectors to the maritime domain. We do not claim domain equivalence.
-- Not a production system. Everything runs from pre-computed Parquet in the demo.
-- Not a live inference engine. Detectors run once, offline, in scripts/.
-- Not a generic geospatial toolkit. Every architectural choice serves the demo narrative.
-- Not a Sentry clone. Vantor Sentry is a commercial product with internal capabilities we don't have visibility into. Custody is a reference implementation focused on the *publicly visible gap*: covariance-aware planning and legible reasoning traces.
+Custody is a 10-week open-source reference implementation of multi-sensor fusion and covariance-aware tip-and-cue orchestration for maritime domain awareness, aligned with the SDA Custody Layer capability vectors, built on open data.
 
-## Current phase
-Day 0 complete. Data reconnaissance confirmed Umbra Spratly coverage, GFW token in hand, 56 GB Umbra mirror staged locally (219 files across 103 scenes). Sentinel-1/2 and GFW AIS pulls are Week 2 work. Week 1 starting: foundations — observation model, spatial index, EKF-based tracker.
+## What's the scenario
 
-## Authoritative references — ALWAYS read these before starting work
-1. `docs/custody_fusion_implementation_guide_v3.md` — the North Star. Architecture, design decisions, implementation sequence.
-2. `docs/scenario.md` — locked AOI, time window, Umbra scene inventory, demo narrative.
-3. `docs/positioning.md` — the public-facing "why this exists" document. Voice differs from the implementation guide; this is what outsiders read.
-4. `README.md` — may be outdated; prefer docs/ for decisions.
+**Primary case, in the 90-second demo cut:** Vietnamese land reclamation at Tennent Reef (Đá Tiên Nữ, 8.856°N / 114.665°E) during June–August 2023. Five Umbra SAR scenes over 41 days document active dredging at the eastern artificial island (Tiên Nữ B). The pipeline detects this as a persistent AIS-dark SAR return. CSIS AMTI has documented this feature's expansion in their December 2022 and November 2023 reports.
 
-## Locked scenario
-- AOI: bbox (114.5, 8.5, 117.5, 11.0) — Spratly hotspot
-- Demo time window: June 1 – August 20, 2023 (driven by Umbra scene availability)
-- Hero feature: Cuarteron-area target at 114.665°E / 8.856°N, 5 Umbra scenes over 41 days
-- Secondary feature: Union Banks area at 114.63°E / 9.98°N, 3 Umbra scenes (supplementary arc)
-- AIS: Global Fishing Watch research API (token in .env)
-- Baseline SAR: Sentinel-1 GRD via Earth Search STAC
-- Optical: Sentinel-2 L2A, opportunistic (SCS ~60% cloudy)
+**Supplementary case, documented but not in the demo cut:** Chinese maritime militia activity at Whitsun Reef (Đá Ba Đầu, 9.98°N / 114.63°E), December 2023 – March 2024, three Umbra scenes. Site of the March 2021 Chinese militia swarm event. Long-baseline change-detection case study.
 
-## The hero capability
-**Covariance-aware, explainable tip-and-cue orchestration.** This is what distinguishes Custody from a ship detector or a track visualizer. The tipcue layer maintains a belief state (position mean + covariance) for every active track, evaluates candidate future collections across all constellations, scores each candidate by expected information gain, and emits both a decision and a natural-language reasoning trace.
+**Not in scenario:** Cuarteron Reef (8.85°N / 112.85°E, Chinese-controlled, ~180 km west of our primary target) is a reference feature only. It is sometimes cited in Spratly reporting but is not in our Umbra inventory and is not part of the Custody demo. See ADR-0012 for how the primary and supplementary features were selected.
 
-The tipcue layer's output on every cue is required to include:
-- Selected collect (sensor, time, geometry)
-- Expected info gain, quantified as posterior log-determinant reduction
-- Feasibility priors (cloud probability for EO, grazing angle for SAR)
-- Rejected alternatives with their scores
-- Plain-language justification
+The pipeline is scenario-agnostic. CC should not make semantic assumptions about vessels, militias, or claimants in code — the architecture operates on AIS observations, SAR detections, and tracks, and the scenario-layer meaning comes from documentation and voiceover.
 
-This is the centerpiece. Every other capability supports it.
+## What's built
 
-## Two-layer orchestration: portfolio + tipcue
-Custody has two orchestration-adjacent modules that compose cleanly rather than compete.
+**Week 1 (done):** src/custody/fusion/ package — geo.py (AEQD projection), observations.py (polymorphic Observation sum type), index.py (H3+DuckDB spatial index), tracker.py (Hungarian + lifecycle). EKF in src/custody/models.py. 884 LOC, 75 tests.
 
-The **portfolio layer** (`src/custody/orchestration/`) operates at portfolio scope — given N active tracks, it produces the attention ranking: who is in `ACTIVE_CUSTODY`, who is `WATCHLIST`, who can remain `BACKGROUND`. It exists today (738 LOC, Phase 2 build, used by `dark_vessel.py` and `simulation/timeline.py`).
+**Week 2 (in progress):** src/custody/ingest/gfw_presence.py landed with AIS passthrough via GFW presence data as PositionObservation (ADR-0011). Full 11-week AIS data processed: 39,337 observations, 601 unique MMSIs. SAR CFAR detection pending.
 
-The **tipcue layer** (`src/custody/tipcue/`, new in v3) operates at decision scope — given a single track whose attention tier justifies a collect, it selects which sensor pass to cue and why.
+**Phase 2 foundations (preserved, composed):** src/custody/orchestration/ (portfolio attention engine), src/custody/anomalies.py, src/custody/compounds.py. Feeds the v3 tipcue layer per ADR-0001.
 
-Portfolio picks the *who*; tipcue picks the *what*. The demo's hero moment happens at the tipcue layer, but it's the portfolio layer that decides the track is worth a cue in the first place. They join on `PortfolioItem.entity_id` → `tracker.get_track(entity_id)`.
+## Key conventions
 
-## Architectural non-negotiables
-- Observation-level fusion (not track-level)
-- Hungarian assignment + EKF per track (not nearest-neighbor)
-- Observations carry 2×2 covariance (σ_xx, σ_yy, σ_xy) in meters²; never scalar uncertainty radius in new code
-- H3 resolution 8 spatial index + DuckDB over Parquet
-- Provenance chain is a first-class UI feature — every track traces to raw data URIs
-- WGS84 + UTC epoch seconds internally, always
-- Every cueing decision must emit a reasoning trace; opaque decisions are a bug
+- **Internal coordinates:** AEQD tangent-plane meters anchored at AOI center (9.75°N, 116.0°E) per ADR-0009. `src/custody/fusion/geo.py` is the only place lat/lon ↔ meters conversion happens for fusion math.
+- **Track state:** 4-dimensional [x_east_m, y_north_m, v_north, v_east] in tangent-plane meters per ADR-0010. `TrackState.lat` and `TrackState.lon` are properties that derive via from_tangent_plane.
+- **Observation types:** Polymorphic sum type per ADR-0008. `PositionObservation` for position-only sensors (SAR, EO, and GFW presence-derived AIS per ADR-0011). `PositionVelocityObservation` defined but unused in v1 — preserved for future sensors.
+- **Modality literal:** `Literal["SAR", "EO", "AIS"]` on `PositionObservation`. AIS is a valid modality for `PositionObservation` post-ADR-0011.
+- **Tests first:** every new module lands with tests written before implementation. Tests must confirm import failures before the module exists (guards against silent passes).
+- **ADRs:** any architectural decision with blast radius beyond a single file goes into docs/decisions/ as a numbered ADR before implementation. 12 ADRs as of this writing.
 
-## Vocabulary alignment
-Use these terms in code, comments, and documentation. Sloppy language is a credibility leak.
+## Pre-task checklist (run every session)
 
-- **Tip-and-cue** — the industry term. Never "cueing loop" in public docs.
-- **Multi-phenomenology fusion** — SDA's phrase. Use in architectural descriptions.
-- **Custody** — maintaining continuous awareness of a target across sensor handoffs. Already the project name.
-- **Orchestration** — umbrella industry term used externally (Vantor calls their version "Cortex"). Inside the repo we split it into two layers (below) and name the modules after what they actually do, not after the marketing word.
-- **Portfolio layer** — `src/custody/orchestration/` (Phase 2 module, retained). Fleet-wide attention allocation: who is `ACTIVE_CUSTODY` / `WATCHLIST` / `BACKGROUND`. Picks the *who*.
-- **Tipcue layer** — `src/custody/tipcue/` (v3 module). Per-track collect selection via belief-state info-gain scoring. Picks the *what*.
-- **Pattern of life (PoL)** — industry standard, use as-is.
-- **Dark vessel** — a ship that should be transmitting AIS but isn't. Specific term, don't substitute.
-- **Belief state** — the `(mean, covariance)` of a track.
-- **Reasoning trace** — the explainability output of the tipcue layer.
+1. `git status` — check for uncommitted work
+2. `git log --oneline -10` — verify you know where HEAD is
+3. `pytest --co -q | tail -1` — verify test count matches expectations (~2173 as of end-Week-2-Day-2)
+4. Read any ADRs drafted since the last session (`git log --oneline docs/decisions/`)
+5. Verify understanding of the current scenario from this file — primary target is Tennent Reef, Vietnamese reclamation, summer 2023
 
-## Code style
-- Python 3.11+
-- Dataclasses preferred over classes where possible
-- Type hints throughout
-- Functions under ~30 lines
-- No Docker, no database server, no cloud services for demo runtime (DuckDB + Parquet only)
-- Frontend: React + Mapbox + deck.gl, dark intel-console aesthetic, CSS tokens before components
+## Anti-patterns CC should refuse
 
-## Known limitations — be explicit about these in docs and voiceover
-- Umbra coverage is 8 scenes on 2 features over 9 months — not continuous. Sentinel-1 fills gaps.
-- Sentinel-2 cloud cover in SCS ~60% — treat EO as opportunistic.
-- The demo does not identify specific flagged vessels. It detects AIS-dark activity consistent with published AMTI methodology.
-- CFAR detector has false positives near reefs; length-band filter (45–65 m) mitigates for the militia-specific anomaly.
-- Covariance propagation uses constant-velocity motion model with Gaussian process noise. Works for smoothly-moving commercial and militia trawler traffic; not appropriate for high-maneuver targets.
+- **Using np.inf in scipy.optimize.linear_sum_assignment cost matrices** — use a _BIG_COST sentinel instead
+- **Silent test passes** — a new test module must fail with ImportError before the module exists. Confirm failures are import errors, not silent returns
+- **Observation mutations** — all Observation instances are frozen dataclasses. Any code attempting mutation is wrong
+- **Geographic identification requires verification.** Never identify a feature by coordinate range alone — always cross-check coordinates against an authoritative reference (Wikipedia, AMTI island tracker, official gazetteer) before writing scenario-relevant labels into documentation or code
+- **Live API calls in pytest** — all tests requiring external data use fixtures under tests/fixtures/. The fetch scripts (scripts/01_*, scripts/02_*) are developer actions, not test infrastructure
 
-## Day 0 artifacts
-- `day0/ship_detection_centroids.csv` — all 995 Umbra scene centroids from the public S3 catalog
-- `day0/scan_output.txt`, `day0/download_log.txt` — reconnaissance + download logs
-- `day0/scan_umbra.py`, `day0/download_scenes.py` — reproducer scripts (idempotent)
-- `day0/legacy/` — archived patches from decommissioned worktree branches
-- `data/raw/umbra/` — 56 GB, 219 files, 103 scenes (Tier 1 AOI: 29 files / 22 GB; Tier 2 SCS-broad: 190 files / 38 GB). Gitignored.
-- Sentinel-1, Sentinel-2, and GFW AIS staged data: not yet fetched — Week 2 pipeline.
+## Three-Claude workflow
 
-## Before starting any task
-1. Is this aligned with the hero capability or directly supporting it?
-2. Does this touch the belief-state math? If yes, write the test first. Uncertainty bugs are silent and catastrophic.
-3. Does this add vocabulary drift from the list above?
-4. Am I making a claim the demo can't back up? If yes, soften the claim.
+CC is the source of truth for repo state. The other two Claudes are adjacent but not authoritative.
+
+- **Web Claude (Opus 4.7):** strategic planning, writing, external research, ADR drafting. Produces documents that CC applies. Runs in a chat context with browsing tools but no filesystem access to the repo.
+- **CC (Opus 4.7):** exclusive repo authority. Only actor that writes files, runs tests, commits, pushes.
+- **Cowork (Opus 4.6):** sandboxed desktop agent with Chrome. Reference gathering, visual QA, file organization in scratch directories. Not repo state.
+
+If CC encounters disagreement between what another Claude said and what the repo contains, the repo wins. Web Claude and Cowork cannot modify repo state; their outputs are proposals that CC evaluates.
+
+## What to do when uncertain
+
+1. If an ADR would resolve the question, draft one and ask the user before implementing
+2. If a test would disambiguate, write the test first and see what it reveals
+3. If in doubt about scenario framing, re-read `docs/scenario.md` and ADR-0012. Do not extrapolate from CLAUDE.md's compressed version.
+4. If in doubt about whether a change is backward-compatible, grep for callers and report before changing
+
+## Authoritative docs
+
+- docs/positioning.md — public-facing what-this-is
+- docs/scenario.md — AOI, window, Umbra inventory, demo narrative
+- docs/custody_fusion_implementation_guide_v3.md — architecture, weekly plan
+- docs/decisions/ — 12 ADRs numbered 0001–0012
+
+Anything stated in CLAUDE.md that contradicts one of those files is stale. The four numbered docs are the source of truth. CLAUDE.md is a quick-access index only.

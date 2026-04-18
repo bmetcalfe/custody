@@ -1,89 +1,96 @@
 # Custody — Positioning
 
-*This document describes why Custody exists, who it's for, and what it is and isn't.*
+*This is the honest-scoping document. It exists to say publicly what this project is, what it is not, who it is for, and what it answers. If any section of it embarrasses you to read, that section is wrong.*
 
-## The community call
+---
 
-In early 2024, the Space Development Agency published a Broad Agency Announcement soliciting industry proposals for its Proliferated Warfighter Space Architecture. One capability layer, the Custody Layer, sets out a public list of technical areas where the agency is looking for contributions. Several of them are architectural rather than domain-specific:
+## What this is
 
-- Automated processing and fusion of data from traditional space-based sensing payloads across visible, infrared, RF, synthetic aperture radar, and multispectral modalities
-- Design of a multi-phenomenology fusion architecture that enables agile incorporation of new algorithms
-- Reduction in latency of processing, exploitation, and dissemination
-- Memory management and target hypothesis distribution across satellite nodes
+An **open-source reference implementation of multi-phenomenology fusion and legible tip-and-cue orchestration for maritime domain awareness**, aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/).
 
-These are general patterns. They appear in commercial maritime domain awareness products (Vantor's Sentry, BlackSky's analytics, Satellogic's AI-first constellation, Ursa's SAR analytics) and in classified programs we have no visibility into. They also appear in the academic tracking literature going back decades.
+Built end-to-end on open commercial and public data:
 
-What's harder to find, publicly, is a **reference implementation** that shows these patterns working end to end on open data. Commercial products are closed. Academic work usually studies one layer in isolation. Classified work is classified.
+- Umbra SAR Open Data Program (CC BY 4.0) for high-resolution SAR
+- Sentinel-1 GRD and Sentinel-2 L2A (Copernicus) for baseline coverage
+- Global Fishing Watch API for AIS-derived vessel presence data
 
-Custody is an attempt to fill that gap for the maritime domain.
+The hero capability is **covariance-aware, explainable tip-and-cue orchestration**: every cueing decision the system emits is accompanied by a reasoning trace — what was selected, what alternatives were considered, what the expected information gain was, why rejected candidates were rejected, and a plain-language justification.
 
-## What Custody is
+Commercial MDA systems generally expose the decision. Custody exposes the reasoning.
 
-An open-source reference implementation of multi-sensor fusion and legible tip-and-cue orchestration, built against open commercial and public data sources:
+## What this answers
 
-- Umbra SAR Open Data (CC BY 4.0)
-- Sentinel-1 and Sentinel-2 via Earth Search STAC
-- Global Fishing Watch AIS (research license)
+The SDA Custody Layer capability call describes architectural needs — multi-phenomenology fusion, hypothesis management, low-latency exploitation, handoff between satellite nodes — that are not specific to any single threat domain. They are *architectural patterns*. Custody applies those patterns to a domain where open data enables public validation: maritime persistence monitoring at contested features.
 
-The demo centers on a real geopolitical setting — the Spratly Islands in the South China Sea — where published analytic methodology (CSIS Asia Maritime Transparency Initiative) documents that a large fraction of vessels of interest are systematically AIS-dark. This makes the region the canonical real-world test case for AIS/SAR fusion.
+A reader of this repository can:
 
-The architecture implements:
+1. Clone the codebase
+2. Sign up for a standard GFW research token, AWS open data access, and Copernicus Sentinel access — all free
+3. Reproduce the entire demo pipeline end-to-end against the same data
 
-- A federated STAC catalog across five open-data sources
-- A unified `Observation` model with covariance and full source provenance
-- H3 + DuckDB spatiotemporal indexing
-- Hungarian assignment and per-track Extended Kalman Filters
-- Multi-source anomaly scoring (AIS/SAR disagreement, dark-vessel detection, loitering in militia-trawler length band, cross-source class mismatch)
-- A covariance-aware planner that scores candidate collections by expected information gain
-- Natural-language reasoning traces for every cueing decision
+That reproducibility is itself a property. No privileged data access, no private SDK, no institutional credentials.
 
-The hero capability is the last two together. When a track enters watch state, the orchestration layer doesn't just pick the next available pass — it evaluates every candidate collection across every available constellation, scores each by expected posterior uncertainty reduction against the growing belief-state covariance, weighs modality-specific feasibility priors (cloud forecast for EO, grazing angle for SAR, pass geometry), and explains the decision. The output of the planner is both a tasking action and a reasoning trace an analyst or reviewer can audit.
+## The demo scenario
 
-## What Custody is not
+**Primary case: Vietnamese land reclamation at Tennent Reef** (Vietnamese: Đá Tiên Nữ), 8.856°N / 114.665°E, Spratly Islands. Five Umbra SAR scenes over 41 days in summer 2023 capture active dredging and island-building at the eastern artificial island (Tiên Nữ B). The CSIS Asia Maritime Transparency Initiative has documented this specific feature's expansion in their [December 2022](https://amti.csis.org/vietnams-major-spratly-expansion/) and [November 2023](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) reports, identifying Tennent as one of Vietnam's four most significantly developed Spratly outposts. AMTI's November 2023 report documents 62 acres (25 hectares) of new artificial land added at Tennent between end-of-2022 and late-2023 — a period that encompasses our demo window.
 
-**Not a hypersonic or missile tracking system.** SDA's Custody Layer primarily addresses ballistic and hypersonic threats with kinematics and timescales that do not translate to ships. Custody applies architectural patterns described in the capability vectors to a domain where the kinematics are smoothly-moving commercial and militia vessel traffic. The *architecture* is aligned with the capability call; the *threat model* is maritime. Any suggestion of direct domain applicability to missile defense would be wrong.
+The pipeline detects this reclamation activity as a **persistent AIS-dark SAR return**: GFW presence data shows no vessels broadcasting AIS at the reef, while Umbra SAR shows clear coherent structure that grows scene-over-scene across the demo window. The architecture does not need to know in advance what is being built; it detects *persistent activity inconsistent with cooperative vessel broadcasts* and surfaces it as a track worthy of attention.
 
-**Not a production system.** The demo runs against pre-computed Parquet artifacts produced by a one-shot preprocessing pipeline. The architecture supports live operation in principle; the demo does not implement it.
+**Supplementary case: Chinese maritime militia activity at Whitsun Reef** (Vietnamese: Đá Ba Đầu; Filipino: Julian Felipe Reef), 9.98°N / 114.63°E. Three Umbra scenes over three months (December 2023 – March 2024) covering the site of the canonical [March 2021 Chinese maritime militia swarm event](https://amti.csis.org/chinese-ships-swarm-philippines-eez/). Presented as a case study demonstrating the same architecture applied to a different narrative — longer-baseline change detection at an unoccupied contested reef. Not included in the 90-second demo cut.
 
-**Not a Vantor Sentry clone.** Sentry is a commercial product with significant internal capabilities and a constellation and archive we don't have access to. Custody focuses on the publicly visible gap: making planning decisions and their uncertainty explicit and auditable. Whether or how similar functionality exists inside Sentry or competing products is not a claim we make either way.
+Both cases are documented honestly with AMTI references to the actual published analysis. Neither claims to reveal anything not already in AMTI's public reporting. The contribution is the **architecture**: the pipeline does this work starting from pixels and AIS pings, without being told what it's looking for.
 
-**Not an intelligence product.** The demo detects AIS-dark vessel activity in a widely-reported geopolitical flashpoint following a published analytic methodology. It does not identify specific flagged vessels and does not make legal or sovereignty claims. The contested-waters framing is the one for which open data and public methodology exist; the choice is driven by data availability, not advocacy.
+## What this is not
 
-## What it's designed to demonstrate
+**Not a hypersonic or missile tracking system.** The SDA Custody Layer capability call primarily addresses ballistic and hypersonic threat kinematics that do not translate to maritime vessels or land reclamation. Custody applies the *architectural patterns* from those capability vectors to a domain where open data supports public validation. The threat model here is persistent AIS-dark activity at contested features, not missile defense. This distinction is deliberate and is stated up front so nobody reads the SDA alignment as claiming something it doesn't.
 
-Three things, specifically:
+**Not a production system.** The demo runs against pre-computed artifacts produced by a one-shot preprocessing pipeline. The architecture supports live operation; the demonstration does not. Production latency, hardening, scale, and reliability work are out of scope for a 10-week evenings-and-weekends reference implementation.
 
-1. **Legible tasking decisions.** Every cue the orchestration layer emits is accompanied by a reasoning trace — what was selected, what was considered, what the expected information gain was, why alternatives were rejected. Commercial products generally expose the decision; we expose the reasoning.
+**Not a commercial product clone.** Vantor Sentry, BlackSky, Satellogic, and other commercial maritime domain awareness products have significant internal capabilities, proprietary constellations, commercial archives, and customer-tier features that are not publicly documented. Custody focuses on the *publicly visible gap*: making planning decisions and their uncertainty explicit and auditable. Whether similar functionality exists inside commercial products is not a claim made either way. If it exists, good — the architecture is still useful as an open reference.
 
-2. **Covariance-aware planning.** The planner reasons about belief state as a first-class object. It doesn't pick the next available pass over the target's last known position; it scores passes by their effect on the covariance and picks the one that reduces uncertainty the most under feasibility constraints.
+**Not an intelligence product.** The demo does not identify specific named vessels, does not make legal claims about sovereignty or lawful presence, and does not name any actor as having committed any specific act. It detects activity consistent with publicly reported open-source analytic methodology — the same kind of analysis AMTI publishes monthly against the same public imagery sources. Sovereignty and legal questions are outside the scope of what a technical reference implementation can or should address.
 
-3. **Open architecture.** Every boundary in the system — observation schema, track representation, sensor interface, cue policy, planner — is a clean interface that could accept a new source or a new algorithm without ripple effects. The reference implementation shows the patterns working end to end in a way closed commercial systems structurally cannot.
+**Not a political statement.** Six nations claim overlapping sovereignty over features in the South China Sea. This project takes no position on any of those claims. The demo features (Tennent, Whitsun) were selected because Umbra Open Data Program coverage existed there during a time window for which we also had Sentinel baseline and GFW AIS coverage. The selection is data-driven, not claim-driven. Both Chinese and Vietnamese activity are documented in the demo and in the supplementary case study; neither is presented as more or less legitimate than the other.
+
+## What this ships in 10 weeks
+
+- Week 1: architecture, fusion package, EKF, observation types, spatial index, tracker *(done)*
+- Week 2: detection — CFAR on SAR, AIS passthrough, opportunistic EO *(in progress)*
+- Week 3: end-to-end fusion run over real demo-window data
+- Week 4: anomaly scoring — four multi-INT anomalies including the hero "persistent AIS-dark" case
+- Week 5: the tipcue layer — covariance-aware candidate scoring with full reasoning trace
+- Week 6-7: frontend — React + Mapbox + deck.gl + FastAPI, belief-state visualization, orchestration trace panel
+- Week 8: integration, polish
+- Week 9: voiceover, documentation
+- Week 10: publish
+
+## Honest limitations
+
+- **Scenario selection is data-driven, not narrative-first.** The primary feature in the demo (Tennent Reef) was confirmed during Week 2 reconnaissance against the actual Umbra imagery rather than during initial Day 0 scoping. See ADR-0012 for the specifics of how the scenario was locked. The architectural pipeline is scenario-agnostic.
+- **Umbra coverage is sparse.** Eight AOI scenes over 9 months at two features. Sentinel-1 provides continuous 10-meter fill-in but at coarser resolution.
+- **Detection uses classical methods.** CA-CFAR for SAR, pretrained CNN for EO (if cloud-free scenes exist). No fine-tuning on the specific AOI. Modern detectors would improve false-alarm rates at the cost of reproducibility.
+- **Motion model is constant-velocity.** Appropriate for commercial vessel transits; approximate for dredgers and construction barges operating in place; not intended for high-maneuver targets.
+- **Association is Hungarian with Mahalanobis gating.** Multiple Hypothesis Tracking (MHT) is a documented future-work item, not implemented.
+- **Feasibility priors in the tipcue layer are simplified.** Binary for SAR grazing angle constraints; probabilistic for cloud forecasts. Production systems would extend these significantly.
+- **Sensor fingerprinting, re-identification from imagery, and long-archive pattern-of-life** are commercial capabilities this reference does not reproduce.
 
 ## Who this is for
 
-**Engineers working on multi-sensor tasking and fusion systems**, whether at Vantor, BlackSky, Satellogic, Ursa, HawkEye 360, Planet, or any of the primes bidding into SDA's BAA. If the patterns are useful, fork the repo. If they're not, the postmortem on why is itself useful.
+**Primary audience: the GeoInt engineering community responding to SDA's Custody Layer capability calls**, and engineers at commercial space and defense companies building toward similar architectures. The ADR structure, the observation-type design, the covariance-aware cueing — these are working-engineer artifacts, not marketing material.
 
-**Researchers working on sensor scheduling under uncertainty.** The planner implementation is a clean, readable Python reference you can use as a baseline to compare more sophisticated approaches (MDP-based, reinforcement learning, etc.).
+**Secondary audience: the SDA Custody cell itself.** The capability vectors are public; a public reference implementation that applies those patterns to an open data scenario is useful in the same way any open-source reference implementation is useful — as a starting point, a counter-proposal, a teaching tool, or a sanity check.
 
-**Hiring managers looking for people who can build in this space.** The repo's commit history, design decisions, and honest scoping are the interview.
+Employment-adjacent outcomes are incidental. This project exists because the architecture is interesting and the data is public, not because a job application needs a portfolio piece.
 
-## Honest scoping
+## SDA Custody Layer capability vector alignment
 
-This is a 10-week evenings-and-weekends project by one engineer. Limitations:
+| Capability vector | Custody implementation |
+|---|---|
+| Automated processing and fusion of data from traditional space-based sensing payloads (visible, infrared, RF, SAR, multispectral) | Multi-modal fusion of SAR (Umbra + Sentinel-1), EO (Sentinel-2), and AIS presence through unified `Observation` schema with polymorphic types (ADR-0008) |
+| Design of a multi-phenomenology fusion architecture supporting agile incorporation of new algorithms | Pluggable detector interface, per-source STAC adapters, polymorphic Observation type, anomaly scorer registry, tipcue candidate scorer extension points |
+| Reduction in latency of processing, exploitation, and dissemination | The offline pipeline demonstrates the architectural patterns; production latency work is documented as out of scope for this reference |
+| Memory management and target hypothesis distribution from one satellite node to the next | Covariance-preserving track state serialization through the fusion index; inter-node handoff flagged as a stretch goal |
 
-- Umbra coverage over the chosen AOI is 8 scenes at 2 features over 9 months. Sentinel-1 provides continuous fill-in at 10m.
-- Detection uses classical CFAR plus (optionally) a pretrained CNN for optical. No fine-tuning on the specific AOI.
-- The tracker uses a constant-velocity motion model. Appropriate for the maritime domain studied; not for high-maneuver targets.
-- Association uses Hungarian with Mahalanobis gating. MHT (Multiple Hypothesis Tracking) is documented as future work, not implemented.
-- The planner's feasibility priors are simplified — binary for SAR grazing angle, probabilistic for cloud forecast. A production system would extend these.
-- Sensor fingerprinting, vessel re-identification from imagery, and 20+ year archive pattern-of-life are commercial capabilities we do not reproduce.
+## One-line statement
 
-These limitations are called out in the demo narration and the README. The goal is not to look impressive; the goal is to be correct about what was built and why.
-
-## References
-
-- Space Development Agency, Custody Layer and STEC BAA. https://www.sda.mil/custody/
-- CSIS Asia Maritime Transparency Initiative, annual reports on Chinese maritime militia presence in the Spratlys.
-- Umbra Open Data Program, AWS Open Data Registry.
-- Global Fishing Watch, research API documentation.
-- Copernicus / ESA, Sentinel-1 and Sentinel-2 documentation via Earth Search STAC.
+*Custody is a 10-week open-source reference implementation demonstrating covariance-aware, explainable multi-sensor fusion and tip-and-cue orchestration over public maritime data, aligned with SDA Custody Layer capability vectors.*

@@ -2,7 +2,7 @@
 
 **An open-source reference implementation of multi-phenomenology fusion and legible tip-and-cue orchestration for maritime domain awareness**
 
-Aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/). Grounded in a real scenario: AIS-dark vessel persistence in the Spratly Islands, June–August 2023, validated against [CSIS AMTI methodology](https://amti.csis.org/) on Chinese maritime militia presence.
+Aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/). Grounded in a real scenario: AIS-dark activity at an actively expanding Spratly reef (Tennent Reef / Đá Tiên Nữ), June–August 2023, validated against published [CSIS AMTI methodology](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) on Vietnamese land reclamation in the Spratlys.
 
 [![Custody demo](https://github.com/bmetcalfe/custody/raw/main/docs/progression.gif)](/bmetcalfe/custody/blob/main/docs/progression.gif)
 *Demo GIF above is the Phase 2 Streamlit UI. The v3 belief-state visualization is scheduled for Week 6–7 and will replace this asset.*
@@ -42,11 +42,13 @@ See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping doc
 
 **Time window:** June 1 – August 20, 2023. Driven by Umbra Open Data Program scene availability.
 
-**Primary narrative:** A persistent AIS-dark target at a Cuarteron-area reef feature (8.856°N, 114.665°E), imaged by Umbra SAR across 5 scenes spanning 41 days. The final three scenes — August 7, 9, and 13 — include a 48-hour revisit cadence that mirrors what a real cued system would produce. The full AOI also carries continuous Sentinel-1 SAR baseline coverage, opportunistic Sentinel-2 optical where cloud permits, and real Global Fishing Watch AIS traffic.
+**Primary narrative:** Active Vietnamese land reclamation at Tennent Reef (Đá Tiên Nữ), 8.856°N / 114.665°E, imaged by Umbra SAR across 5 scenes spanning 41 days. The final three scenes — August 7, 9, and 13 — include a 48-hour revisit cadence that demonstrates the tip-and-cue architecture in action. The full AOI also carries continuous Sentinel-1 SAR baseline coverage, opportunistic Sentinel-2 optical where cloud permits, and real Global Fishing Watch AIS presence data.
 
-**Why the Spratlys.** Published CSIS AMTI methodology documents that a large fraction of Chinese maritime militia vessels systematically operate AIS-dark. This makes the region a canonical real-world test case for SAR/AIS fusion: cooperative vessels appear in AIS, non-cooperative vessels appear only in SAR, and the interesting anomalies are the ones where the two disagree.
+**Why Tennent Reef.** CSIS [Asia Maritime Transparency Initiative](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) has documented active Vietnamese land reclamation at this feature since December 2021, with 62 acres of new artificial land added between end-of-2022 and late-2023 — a period encompassing our demo window. The reclamation activity is **AIS-dark** (construction vessels, dredgers, and supply barges at active reclamation sites frequently operate without AIS broadcasts), making it a canonical real-world case for SAR/AIS fusion: the persistent bright returns at the feature appear in SAR but are not explained by AIS traffic.
 
-The demo does not identify specific flagged vessels. It detects activity consistent with published open-source analytic methodology.
+**Supplementary case study:** Chinese maritime militia activity at Whitsun Reef (Đá Ba Đầu / Julian Felipe Reef), 9.98°N / 114.63°E, site of the March 2021 Chinese militia swarm event. Three Umbra scenes Dec 2023 – Mar 2024 support a longer-baseline change-detection case. Documented in the repository but not in the 90-second demo cut.
+
+The demo does not identify specific named vessels, does not take a position on claimant sovereignty, and does not make legal claims. It detects activity consistent with published open-source analytic methodology — the same analytic work AMTI publishes monthly against the same public imagery sources.
 
 See [`docs/scenario.md`](docs/scenario.md) for the locked AOI, Umbra scene inventory, and Act-by-Act demo narrative.
 
@@ -154,7 +156,7 @@ See [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_imple
 - [`docs/scenario.md`](docs/scenario.md) — locked AOI, window, Umbra inventory
 - [`docs/decisions/`](docs/decisions/) — 10 architecture decision records from Week 1
 - [SDA Custody Layer](https://www.sda.mil/custody/) — primary community-call reference
-- [CSIS Asia Maritime Transparency Initiative](https://amti.csis.org/) — the methodology grounding the Spratly scenario
+- [CSIS Asia Maritime Transparency Initiative](https://amti.csis.org/) — methodology grounding; Tennent Reef specifically covered in the [Dec 2022](https://amti.csis.org/vietnams-major-spratly-expansion/) and [Nov 2023](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) reports
 
 ---
 
@@ -177,6 +179,7 @@ The v3 demo UI (React + Mapbox + deck.gl) ships in Week 6–7.
 
 This is a 10-week evenings-and-weekends project by one engineer. The limitations below are documented in more detail in [`docs/positioning.md`](docs/positioning.md).
 
+- The demo scenario is data-driven rather than narrative-first: the primary feature (Tennent Reef, Vietnamese reclamation) was confirmed during Week 2 reconnaissance against actual SAR imagery. See ADR-0012 for how the scenario was locked. The architectural pipeline is scenario-agnostic.
 - Umbra coverage over the chosen AOI is 8 scenes at 2 features over 9 months. Sentinel-1 provides continuous fill-in at 10 m resolution.
 - Detection uses classical CFAR (SAR) and a pretrained CNN (EO). No fine-tuning on the specific AOI.
 - The EKF uses a constant-velocity motion model. Appropriate for the maritime domain studied; not for high-maneuver targets.
