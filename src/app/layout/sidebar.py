@@ -9,6 +9,8 @@ SCENARIO_DROPDOWN = "scenario-dropdown"
 TIMELINE_SLIDER = "timeline-slider"
 TIMESTEP_DISPLAY = "timestep-display"
 ENTITY_DROPDOWN = "entity-dropdown"
+BTN_PREV_STEP = "btn-prev-step"
+BTN_NEXT_STEP = "btn-next-step"
 
 
 def build_sidebar(
@@ -52,11 +54,29 @@ def build_sidebar(
                 tooltip={"placement": "bottom", "always_visible": False},
             ),
             html.Div(
-                "Step 0",
-                id=TIMESTEP_DISPLAY,
+                [
+                    dbc.Button(
+                        "\u25C0", id=BTN_PREV_STEP, size="sm", color="secondary",
+                        outline=True, disabled=True,
+                        style={"minWidth": "36px", "padding": "2px 8px"},
+                    ),
+                    html.Span(
+                        "Step 0",
+                        id=TIMESTEP_DISPLAY,
+                        style={
+                            "fontSize": "0.75rem", "color": "#aaa",
+                            "flex": "1", "textAlign": "center",
+                        },
+                    ),
+                    dbc.Button(
+                        "\u25B6", id=BTN_NEXT_STEP, size="sm", color="secondary",
+                        outline=True,
+                        style={"minWidth": "36px", "padding": "2px 8px"},
+                    ),
+                ],
                 style={
-                    "fontSize": "0.75rem", "color": "#aaa",
-                    "textAlign": "center", "marginBottom": "16px",
+                    "display": "flex", "alignItems": "center",
+                    "gap": "6px", "marginBottom": "16px",
                 },
             ),
 

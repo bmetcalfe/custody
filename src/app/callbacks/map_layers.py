@@ -184,19 +184,11 @@ def _build_deck_json(
                 line_width_min_pixels=3, stroked=True, filled=False,
             ))
 
-    # Labels (top-5 by rank + selected)
-    label_rows = []
-    ranked = sorted(ts_records, key=lambda r: r.get("portfolio_rank", 999))
-    top_ids = {r["target_id"] for r in ranked[:5]}
-    if selected_entity:
-        top_ids.add(selected_entity)
-    for r in ts_records:
-        if r["target_id"] in top_ids:
-            label_rows.append({
-                "lon": float(r["lon"]),
-                "lat": float(r["lat"]),
-                "label": r["target_id"],
-            })
+    # Labels (all entities)
+    label_rows = [
+        {"lon": float(r["lon"]), "lat": float(r["lat"]), "label": r["target_id"]}
+        for r in ts_records
+    ]
     if label_rows:
         label_common = dict(
             get_position="[lon, lat]", get_text="label",

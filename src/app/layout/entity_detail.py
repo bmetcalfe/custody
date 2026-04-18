@@ -8,6 +8,8 @@ from __future__ import annotations
 from dash import dash_table, html
 import dash_bootstrap_components as dbc
 
+from layout import label_with_tooltip
+
 # ---------------------------------------------------------------------------
 # Component IDs — reasoning section
 # ---------------------------------------------------------------------------
@@ -38,6 +40,21 @@ DECISION_FALLBACKS = "decision-fallbacks"
 
 TASK_QUEUE = "task-queue"
 
+ROLE_ANALYST_CARD = "role-analyst-card"
+ROLE_COLLECTOR_CARD = "role-collector-card"
+ROLE_OPERATOR_CARD = "role-operator-card"
+ROLE_RESOLUTION = "role-resolution"
+ROLE_WHY_NOT = "role-why-not"
+
+# ---------------------------------------------------------------------------
+# Component IDs — collection conditions section
+# ---------------------------------------------------------------------------
+COND_LOCAL_TIME = "cond-local-time"
+COND_SUN_STATE = "cond-sun-state"
+COND_OPTICAL_VIABLE = "cond-optical-viable"
+COND_SAR_VIABLE = "cond-sar-viable"
+COND_CLOUD_COVER = "cond-cloud-cover"
+
 # ---------------------------------------------------------------------------
 # Component IDs — tables section
 # ---------------------------------------------------------------------------
@@ -54,7 +71,7 @@ DETAIL_ACCORDION = "detail-accordion"
 DETAIL_CONTAINER = "detail-container"
 
 
-def _metric(label: str, value_id: str) -> dbc.Col:
+def _metric(label, value_id: str) -> dbc.Col:
     return dbc.Col(
         [
             html.P(label, style={"fontSize": "0.65rem", "color": "#999", "margin": 0}),
@@ -115,11 +132,11 @@ def build_entity_detail_layout() -> html.Div:
             _section_label("Prediction"),
             dbc.Row(
                 [
-                    _metric("Zone Prob", PRED_ZONE_PROB),
-                    _metric("Time to Zone", PRED_TIME_TO_ZONE),
-                    _metric("Future Anomaly", PRED_FUTURE_ANOMALY),
-                    _metric("Confidence", PRED_CONFIDENCE),
-                    _metric("Horizon", PRED_HORIZON),
+                    _metric(label_with_tooltip("Zone Prob", "Predicted probability of entering the sensitive zone.", "zone-prob"), PRED_ZONE_PROB),
+                    _metric(label_with_tooltip("Time to Zone", "Estimated time until the entity reaches the zone.", "time-to-zone"), PRED_TIME_TO_ZONE),
+                    _metric(label_with_tooltip("Future Anomaly", "Predicted anomaly score at the forecast horizon.", "future-anomaly"), PRED_FUTURE_ANOMALY),
+                    _metric(label_with_tooltip("Confidence", "Model confidence in the prediction.", "pred-confidence"), PRED_CONFIDENCE),
+                    _metric(label_with_tooltip("Horizon", "How far ahead the prediction looks.", "pred-horizon"), PRED_HORIZON),
                 ],
                 className="g-3 mb-2",
             ),
@@ -142,8 +159,8 @@ def build_entity_detail_layout() -> html.Div:
                             "padding": "2px 8px", "borderRadius": "3px",
                         }),
                     ], width="auto", style={"minWidth": "90px"}),
-                    _metric("ML Score", ML_ANOMALY_SCORE),
-                    _metric("Duration", ANOMALY_DURATION),
+                    _metric(label_with_tooltip("ML Score", "Raw anomaly score from the ML model.", "ml-score"), ML_ANOMALY_SCORE),
+                    _metric(label_with_tooltip("Duration", "How long the current anomaly state has persisted.", "anomaly-duration"), ANOMALY_DURATION),
                 ],
                 className="g-3 mb-2",
             ),
@@ -152,9 +169,9 @@ def build_entity_detail_layout() -> html.Div:
             _section_label("Fusion Assessment"),
             dbc.Row(
                 [
-                    _metric("Fused Score", FUSION_SCORE),
-                    _metric("Uncertainty", FUSION_UNCERTAINTY),
-                    _metric("Source Agreement", FUSION_AGREEMENT),
+                    _metric(label_with_tooltip("Fused Score", "Combined anomaly score from all sensor sources.", "fused-score"), FUSION_SCORE),
+                    _metric(label_with_tooltip("Uncertainty", "Spread across sensor estimates.", "fusion-uncertainty"), FUSION_UNCERTAINTY),
+                    _metric(label_with_tooltip("Source Agreement", "How well sensor sources agree on the anomaly.", "source-agreement"), FUSION_AGREEMENT),
                 ],
                 className="g-3 mb-1",
             ),
@@ -170,6 +187,62 @@ def build_entity_detail_layout() -> html.Div:
                     ]),
                 ],
                 className="g-2 mb-2",
+            ),
+
+            # ── Role Deliberation ────────────────────────────────────
+            _section_label(label_with_tooltip(
+                "Role Deliberation",
+                "Roles provide different perspectives on the same situation. Analyst focuses on behavioral significance, Collector on evidence gaps, and Operator on mission urgency. Divergence between them highlights tradeoffs rather than collapsing everything into a single score.",
+                "role-deliberation",
+            )),
+            dbc.Row(
+                [
+                    dbc.Col(dbc.Card([
+                        dbc.CardHeader("Analyst", style={
+                            "fontSize": "0.65rem", "fontWeight": "700",
+                            "letterSpacing": "0.08em", "textTransform": "uppercase",
+                            "padding": "4px 10px", "backgroundColor": "#1a1a2e",
+                        }),
+                        dbc.CardBody(
+                            "—", id=ROLE_ANALYST_CARD,
+                            style={"padding": "8px 10px", "fontSize": "0.78rem"},
+                        ),
+                    ], style={"backgroundColor": "#121212", "border": "1px solid #2d2d2d"}), width=4),
+                    dbc.Col(dbc.Card([
+                        dbc.CardHeader("Collector", style={
+                            "fontSize": "0.65rem", "fontWeight": "700",
+                            "letterSpacing": "0.08em", "textTransform": "uppercase",
+                            "padding": "4px 10px", "backgroundColor": "#1a2e1a",
+                        }),
+                        dbc.CardBody(
+                            "—", id=ROLE_COLLECTOR_CARD,
+                            style={"padding": "8px 10px", "fontSize": "0.78rem"},
+                        ),
+                    ], style={"backgroundColor": "#121212", "border": "1px solid #2d2d2d"}), width=4),
+                    dbc.Col(dbc.Card([
+                        dbc.CardHeader("Operator", style={
+                            "fontSize": "0.65rem", "fontWeight": "700",
+                            "letterSpacing": "0.08em", "textTransform": "uppercase",
+                            "padding": "4px 10px", "backgroundColor": "#2e1a1a",
+                        }),
+                        dbc.CardBody(
+                            "—", id=ROLE_OPERATOR_CARD,
+                            style={"padding": "8px 10px", "fontSize": "0.78rem"},
+                        ),
+                    ], style={"backgroundColor": "#121212", "border": "1px solid #2d2d2d"}), width=4),
+                ],
+                className="g-2 mb-1",
+            ),
+            html.Div(
+                "—", id=ROLE_RESOLUTION,
+                style={
+                    "fontSize": "0.78rem", "color": "#aaa",
+                    "fontStyle": "italic", "marginBottom": "2px",
+                },
+            ),
+            html.Div(
+                "", id=ROLE_WHY_NOT,
+                style={"marginBottom": "10px"},
             ),
 
             # ── Decision ─────────────────────────────────────────────────
@@ -212,6 +285,19 @@ def build_entity_detail_layout() -> html.Div:
                 "fontSize": "0.82rem", "color": "#666",
             }),
 
+            # ── Collection Conditions ────────────────────────────────────
+            _section_label("Collection Conditions"),
+            dbc.Row(
+                [
+                    _metric(label_with_tooltip("Local Time", "Approximate solar time derived from longitude.", "local-time"), COND_LOCAL_TIME),
+                    _metric(label_with_tooltip("Sun State", "Day (06–18 local) or Night.", "sun-state"), COND_SUN_STATE),
+                    _metric(label_with_tooltip("Optical", "Whether optical collection is viable (requires daylight).", "optical-viable"), COND_OPTICAL_VIABLE),
+                    _metric(label_with_tooltip("SAR", "Whether SAR collection is viable (all-weather).", "sar-viable"), COND_SAR_VIABLE),
+                    _metric(label_with_tooltip("Cloud Cover", "Placeholder — not yet connected to real data.", "cloud-cover"), COND_CLOUD_COVER),
+                ],
+                className="g-3 mb-2",
+            ),
+
             # ── Supporting tables (collapsible accordion) ─────────────────
             # Accordion items auto-expand when they have data (controlled
             # by the tables callback setting DETAIL_ACCORDION.active_item).
@@ -223,6 +309,7 @@ def build_entity_detail_layout() -> html.Div:
                         dash_table.DataTable(
                             id=ALERTS_TABLE,
                             columns=[
+                                {"name": "Time", "id": "timestamp"},
                                 {"name": "Level", "id": "level"},
                                 {"name": "Code", "id": "code"},
                                 {"name": "Message", "id": "message"},

@@ -183,6 +183,9 @@ class TestEntityTablesCallback:
         timeline = entity_timeline_up_to(smoke_records, eid, 8)
         alerts = alerts_for_timeline(timeline)
         assert isinstance(alerts, list)
+        # Every alert carries a timestamp from the simulation record
+        for a in alerts:
+            assert hasattr(a, "timestamp") and a.timestamp is not None
 
     def test_compound_evaluation(self, smoke_records):
         from custody.compounds import evaluate_compounds
@@ -224,6 +227,62 @@ class TestEntityTablesCallback:
 
 
 # ---------------------------------------------------------------------------
+# Collection conditions helper
+# ---------------------------------------------------------------------------
+
+class TestCollectionConditions:
+
+    def test_day_case(self):
+        from datetime import datetime
+        sys.path.insert(0, os.path.join(_repo, "src", "app", "callbacks"))
+        from entity_detail import _collection_conditions
+        # UTC 12:00 at lon=0 → local 12:00 → Day
+        utc = datetime(2026, 4, 1, 12, 0, 0)
+        c = _collection_conditions(utc, 0.0)
+        assert c["sun_state"] == "Day"
+        assert c["optical"] == "Yes"
+        assert c["local_time"] == "12:00"
+
+    def test_night_case(self):
+        from datetime import datetime
+        sys.path.insert(0, os.path.join(_repo, "src", "app", "callbacks"))
+        from entity_detail import _collection_conditions
+        # UTC 02:00 at lon=0 → local 02:00 → Night
+        utc = datetime(2026, 4, 1, 2, 0, 0)
+        c = _collection_conditions(utc, 0.0)
+        assert c["sun_state"] == "Night"
+        assert c["optical"] == "No"
+        assert c["local_time"] == "02:00"
+
+    def test_longitude_offset(self):
+        from datetime import datetime
+        sys.path.insert(0, os.path.join(_repo, "src", "app", "callbacks"))
+        from entity_detail import _collection_conditions
+        # UTC 12:00 at lon=90 → offset +6h → local 18:00 → Night (>=18)
+        utc = datetime(2026, 4, 1, 12, 0, 0)
+        c = _collection_conditions(utc, 90.0)
+        assert c["sun_state"] == "Night"
+        assert c["local_time"] == "18:00"
+
+    def test_missing_values(self):
+        sys.path.insert(0, os.path.join(_repo, "src", "app", "callbacks"))
+        from entity_detail import _collection_conditions
+        c = _collection_conditions(None, None)
+        assert c["local_time"] == "—"
+        assert c["sar"] == "Yes"
+
+    def test_negative_longitude(self):
+        from datetime import datetime
+        sys.path.insert(0, os.path.join(_repo, "src", "app", "callbacks"))
+        from entity_detail import _collection_conditions
+        # UTC 04:00 at lon=-75 → offset -5h → local 23:00 (prev day) → Night
+        utc = datetime(2026, 4, 1, 4, 0, 0)
+        c = _collection_conditions(utc, -75.0)
+        assert c["sun_state"] == "Night"
+        assert c["local_time"] == "23:00"
+
+
+# ---------------------------------------------------------------------------
 # Event feed
 # ---------------------------------------------------------------------------
 
@@ -252,6 +311,6 @@ class TestCallbackCount:
     def test_callbacks_registered(self, app):
         # Phase 1: 5 nav + 1 portfolio = 6
         # Phase 2: +1 map + 2 entity detail = 3
-        # Phase 3: +1 timestep display = 1
-        # Total: 10
-        assert len(app.callback_map) == 10
+        # Phase 3: +1 timestep display + 1 step buttons = 2
+        # Total: 11
+        assert len(app.callback_map) == 11

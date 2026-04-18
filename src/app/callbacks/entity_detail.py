@@ -20,6 +20,7 @@ from custody.compounds import evaluate_compounds
 from custody.decision import build_decision
 from custody.decision_trace import traces_to_rows
 from custody.fusion import build_fusion_assessment
+from custody.roles import build_deliberation
 from custody.taskrecommendation import build_task_recommendations
 
 from compound_panels import (
@@ -41,6 +42,10 @@ from layout.entity_detail import (
     DECISION_WHY, DECISION_FALLBACKS, TASK_QUEUE,
     ALERTS_TABLE, COMPOUNDS_TABLE, COMPOUND_HISTORY_TABLE,
     ORBITAL_TABLE, TRACES_TABLE, DETAIL_ACCORDION,
+    ROLE_ANALYST_CARD, ROLE_COLLECTOR_CARD, ROLE_OPERATOR_CARD,
+    ROLE_RESOLUTION, ROLE_WHY_NOT,
+    COND_LOCAL_TIME, COND_SUN_STATE, COND_OPTICAL_VIABLE,
+    COND_SAR_VIABLE, COND_CLOUD_COVER,
 )
 
 # Action → badge color
@@ -69,6 +74,41 @@ def _fmt(val, fmt_str=".3f", fallback="—"):
         if math.isnan(v):
             return fallback
         return f"{v:{fmt_str}}"
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _collection_conditions(utc_time, longitude):
+    """Derive collection conditions from UTC time and longitude.
+
+    Returns a dict with local_time, sun_state, optical, sar, cloud_cover.
+    """
+    fallback = {
+        "local_time": "—", "sun_state": "—",
+        "optical": "—", "sar": "Yes", "cloud_cover": "0% (stub)",
+    }
+    if utc_time is None or longitude is None:
+        return fallback
+    try:
+        lon = float(longitude)
+        offset_hours = lon / 15.0
+        if hasattr(utc_time, "hour"):
+            total_minutes = utc_time.hour * 60 + utc_time.minute + int(offset_hours * 60)
+        else:
+            return fallback
+        # Wrap into 0–1439
+        total_minutes = total_minutes % 1440
+        local_h = total_minutes // 60
+        local_m = total_minutes % 60
+        local_str = f"{local_h:02d}:{local_m:02d}"
+        is_day = 6 <= local_h < 18
+        return {
+            "local_time": local_str,
+            "sun_state": "Day" if is_day else "Night",
+            "optical": "Yes" if is_day else "No",
+            "sar": "Yes",
+            "cloud_cover": "0% (stub)",
+        }
     except (TypeError, ValueError):
         return fallback
 
@@ -149,6 +189,16 @@ def register(app: Dash) -> None:
         Output(DECISION_WHY, "children"),
         Output(DECISION_FALLBACKS, "children"),
         Output(TASK_QUEUE, "children"),
+        Output(ROLE_ANALYST_CARD, "children"),
+        Output(ROLE_COLLECTOR_CARD, "children"),
+        Output(ROLE_OPERATOR_CARD, "children"),
+        Output(ROLE_RESOLUTION, "children"),
+        Output(ROLE_WHY_NOT, "children"),
+        Output(COND_LOCAL_TIME, "children"),
+        Output(COND_SUN_STATE, "children"),
+        Output(COND_OPTICAL_VIABLE, "children"),
+        Output(COND_SAR_VIABLE, "children"),
+        Output(COND_CLOUD_COVER, "children"),
     ]
     N_REASONING = len(_reasoning_outputs)
 
@@ -178,6 +228,12 @@ def register(app: Dash) -> None:
             "—",                                # why
             "",                                 # fallbacks
             "No task recommendations.",         # task queue
+            "—",                                # role analyst card
+            "—",                                # role collector card
+            "—",                                # role operator card
+            "—",                                # role resolution
+            "",                                 # role why-not
+            "—", "—", "—", "—", "—",           # collection conditions
         )
 
         if not scenario_key or timestep_idx is None or entity_id is None:
@@ -203,7 +259,11 @@ def register(app: Dash) -> None:
 
         # Task recommendations
         track = derive_track_state(current, prefix)
+        compounds = evaluate_compounds(current, window=prefix)
         tasks = build_task_recommendations(decision, fa, current, track)
+
+        # Role deliberation
+        delib = build_deliberation(current, fa, decision, compounds)
 
         # Summary
         summary = _build_situation_summary(current, fa, decision, prefix)
@@ -333,6 +393,64 @@ def register(app: Dash) -> None:
         _ml_dur = current.get("ml_anomaly_duration_hours", 0)
         _dur_str = f"{_ml_dur}h" if _ml_dur > 0 else "—"
 
+        # Role card renderer with disagreement highlighting
+        def _role_card(rec, agrees_with_final):
+            act_color = _ACTION_COLOR.get(rec.recommended_action, "#555")
+            border_color = "#2ea043" if agrees_with_final else "#b08000"
+            return html.Div([
+                html.Span(
+                    rec.recommended_action.replace("_", " "),
+                    style={
+                        "fontSize": "0.78rem", "fontWeight": "700",
+                        "padding": "2px 8px", "borderRadius": "3px",
+                        "backgroundColor": act_color, "color": "#fff",
+                    },
+                ),
+                html.Div(
+                    f"Conf {rec.confidence:.2f}  ·  EV {rec.expected_value:.2f}",
+                    style={"fontSize": "0.7rem", "color": "#999", "marginTop": "4px"},
+                ),
+                html.Div(
+                    rec.rationale,
+                    style={"fontSize": "0.72rem", "color": "#bbb",
+                           "fontStyle": "italic", "marginTop": "4px"},
+                ),
+            ], style={"borderLeft": f"3px solid {border_color}", "paddingLeft": "8px"})
+
+        _final = delib.final_action
+        role_analyst = _role_card(delib.analyst, delib.analyst.recommended_action == _final)
+        role_collector = _role_card(delib.collector, delib.collector.recommended_action == _final)
+        role_operator = _role_card(delib.operator, delib.operator.recommended_action == _final)
+
+        _agr_icon = {"unanimous": "#2ea043", "majority": "#b08000", "split": "#d73a49"}
+        role_resolution = html.Span([
+            html.Span(
+                f"Watch Officer: {delib.agreement.upper()} ",
+                style={"fontWeight": "700",
+                       "color": _agr_icon.get(delib.agreement, "#aaa")},
+            ),
+            html.Span(
+                f"— {delib.resolution_reason}",
+                style={"color": "#aaa"},
+            ),
+        ])
+
+        # "Why not?" rendering
+        if delib.why_not:
+            why_not_children = [
+                html.Div(
+                    f"Why not {action.replace('_', ' ')}? {reason}",
+                    style={"fontSize": "0.72rem", "color": "#999", "marginTop": "2px"},
+                )
+                for action, reason in delib.why_not.items()
+            ]
+            role_why_not = html.Div(why_not_children, style={"marginTop": "4px"})
+        else:
+            role_why_not = ""
+
+        # Collection conditions
+        conds = _collection_conditions(current.get("time"), current.get("lon"))
+
         return (
             entity_id,  # heading
             summary,
@@ -346,6 +464,16 @@ def register(app: Dash) -> None:
             priority, confidence,
             why_children, fallback_str,
             task_queue_el,
+            role_analyst,
+            role_collector,
+            role_operator,
+            role_resolution,
+            role_why_not,
+            conds["local_time"],
+            conds["sun_state"],
+            conds["optical"],
+            conds["sar"],
+            conds["cloud_cover"],
         )
 
     # ── Callback B: supporting tables (alerts, compounds, orbital, traces)
@@ -378,14 +506,20 @@ def register(app: Dash) -> None:
         # Alerts — deduplicate repeated codes into counts
         alerts = alerts_for_timeline(timeline)
         _alert_counts: dict[tuple, int] = {}
+        _alert_latest_ts: dict[tuple, object] = {}
         for a in alerts:
             key = (a.level, a.code)
             _alert_counts[key] = _alert_counts.get(key, 0) + 1
+            if key not in _alert_latest_ts or a.timestamp > _alert_latest_ts[key]:
+                _alert_latest_ts[key] = a.timestamp
         alerts_data = [
             {
                 "level": level,
                 "code": f"{code} ({count})" if count > 1 else code,
                 "message": next(a.message for a in alerts if a.level == level and a.code == code),
+                "timestamp": _alert_latest_ts[(level, code)].strftime("%Y-%m-%d %H:%M:%Sz")
+                if hasattr(_alert_latest_ts[(level, code)], "strftime")
+                else str(_alert_latest_ts[(level, code)]),
             }
             for (level, code), count in _alert_counts.items()
         ]

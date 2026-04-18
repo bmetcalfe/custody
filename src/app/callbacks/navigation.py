@@ -13,7 +13,10 @@ from dash import Dash, Input, Output, State, no_update
 
 import state as app_state
 from adapter import entity_ids, timestep_count, records_at_timestep
-from layout.sidebar import SCENARIO_DROPDOWN, TIMELINE_SLIDER, ENTITY_DROPDOWN, TIMESTEP_DISPLAY
+from layout.sidebar import (
+    SCENARIO_DROPDOWN, TIMELINE_SLIDER, ENTITY_DROPDOWN, TIMESTEP_DISPLAY,
+    BTN_PREV_STEP, BTN_NEXT_STEP,
+)
 from layout.overview import PORTFOLIO_TABLE
 
 
@@ -66,7 +69,33 @@ def register(app: Dash) -> None:
             [],              # table selected_rows (clear)
         )
 
-    # ── Callback 2: slider → timestep index store ────────────────────────
+    # ── Callback 2: prev/next buttons → slider value ──────────────────────
+
+    @app.callback(
+        Output(TIMELINE_SLIDER, "value", allow_duplicate=True),
+        Output(BTN_PREV_STEP, "disabled"),
+        Output(BTN_NEXT_STEP, "disabled"),
+        Input(BTN_PREV_STEP, "n_clicks"),
+        Input(BTN_NEXT_STEP, "n_clicks"),
+        Input(TIMELINE_SLIDER, "value"),
+        State(TIMELINE_SLIDER, "max"),
+        prevent_initial_call=True,
+    )
+    def step_buttons(prev_clicks, next_clicks, current, max_idx):
+        from dash import ctx
+        triggered = ctx.triggered_id
+        if triggered == BTN_PREV_STEP:
+            new_val = max(0, (current or 0) - 1)
+        elif triggered == BTN_NEXT_STEP:
+            new_val = min(max_idx or 0, (current or 0) + 1)
+        else:
+            # Slider was moved directly — just update button states
+            new_val = no_update
+        prev_disabled = (new_val if new_val is not no_update else current) == 0
+        next_disabled = (new_val if new_val is not no_update else current) == (max_idx or 0)
+        return new_val, prev_disabled, next_disabled
+
+    # ── Callback 3: slider → timestep index store ────────────────────────
 
     @app.callback(
         Output(app_state.TIMESTEP_INDEX, "data", allow_duplicate=True),
@@ -78,7 +107,7 @@ def register(app: Dash) -> None:
             return no_update
         return value
 
-    # ── Callback 3: table row click → selected-entity store ──────────────
+    # ── Callback 4: table row click → selected-entity store ──────────────
 
     @app.callback(
         Output(app_state.SELECTED_ENTITY, "data", allow_duplicate=True),
@@ -94,7 +123,7 @@ def register(app: Dash) -> None:
             return no_update
         return table_data[row_idx].get("Entity")
 
-    # ── Callback 4: entity dropdown → selected-entity store ──────────────
+    # ── Callback 5: entity dropdown → selected-entity store ──────────────
 
     @app.callback(
         Output(app_state.SELECTED_ENTITY, "data", allow_duplicate=True),
@@ -104,7 +133,7 @@ def register(app: Dash) -> None:
     def dropdown_select_entity(dropdown_value):
         return dropdown_value
 
-    # ── Callback 5: selected-entity store → sync dropdown display ────────
+    # ── Callback 6: selected-entity store → sync dropdown display ────────
 
     @app.callback(
         Output(ENTITY_DROPDOWN, "value", allow_duplicate=True),
@@ -114,7 +143,7 @@ def register(app: Dash) -> None:
     def sync_dropdown_to_store(entity_id):
         return entity_id
 
-    # ── Callback 6: timestep display text ────────────────────────────────
+    # ── Callback 7: timestep display text ────────────────────────────────
 
     @app.callback(
         Output(TIMESTEP_DISPLAY, "children"),

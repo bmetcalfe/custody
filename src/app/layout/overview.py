@@ -4,6 +4,8 @@ from __future__ import annotations
 from dash import dash_table, html
 import dash_bootstrap_components as dbc
 
+from layout import label_with_tooltip
+
 # Component IDs — importable by callbacks
 KPI_TOTAL = "kpi-total"
 KPI_NEEDS_ACTION = "kpi-needs-action"
@@ -15,7 +17,7 @@ KPI_APPROACHING = "kpi-approaching"
 PORTFOLIO_TABLE = "portfolio-table"
 
 
-def _kpi_card(card_id: str, label: str) -> dbc.Col:
+def _kpi_card(card_id: str, label) -> dbc.Col:
     """One KPI metric card with a placeholder value."""
     return dbc.Col(
         dbc.Card(
@@ -39,11 +41,11 @@ def build_kpi_strip() -> dbc.Row:
     return dbc.Row(
         [
             _kpi_card(KPI_TOTAL, "Total"),
-            _kpi_card(KPI_NEEDS_ACTION, "Needs Action"),
-            _kpi_card(KPI_NEGLECTED, "Neglected"),
-            _kpi_card(KPI_STALE_LOST, "Stale / Lost"),
-            _kpi_card(KPI_PREEMPTED, "Preempted"),
-            _kpi_card(KPI_APPROACHING, "Approaching"),
+            _kpi_card(KPI_NEEDS_ACTION, label_with_tooltip("Needs Action", "Entities requiring immediate operator attention.", "kpi-needs-action")),
+            _kpi_card(KPI_NEGLECTED, label_with_tooltip("Neglected", "Entities with stale or missing collection.", "kpi-neglected")),
+            _kpi_card(KPI_STALE_LOST, label_with_tooltip("Stale / Lost", "Entities with outdated or lost custody.", "kpi-stale-lost")),
+            _kpi_card(KPI_PREEMPTED, label_with_tooltip("Preempted", "Entities where collection was displaced by higher priority.", "kpi-preempted")),
+            _kpi_card(KPI_APPROACHING, label_with_tooltip("Approaching", "Entities nearing the sensitive zone.", "kpi-approaching")),
         ],
         className="g-2 mb-3",
     )
