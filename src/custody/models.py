@@ -99,8 +99,6 @@ class Vessel:
 # ---------------------------------------------------------------------------
 
 
-_EARTH_RADIUS_M = 6_371_000.0
-
 # Process-noise defaults tuned per ADR-0007 to approximate the Phase 2 linear
 # heuristic σ(t) = 5 + 3t km across the 0-48 h operational range.  The linear
 # σ growth comes from the F-matrix coupling of the initial velocity variance
@@ -136,12 +134,16 @@ def _cov_from_uncertainty_km(r_km: float) -> np.ndarray:
 
 
 class TrackState:
-    """EKF belief-state + custody metadata (ADR-0005).
+    """EKF belief-state + custody metadata (ADR-0005, ADR-0008, ADR-0010).
 
-    State mean (when known): ``[lat_rad, lon_rad, v_n_mps, v_e_mps]``.
-    Covariance: 4×4 matrix in SI units.  The 2×2 position block is in m²
-    on a local tangent plane at the current mean lat; the velocity block is
-    in (m/s)²; cross-terms mix m·m/s.
+    State mean (when known): ``[x_east_m, y_north_m, v_n_mps, v_e_mps]`` in the
+    AEQD tangent-plane frame anchored at AOI center (ADR-0009, ADR-0010).
+    ``lat`` and ``lon`` (degrees) are derived properties.
+
+    Covariance: 4×4 in SI units.  Position block m², velocity block (m/s)²,
+    cross-terms m·m/s.  The F matrix couples position and velocity via the
+    physical axis alignment: ``F[0, 3] = dt`` (east position += dt × east
+    velocity) and ``F[1, 2] = dt`` (north position += dt × north velocity).
 
     Scalar-radius backward compat:
       - ``uncertainty_km`` is a read/write property; the setter projects
@@ -156,9 +158,12 @@ class TrackState:
 
     def __init__(
         self,
+        lat: Optional[float] = None,
+        lon: Optional[float] = None,
+        v_n: float = 0.0,
+        v_e: float = 0.0,
         cov: Optional[np.ndarray] = None,
         uncertainty_km: Optional[float] = None,
-        mean: Optional[np.ndarray] = None,
         last_collection_time: Optional[datetime] = None,
         last_collection_anomaly_score: float = 0.0,
         consecutive_failures: int = 0,
@@ -177,9 +182,16 @@ class TrackState:
         else:
             self.cov = _default_cov()
 
-        self.mean: Optional[np.ndarray] = (
-            None if mean is None else np.asarray(mean, dtype=float).copy()
-        )
+        if lat is not None and lon is not None:
+            # Lazy import to avoid circular-import risk: fusion.geo reads config.
+            from custody.fusion.geo import to_tangent_plane
+            x_m, y_m = to_tangent_plane(lat, lon)
+            self.mean: Optional[np.ndarray] = np.array(
+                [x_m, y_m, v_n, v_e], dtype=float
+            )
+        else:
+            self.mean = None
+
         self.last_collection_time = last_collection_time
         self.last_collection_anomaly_score = last_collection_anomaly_score
         self.consecutive_failures = consecutive_failures
@@ -225,6 +237,28 @@ class TrackState:
         """Custody confidence as exp(-radius_km / 50)."""
         return math.exp(-self.uncertainty_km / 50.0)
 
+    @property
+    def lat(self) -> Optional[float]:
+        """Latitude (degrees) of the track mean, or None if mean is unset."""
+        if self.mean is None:
+            return None
+        from custody.fusion.geo import from_tangent_plane
+        lat_deg, _lon_deg = from_tangent_plane(
+            float(self.mean[0]), float(self.mean[1])
+        )
+        return lat_deg
+
+    @property
+    def lon(self) -> Optional[float]:
+        """Longitude (degrees) of the track mean, or None if mean is unset."""
+        if self.mean is None:
+            return None
+        from custody.fusion.geo import from_tangent_plane
+        _lat_deg, lon_deg = from_tangent_plane(
+            float(self.mean[0]), float(self.mean[1])
+        )
+        return lon_deg
+
     # -- EKF step operators -------------------------------------------------
 
     def predict(
@@ -233,27 +267,16 @@ class TrackState:
         q_pos: float = _DEFAULT_Q_POS_PER_SEC,
         q_vel: float = _DEFAULT_Q_VEL_PER_SEC,
     ) -> None:
-        """Advance the belief state by ``dt_seconds``.
+        """Advance the belief state by ``dt_seconds`` under the CV motion model.
 
-        Constant-velocity motion on the mean (if present). Gaussian
-        process noise on the covariance.  Covariance operates in local-metres
-        throughout — the F matrix couples velocity into position with dt.
+        State order is ``[x_east, y_north, v_n, v_e]``.  F couples each
+        position axis to the matching velocity component:
+        ``F[0, 3] = dt`` (east position advances with east velocity v_e) and
+        ``F[1, 2] = dt`` (north position advances with north velocity v_n).
         """
-        if self.mean is not None:
-            lat, lon, v_n, v_e = self.mean
-            dn_m = v_n * dt_seconds
-            de_m = v_e * dt_seconds
-            new_lat = lat + dn_m / _EARTH_RADIUS_M
-            cos_lat = math.cos(lat)
-            if abs(cos_lat) > 1e-12:
-                new_lon = lon + de_m / (_EARTH_RADIUS_M * cos_lat)
-            else:
-                new_lon = lon
-            self.mean = np.array([new_lat, new_lon, v_n, v_e])
-
         F = np.eye(4)
-        F[0, 2] = dt_seconds
-        F[1, 3] = dt_seconds
+        F[0, 3] = dt_seconds
+        F[1, 2] = dt_seconds
 
         Q = np.zeros((4, 4))
         Q[0, 0] = q_pos * dt_seconds
@@ -261,47 +284,54 @@ class TrackState:
         Q[2, 2] = q_vel * dt_seconds
         Q[3, 3] = q_vel * dt_seconds
 
+        if self.mean is not None:
+            self.mean = F @ self.mean
+
         self.cov = F @ self.cov @ F.T + Q
 
-    def update(
-        self,
-        obs_lat_rad: float,
-        obs_lon_rad: float,
-        R: Optional[np.ndarray] = None,
-    ) -> None:
-        """Kalman update with a position observation in (lat_rad, lon_rad).
+    def update(self, obs: "Observation") -> None:  # type: ignore[name-defined]
+        """Kalman update dispatched on Observation variant (ADR-0008).
 
-        ``R`` is the 2×2 observation covariance in m² (local tangent plane).
-        Defaults to diag((100 m)²).  If the mean was ``None`` this call
-        initialises it at the observation with zero velocity.
+        :class:`PositionObservation` uses ``H = [[1,0,0,0],[0,1,0,0]]`` and
+        ``R = obs.cov_pos``.  :class:`PositionVelocityObservation` uses
+        ``H = I_4`` and ``R = obs.cov``.  Either variant projects its ``lat``
+        and ``lon`` through :mod:`custody.fusion.geo` (ADR-0009) into the
+        tangent-plane meters basis used by this track's state and covariance.
         """
-        if R is None:
-            R = (100.0 ** 2) * np.eye(2)
-        R = np.asarray(R, dtype=float)
+        # Lazy import to break the models ↔ fusion.observations cycle.
+        from custody.fusion.observations import (
+            PositionObservation,
+            PositionVelocityObservation,
+        )
+        from custody.fusion.geo import to_tangent_plane
 
-        if self.mean is None:
-            self.mean = np.array([obs_lat_rad, obs_lon_rad, 0.0, 0.0])
-            return
+        if isinstance(obs, PositionObservation):
+            x_m, y_m = to_tangent_plane(obs.lat, obs.lon)
+            z = np.array([x_m, y_m], dtype=float)
+            H = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
+            R = np.asarray(obs.cov_pos, dtype=float)
+            if self.mean is None:
+                self.mean = np.array([x_m, y_m, 0.0, 0.0])
+                return
+        elif isinstance(obs, PositionVelocityObservation):
+            x_m, y_m = to_tangent_plane(obs.lat, obs.lon)
+            z = np.array([x_m, y_m, obs.v_n, obs.v_e], dtype=float)
+            H = np.eye(4, dtype=float)
+            R = np.asarray(obs.cov, dtype=float)
+            if self.mean is None:
+                self.mean = z.copy()
+                return
+        else:
+            raise TypeError(
+                "TrackState.update expected an Observation "
+                "(PositionObservation or PositionVelocityObservation), "
+                f"got {type(obs).__name__}"
+            )
 
-        lat_pred, lon_pred, v_n, v_e = self.mean
-        cos_lat = math.cos(lat_pred) if abs(math.cos(lat_pred)) > 1e-12 else 1.0
-        dlat_m = (obs_lat_rad - lat_pred) * _EARTH_RADIUS_M
-        dlon_m = (obs_lon_rad - lon_pred) * _EARTH_RADIUS_M * cos_lat
-        innovation = np.array([dlat_m, dlon_m])
-
-        H = np.zeros((2, 4))
-        H[0, 0] = 1.0
-        H[1, 1] = 1.0
-
+        innovation = z - H @ self.mean
         S = H @ self.cov @ H.T + R
         K = self.cov @ H.T @ np.linalg.inv(S)
-
-        mean_update_local = K @ innovation
-        new_lat = lat_pred + mean_update_local[0] / _EARTH_RADIUS_M
-        new_lon = lon_pred + mean_update_local[1] / (_EARTH_RADIUS_M * cos_lat)
-        new_v_n = v_n + mean_update_local[2]
-        new_v_e = v_e + mean_update_local[3]
-        self.mean = np.array([new_lat, new_lon, new_v_n, new_v_e])
+        self.mean = self.mean + K @ innovation
 
         I4 = np.eye(4)
         IKH = I4 - K @ H
