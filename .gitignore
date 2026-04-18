@@ -17,3 +17,6 @@ pyproject.toml.save
 
 # Large raw data — Umbra mirror lives outside git (~56 GB)
 data/raw/
+
+# Intermediate Parquet + COG outputs (regeneratable from raw/)
+data/processed/
