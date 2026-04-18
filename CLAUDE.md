@@ -36,9 +36,9 @@ Day 0 complete. Data reconnaissance confirmed Umbra Spratly coverage, GFW token 
 - Optical: Sentinel-2 L2A, opportunistic (SCS ~60% cloudy)
 
 ## The hero capability
-**Covariance-aware, explainable tip-and-cue orchestration.** This is what distinguishes Custody from a ship detector or a track visualizer. The planner maintains a belief state (position mean + covariance) for every active track, evaluates candidate future collections across all constellations, scores each candidate by expected information gain, and emits both a decision and a natural-language reasoning trace.
+**Covariance-aware, explainable tip-and-cue orchestration.** This is what distinguishes Custody from a ship detector or a track visualizer. The tipcue layer maintains a belief state (position mean + covariance) for every active track, evaluates candidate future collections across all constellations, scores each candidate by expected information gain, and emits both a decision and a natural-language reasoning trace.
 
-The planner's output on every cue is required to include:
+The tipcue layer's output on every cue is required to include:
 - Selected collect (sensor, time, geometry)
 - Expected info gain, quantified as posterior log-determinant reduction
 - Feasibility priors (cloud probability for EO, grazing angle for SAR)
@@ -46,6 +46,15 @@ The planner's output on every cue is required to include:
 - Plain-language justification
 
 This is the centerpiece. Every other capability supports it.
+
+## Two-layer orchestration: portfolio + tipcue
+Custody has two orchestration-adjacent modules that compose cleanly rather than compete.
+
+The **portfolio layer** (`src/custody/orchestration/`) operates at portfolio scope — given N active tracks, it produces the attention ranking: who is in `ACTIVE_CUSTODY`, who is `WATCHLIST`, who can remain `BACKGROUND`. It exists today (738 LOC, Phase 2 build, used by `dark_vessel.py` and `simulation/timeline.py`).
+
+The **tipcue layer** (`src/custody/tipcue/`, new in v3) operates at decision scope — given a single track whose attention tier justifies a collect, it selects which sensor pass to cue and why.
+
+Portfolio picks the *who*; tipcue picks the *what*. The demo's hero moment happens at the tipcue layer, but it's the portfolio layer that decides the track is worth a cue in the first place. They join on `PortfolioItem.entity_id` → `tracker.get_track(entity_id)`.
 
 ## Architectural non-negotiables
 - Observation-level fusion (not track-level)
@@ -62,34 +71,17 @@ Use these terms in code, comments, and documentation. Sloppy language is a credi
 - **Tip-and-cue** — the industry term. Never "cueing loop" in public docs.
 - **Multi-phenomenology fusion** — SDA's phrase. Use in architectural descriptions.
 - **Custody** — maintaining continuous awareness of a target across sensor handoffs. Already the project name.
-- **Orchestration layer** — what Vantor calls the planning component. Use for the planner module externally.
+- **Orchestration** — umbrella industry term used externally (Vantor calls their version "Cortex"). Inside the repo we split it into two layers (below) and name the modules after what they actually do, not after the marketing word.
+- **Portfolio layer** — `src/custody/orchestration/` (Phase 2 module, retained). Fleet-wide attention allocation: who is `ACTIVE_CUSTODY` / `WATCHLIST` / `BACKGROUND`. Picks the *who*.
+- **Tipcue layer** — `src/custody/tipcue/` (v3 module). Per-track collect selection via belief-state info-gain scoring. Picks the *what*.
 - **Pattern of life (PoL)** — industry standard, use as-is.
 - **Dark vessel** — a ship that should be transmitting AIS but isn't. Specific term, don't substitute.
 - **Belief state** — the `(mean, covariance)` of a track.
-- **Reasoning trace** — the explainability output of the orchestration layer.
+- **Reasoning trace** — the explainability output of the tipcue layer.
 
 ## Code style
 - Python 3.11+
 - Dataclasses preferred over classes where possible
 - Type hints throughout
 - Functions under ~30 lines
-- No Docker, no database server, no cloud services for demo runtime (DuckDB + Parquet only)
-- Frontend: React + Mapbox + deck.gl, dark intel-console aesthetic, CSS tokens before components
-
-## Known limitations — be explicit about these in docs and voiceover
-- Umbra coverage is 8 scenes on 2 features over 9 months — not continuous. Sentinel-1 fills gaps.
-- Sentinel-2 cloud cover in SCS ~60% — treat EO as opportunistic.
-- The demo does not identify specific flagged vessels. It detects AIS-dark activity consistent with published AMTI methodology.
-- CFAR detector has false positives near reefs; length-band filter (45–65 m) mitigates for the militia-specific anomaly.
-- Covariance propagation uses constant-velocity motion model with Gaussian process noise. Works for smoothly-moving commercial and militia trawler traffic; not appropriate for high-maneuver targets.
-
-## Day 0 artifacts
-- `day0/ship_detection_centroids.csv` — all 995 Umbra scene centroids
-- `day0/scan_output.txt` — full reconnaissance log
-- `data/raw/umbra/` — downloaded SAR scenes
-
-## Before starting any task
-1. Is this aligned with the hero capability or directly supporting it?
-2. Does this touch the belief-state math? If yes, write the test first. Uncertainty bugs are silent and catastrophic.
-3. Does this add vocabulary drift from the list above?
-4. Am I making a claim the demo can't back up? If yes, soften the claim.
+- No Docker, no database server, no cloud s

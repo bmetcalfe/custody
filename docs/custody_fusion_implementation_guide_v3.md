@@ -65,7 +65,7 @@ Vantor is *the* most-probable commercial reader given the April 15, 2026 Sentry 
 
 Most public descriptions of commercial tip-and-cue systems (Sentry, BlackSky analytics) present cueing as automation — "the system tasks the next sensor without analyst intervention." They do not show the decision logic.
 
-Custody's differentiator is legibility. For every cue the orchestration layer emits, it produces:
+Custody's differentiator is legibility. For every cue the tipcue layer emits, it produces:
 
 ```
 CUED: Umbra-08 pass at 2023-08-09T09:14:22Z
@@ -89,7 +89,9 @@ This is the demo's money shot. Every other capability — detection, fusion, ano
 
 ### 1.5 Extension, not rewrite
 
-The existing Custody modules stay. This guide adds `fusion/`, `catalog/`, an `orchestration/` subpackage (NEW name, replacing what v2 called `planner.py`), a preprocessing script pipeline, and a new `app/` frontend.
+The existing Custody modules stay. This guide adds `fusion/`, `catalog/`, `detection/`, a `tipcue/` subpackage (the per-track cueing decision layer — originally named `orchestration/` in early drafts, renamed to avoid a collision with the existing Phase 2 `orchestration/` portfolio module and to use sharper vocabulary), a preprocessing script pipeline, and a new `app/` frontend.
+
+The existing `src/custody/orchestration/` from Phase 2 (738 LOC, attention tiers + portfolio ranking) is retained as-is. It composes with the new `tipcue/` module — see §4.2.
 
 ---
 
@@ -170,9 +172,9 @@ Four multi-INT anomalies:
 - **Loitering in militia length band.** Vessel 45–65 m estimated length, stationary > N hours at reef cell, no AIS. Mirrors AMTI methodology.
 - **Cross-source class mismatch.** AIS-reported vessel type inconsistent with SAR-estimated length class.
 
-### 2.10 Orchestration layer — LOCKED (the hero, expanded)
+### 2.10 Tipcue layer — LOCKED (the hero, expanded)
 
-This is where v3 invests most heavily. The module is `src/custody/orchestration/` (was `planner.py` in v2).
+This is where v3 invests most heavily. The module is `src/custody/tipcue/`. It is the per-track decision layer of the broader orchestration story; the portfolio side (`src/custody/orchestration/`, retained from Phase 2) feeds it. See §4.2 for how the two layers compose.
 
 **Inputs per scoring call:**
 - Track belief state: mean `(lat, lon, v_n, v_e)` + 4×4 covariance
@@ -223,7 +225,7 @@ Honest-framing matters here. Voiceover:
 
 > *"A live system would evaluate candidates in real-time. For the demo, the full pass schedule and candidate scoring are pre-computed over the window. What you see is the same logic a live system would execute, replayed smoothly."*
 
-TLE propagation via `skyfield` over the demo window. For each track, candidate collects are every pass from every constellation whose swath intersects the track's predicted position (plus uncertainty cone). Orchestration decisions are pre-computed; the UI replays them.
+TLE propagation via `skyfield` over the demo window. For each track, candidate collects are every pass from every constellation whose swath intersects the track's predicted position (plus uncertainty cone). Tipcue decisions are pre-computed; the UI replays them.
 
 ### 2.12 Provenance chain — LOCKED (non-negotiable feature)
 
@@ -331,8 +333,16 @@ Download pipeline in §3.3 of v2 (unchanged). Tier 1 (hero 8 scenes, all formats
 └────────────────────────┬────────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────────┐
-│  ORCHESTRATION  (orchestration/)                   ★ HERO   │
-│  Belief-state scoring · info-gain optimization ·            │
+│  PORTFOLIO  (orchestration/)       [Phase 2, retained]      │
+│  Fleet-wide attention allocation · rank_portfolio() ·       │
+│  BACKGROUND / WATCHLIST / ACTIVE_CUSTODY tiers ·            │
+│  neglect pressure · custody health                          │
+└────────────────────────┬────────────────────────────────────┘
+                         │  PortfolioItem.entity_id
+                         │  (ACTIVE_CUSTODY tracks)
+┌────────────────────────▼────────────────────────────────────┐
+│  TIPCUE  (tipcue/)                                 ★ HERO   │
+│  Per-track belief-state scoring · info-gain optimization ·  │
 │  feasibility priors · natural-language reasoning trace      │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -347,10 +357,10 @@ Download pipeline in §3.3 of v2 (unchanged). Tier 1 (hero 8 scenes, all formats
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Orchestration module structure
+### 4.1 Tipcue module structure
 
 ```
-src/custody/orchestration/
+src/custody/tipcue/
 ├── __init__.py
 ├── passes.py          # skyfield TLE propagation → candidate passes
 ├── feasibility.py     # cloud priors, grazing angle, pass geometry
@@ -361,6 +371,30 @@ src/custody/orchestration/
 ```
 
 Every file < 150 lines. Every function < 30 lines where practical. Unit tests on the math first (`info_gain.py`), then the policy.
+
+### 4.2 How portfolio and tipcue compose
+
+Custody has two orchestration-adjacent modules that compose cleanly rather than compete. The `orchestration/` module operates at portfolio scope — given N active tracks, it produces the attention ranking: who is in `ACTIVE_CUSTODY`, who is `WATCHLIST`, who can remain `BACKGROUND`. The `tipcue/` module operates at decision scope — given a single track whose attention tier justifies a collect, it selects which sensor pass to cue and why. **Portfolio picks the *who*; tipcue picks the *what*.** The demo's hero moment happens at the tipcue layer, but it's the portfolio layer that decides the track is worth a cue in the first place.
+
+The two layers join cleanly via `PortfolioItem.entity_id`:
+
+```python
+from custody.orchestration import rank_portfolio          # Phase 2
+from custody.tipcue import decide_collect                 # v3
+
+assessment = rank_portfolio(timestamp, records, scenario_start)
+candidates = [item for item in assessment.items
+              if item.attention_state == "ACTIVE_CUSTODY"]
+
+for item in candidates:
+    track = tracker.get_track(item.entity_id)             # ~20-LOC adapter
+    decision = decide_collect(track, candidate_passes)
+    # decision is a CueingDecision with reasoning trace
+```
+
+`PortfolioItem` already carries everything tipcue needs to filter the input set: `entity_id`, `attention_state`, `portfolio_rank`, `portfolio_score`, `custody_health`, and the rationale strings. The one piece deliberately *not* in `PortfolioItem` is the belief state (mean + 4×4 covariance) — that lives in the EKF Track maintained by `fusion/tracker.py`. The composition therefore needs a `tracker.get_track(entity_id) -> Track` accessor, written as the first task of Week 5.
+
+This composition lowers Week 5 risk: portfolio already exists at 738 LOC and works. Week 5 builds tipcue from scratch against an input the portfolio already produces, instead of reinventing the attention layer.
 
 ---
 
@@ -427,7 +461,11 @@ custody/
 │   │   ├── observations.py
 │   │   ├── index.py
 │   │   └── tracker.py
-│   └── orchestration/                 # ★ HERO module
+│   ├── orchestration/                 # EXISTING (Phase 2) — portfolio layer
+│   │   ├── attention.py               # BACKGROUND / WATCHLIST / ACTIVE_CUSTODY tiers
+│   │   ├── portfolio.py               # rank_portfolio(), CustodyHealth
+│   │   └── __init__.py
+│   └── tipcue/                        # ★ HERO module — per-track decision layer
 │       ├── passes.py
 │       ├── feasibility.py
 │       ├── info_gain.py
@@ -446,7 +484,7 @@ custody/
 │   ├── 09_score_anomalies.py
 │   ├── 10_generate_chips.py
 │   ├── 11_propagate_passes.py
-│   ├── 12_orchestrate_decisions.py    # ★ hero pre-computation
+│   ├── 12_tipcue_decisions.py         # ★ hero pre-computation
 │   └── 13_build_timeline.py
 ├── data/
 │   ├── raw/                           # gitignored
@@ -506,7 +544,9 @@ custody/
 - Four multi-INT anomaly scorers.
 - Per-reef-cell density baselines over first 4 weeks, detection over remainder.
 
-**Week 5: Orchestration (the hero).**
+**Week 5: Tipcue (the hero).**
+Builds `tipcue/` against the existing portfolio output — Phase 2's `orchestration/` already produces `PortfolioAssessment` objects we can filter by `attention_state == "ACTIVE_CUSTODY"`. We're not reinventing a working module, we're composing onto it.
+- First: `fusion/tracker.py` exposes `get_track(entity_id) -> Track` so tipcue can pull belief state by the portfolio's join key (~20 LOC adapter).
 - `passes.py`: TLE propagation, candidate generation.
 - `feasibility.py`: cloud priors, grazing angle, pass geometry.
 - `info_gain.py`: the log-det math. Tests first.
@@ -553,61 +593,7 @@ custody/
 Reranked for v3:
 
 1. **Belief-state math correctness.** The hero capability depends on getting the info-gain computation right. Silent bugs are catastrophic. Mitigation: tests first, test against hand-computed toy scenarios, sanity-check log-det outputs against a baseline.
-2. **Orchestration reasoning trace credibility.** If the justification text reads like marketing, the whole demo loses credibility. Mitigation: templated, literal, numeric. No adjectives. Show your work.
+2. **Tipcue reasoning trace credibility.** If the justification text reads like marketing, the whole demo loses credibility. Mitigation: templated, literal, numeric. No adjectives. Show your work.
 3. **Frontend complexity for the trace panel.** New UI element, no clear reference implementation to copy. Mitigation: wireframe before coding, 2-pass approach (functional first, polish second).
 4. **CFAR noise near reefs.** Unchanged from v2.
-5. **Sentinel-2 cloud cover.** Unchanged from v2.
-6. **Umbra STAC schema differences vs Element84.** Unchanged from v2.
-7. **TLE freshness.** Use TLEs from the exact week of each scene.
-8. **Cesium 3D scope creep.** Strict gate at end of Week 6. Cut without apology.
-9. **Voiceover overreach.** Script reviewed by non-technical reader before recording. If any sentence sounds like a commercial claim, rewrite it.
-10. **SDA framing overreach.** Every reference to the capability vectors has to be defensible. Positioning doc is the reference; voiceover follows it literally.
-
-### What this demo does NOT claim
-
-- Not hypersonic tracking.
-- Not a production system.
-- Not identifying specific flagged vessels.
-- Not a Sentry or BlackSky clone.
-- Not making legal or sovereignty claims about contested waters.
-- Not asserting the orchestration layer is novel — only that its output is legible in a way public commercial artifacts aren't.
-
----
-
-## 9. Open Questions
-
-Down to 4:
-
-1. **Cesium 3D commit.** Gated on Week 6 completion.
-2. **Inter-node hypothesis passing stretch.** Gated on Week 7 completion.
-3. **Voiceover recording setup.** $80 USB mic, quiet room, Audacity. Buy this week.
-4. **LinkedIn post timing.** Recommend: publish Tuesday morning of Week 10 for maximum reader attention.
-
----
-
-## 10. What to Say in an Interview
-
-One-minute version, use literally:
-
-> "I built an open-source reference implementation aligned with the Space Development Agency's Custody Layer capability vectors — multi-phenomenology fusion, hypothesis management, low-latency exploitation — applied to maritime domain awareness in the South China Sea. It federates Umbra SAR, Sentinel-1, Sentinel-2, and Global Fishing Watch AIS through a unified observation model with covariance and full provenance. The hero capability is a covariance-aware tip-and-cue orchestration layer that scores candidate collections by expected information gain, applies sensor-specific feasibility priors — cloud forecast for EO, grazing angle for SAR — and emits both a tasking decision and a natural-language reasoning trace. It's a 10-week reference implementation over curated open data — the architecture is real and the decisions are legible; the scenario is chosen because the AIS-dark dynamics in the Spratlys make SAR/AIS fusion the canonical real-world test case. The positioning is answering a community capability call, not a company pitch."
-
-Every sentence is defensible against a skeptical engineer. Every claim maps to a module in the repo.
-
----
-
-## 11. Positioning Against Public Capability Calls
-
-Custody's feature set maps explicitly to published SDA Custody Layer capability vectors. This is the table that goes in `docs/positioning.md` and a condensed version in the README.
-
-| SDA capability vector | Custody implementation |
-|---|---|
-| "Automated processing and fusion of data from traditional space-based sensing payloads (visible, infrared, RF, SAR, multispectral)" | Multi-modal fusion of SAR (Umbra + Sentinel-1), EO (Sentinel-2), and AIS through unified Observation schema |
-| "Design of a multi-phenomenology fusion architecture that enables agile incorporation of new algorithms" | Pluggable detector interface, per-source STAC adapters, anomaly scorer registry — new sources add in ~200 LOC |
-| "Reduction in latency of processing, exploitation, and dissemination" | Architectural patterns for offline pipeline; noted explicitly that production latency work is out of scope for this reference |
-| "Memory management and target hypothesis distribution from one satellite node to the next" | Covariance-preserving track state serialization; inter-node handoff as flagged stretch goal |
-
-The table appears literally in the README so readers can verify the alignment claim.
-
----
-
-*End of v3 guide. Week 1 starts with the scenario doc and observation model. Belief-state math has tests first. Cesium and inter-node are earned, not promised.*
+5. **Sentinel-2 cloud 
