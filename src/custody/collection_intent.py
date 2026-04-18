@@ -1,4 +1,4 @@
-"""Observation state tracking and sensor-aware collection reasoning.
+"""Collection-intent tracking and sensor-aware collection reasoning.
 
 Derives what the system has already observed, how recently, and with
 which sensor, then produces a collection intent that guides tasking.
@@ -7,14 +7,14 @@ All logic is deterministic.  No hidden state.
 
 Public API
 ----------
-CollectionIntent (str constants)
+Collection-intent constants (module-scope strings)
     SEARCH | CONFIRM | CHARACTERIZE | MONITOR
 
-ObservationState (frozen dataclass)
+CollectionIntent (frozen dataclass)
     last_observation_time, last_sensor, hours_since, collection_intent,
     needs_cross_sensor, preferred_confirmation_sensor, rationale.
 
-derive_observation_state(record, history_window) -> ObservationState
+derive_observation_state(record, history_window) -> CollectionIntent
 apply_observation_to_policy(policy_fields, obs_state) -> dict
 """
 from __future__ import annotations
@@ -80,7 +80,7 @@ def _cross_sensor(last_sensor_type: str | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class ObservationState:
+class CollectionIntent:
     """Observation context for one entity at one timestep.
 
     Attributes:
@@ -108,7 +108,7 @@ class ObservationState:
 def derive_observation_state(
     record: dict,
     history_window: list[dict],
-) -> ObservationState:
+) -> CollectionIntent:
     """Derive observation state from current record and history.
 
     Scans history backwards for the most recent TASK/SUCCESS event to
@@ -120,7 +120,7 @@ def derive_observation_state(
         history_window:  Prior records for this entity, oldest first.
 
     Returns:
-        An :class:`ObservationState`.
+        An :class:`CollectionIntent`.
     """
     # Find last successful observation
     last_time: Optional[datetime] = None
@@ -212,7 +212,7 @@ def derive_observation_state(
 
     rationale = "; ".join(rationale_parts)
 
-    return ObservationState(
+    return CollectionIntent(
         last_observation_time=last_time,
         last_sensor_type=last_sensor,
         hours_since_observation=hours_since,
@@ -229,7 +229,7 @@ def derive_observation_state(
 
 def apply_observation_to_policy(
     policy_fields: dict,
-    obs: ObservationState,
+    obs: CollectionIntent,
 ) -> dict:
     """Adjust tasking policy fields based on observation reasoning.
 

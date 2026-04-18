@@ -1,5 +1,5 @@
 """
-Tests for custody.observation — observation state and sensor-aware reasoning.
+Tests for custody.collection_intent — collection-intent state and sensor-aware reasoning.
 
 Covers:
   1.  no prior observation → SEARCH
@@ -22,9 +22,9 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from custody.observation import (
+from custody.collection_intent import (
     SEARCH, CONFIRM, CHARACTERIZE, MONITOR,
-    ObservationState,
+    CollectionIntent,
     derive_observation_state,
     apply_observation_to_policy,
 )

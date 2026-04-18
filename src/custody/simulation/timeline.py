@@ -48,7 +48,7 @@ from custody.confidence import (
     apply_confidence_to_priority as _apply_conf_priority,
     confidence_action_bias as _conf_action_bias,
 )
-from custody.observation import (
+from custody.collection_intent import (
     derive_observation_state as _derive_obs_state,
     apply_observation_to_policy as _apply_obs_policy,
 )
