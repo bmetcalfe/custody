@@ -58,3 +58,7 @@ Constructor backward compat: `TrackState(uncertainty_km=float)` continues to wor
 - Tipcue's info-gain computation (Week 5) has a well-defined input: the 4×4 posterior covariance is what `score(c) = ½ log|Σ_prior| − ½ log|Σ_posterior(c)|` operates on.
 - Per the v3 CLAUDE.md "Before starting any task" checklist: this touches belief-state math, so tests come first. Hand-computed toy scenarios for predict + update are mandatory before integration.
 - **Alternative name `uncertainty_radius_km` was considered and rejected.** A shim exists to avoid migration; renaming the shim while claiming backward compat is self-contradictory, and the v3-aligned `position_sigma_km` name is available as a second property for new code. This keeps the migration surface bounded to the sites that genuinely need EKF-aware logic (assignments and retired-function calls), not every scalar read.
+
+## Behavioral Note
+
+The EKF's predict step produces σ ∝ √t under default Q (Gaussian Brownian growth of position variance). Q is tuned per [ADR-0007](0007-ekf-q-tuned-to-phase2-heuristic.md) to approximate the Phase 2 linear heuristic σ(t) = 5 + 3t in the 0-48 hour operational range, trading the mathematical default for demo-narrative preservation and for a threat-model-appropriate model of adversarial dark-vessel heading compounding. Outside that range, the EKF's trajectory continues along the tuned envelope; beyond the range where the Phase 2 linear curve was itself validated (~48 h), no mission-critical behavior depends on σ.

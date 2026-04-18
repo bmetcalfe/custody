@@ -101,16 +101,24 @@ class Vessel:
 
 _EARTH_RADIUS_M = 6_371_000.0
 
-# Process-noise defaults tuned so that uncertainty_km grows from 5 km → 8 km
-# over one hour of predict-only, matching the retired scalar heuristic at that
-# starting radius.  Beyond 1 h, σ grows sub-linearly (variance linearly), which
-# is physically correct.
-_DEFAULT_Q_POS_PER_SEC = 10833.0  # m²/s per position-diagonal element
-_DEFAULT_Q_VEL_PER_SEC = 0.01     # (m/s)²/s per velocity-diagonal element
+# Process-noise defaults tuned per ADR-0007 to approximate the Phase 2 linear
+# heuristic σ(t) = 5 + 3t km across the 0-48 h operational range.  The linear
+# σ growth comes from the F-matrix coupling of the initial velocity variance
+# (σ²_vel × t² in position) plus q_pos × t; q_vel is held at 0 so velocity
+# variance does not compound across discrete predict steps.
+#
+# Anchor check at defaults:
+#   σ(1 h)  ≈  8.00 km    (target 8)
+#   σ(24 h) ≈ 76.97 km    (target 77)
+# All portfolio health thresholds (DEGRADING=20, STALE=50, LOST=90, MAX=150)
+# fire within ±2% of the Phase 2 timing.
+_DEFAULT_Q_POS_PER_SEC = 8333.0   # m²/s per position-diagonal element
+_DEFAULT_Q_VEL_PER_SEC = 0.0      # (m/s)²/s — see note above
 
-# Default initial covariance: 5 km isotropic position, 1 m/s isotropic velocity.
+# Default initial covariance: 5 km isotropic position; 0.833 m/s (3 km/h)
+# isotropic velocity to drive the linear σ growth via F-coupling.
 _DEFAULT_POS_SIGMA_M = 5_000.0
-_DEFAULT_VEL_SIGMA_MPS = 1.0
+_DEFAULT_VEL_SIGMA_MPS = 0.833
 
 
 def _default_cov() -> np.ndarray:

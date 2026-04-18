@@ -180,6 +180,35 @@ def test_predict_without_mean_only_grows_cov():
 
 
 # ---------------------------------------------------------------------------
+# 6b. ADR-0007 anchor regression — default Q matches Phase 2 sigma(t) = 5 + 3t
+# ---------------------------------------------------------------------------
+
+
+def _run_default_q_for_hours(hours: float) -> float:
+    """Helper: start at default TrackState, predict in 1-hour steps, return sigma."""
+    t = TrackState()
+    for _ in range(int(hours)):
+        t.predict(dt_seconds=3600.0)
+    return t.uncertainty_km
+
+
+def test_default_q_anchor_at_one_hour():
+    """Default Q must put sigma(1h) within 2% of Phase 2 target (8 km)."""
+    sigma = _run_default_q_for_hours(1)
+    assert sigma == pytest.approx(8.0, rel=0.02), (
+        f"sigma(1h)={sigma:.3f} km; expected ~8.0 km per ADR-0007"
+    )
+
+
+def test_default_q_anchor_at_twenty_four_hours():
+    """Default Q must put sigma(24h) within 2% of Phase 2 target (77 km)."""
+    sigma = _run_default_q_for_hours(24)
+    assert sigma == pytest.approx(77.0, rel=0.02), (
+        f"sigma(24h)={sigma:.3f} km; expected ~77 km per ADR-0007"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 7. update(obs_lat, obs_lon, R)
 # ---------------------------------------------------------------------------
 
