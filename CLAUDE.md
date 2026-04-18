@@ -18,7 +18,7 @@ This is NOT a pitch to any single company. It's a demo answering a publicly publ
 - Not a Sentry clone. Vantor Sentry is a commercial product with internal capabilities we don't have visibility into. Custody is a reference implementation focused on the *publicly visible gap*: covariance-aware planning and legible reasoning traces.
 
 ## Current phase
-Day 0 complete. Data reconnaissance confirmed Umbra Spratly coverage, GFW token in hand, ~13 GB Umbra mirror being staged locally. Week 1 starting: foundations — observation model, spatial index, EKF-based tracker.
+Day 0 complete. Data reconnaissance confirmed Umbra Spratly coverage, GFW token in hand, 56 GB Umbra mirror staged locally (219 files across 103 scenes). Sentinel-1/2 and GFW AIS pulls are Week 2 work. Week 1 starting: foundations — observation model, spatial index, EKF-based tracker.
 
 ## Authoritative references — ALWAYS read these before starting work
 1. `docs/custody_fusion_implementation_guide_v3.md` — the North Star. Architecture, design decisions, implementation sequence.
@@ -95,9 +95,12 @@ Use these terms in code, comments, and documentation. Sloppy language is a credi
 - Covariance propagation uses constant-velocity motion model with Gaussian process noise. Works for smoothly-moving commercial and militia trawler traffic; not appropriate for high-maneuver targets.
 
 ## Day 0 artifacts
-- `day0/ship_detection_centroids.csv` — all 995 Umbra scene centroids
-- `day0/scan_output.txt` — full reconnaissance log
-- `data/raw/umbra/` — downloaded SAR scenes
+- `day0/ship_detection_centroids.csv` — all 995 Umbra scene centroids from the public S3 catalog
+- `day0/scan_output.txt`, `day0/download_log.txt` — reconnaissance + download logs
+- `day0/scan_umbra.py`, `day0/download_scenes.py` — reproducer scripts (idempotent)
+- `day0/legacy/` — archived patches from decommissioned worktree branches
+- `data/raw/umbra/` — 56 GB, 219 files, 103 scenes (Tier 1 AOI: 29 files / 22 GB; Tier 2 SCS-broad: 190 files / 38 GB). Gitignored.
+- Sentinel-1, Sentinel-2, and GFW AIS staged data: not yet fetched — Week 2 pipeline.
 
 ## Before starting any task
 1. Is this aligned with the hero capability or directly supporting it?
