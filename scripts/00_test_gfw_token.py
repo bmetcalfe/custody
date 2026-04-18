@@ -14,22 +14,19 @@ URL = "https://gateway.api.globalfishingwatch.org/v3/4wings/report"
 params = {
     "datasets[0]": "public-global-fishing-effort:latest",
     "date-range": "2023-08-06,2023-08-07",
-    "format": "json",
+    "format": "JSON",
     "spatial-resolution": "HIGH",
     "temporal-resolution": "DAILY",
     "group-by": "FLAG",
 }
 body = {
-    "region": {
-        "dataset": "public-eez-areas:latest",
-        "geojson": {
-            "type": "Polygon",
-            "coordinates": [[
-                [114.615, 8.806], [114.715, 8.806],
-                [114.715, 8.906], [114.615, 8.906],
-                [114.615, 8.806],
-            ]],
-        },
+    "geojson": {
+        "type": "Polygon",
+        "coordinates": [[
+            [114.615, 8.806], [114.715, 8.806],
+            [114.715, 8.906], [114.615, 8.906],
+            [114.615, 8.806],
+        ]],
     },
 }
 r = requests.post(URL, headers={"Authorization": f"Bearer {TOKEN}"}, params=params, json=body, timeout=20)
