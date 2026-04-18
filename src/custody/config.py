@@ -219,3 +219,11 @@ ESCALATION_BOOST_PER_HOUR = 0.02
 
 # Maximum escalation boost from persistence alone.
 ESCALATION_BOOST_CAP = 0.10
+
+# ---------------------------------------------------------------------------
+# Tangent-plane anchor (ADR-0009)
+# ---------------------------------------------------------------------------
+# Global anchor for the Azimuthal Equidistant projection used as the EKF's
+# meters-basis frame.  Tune if the demo AOI moves.
+AOI_ANCHOR_LAT = 9.75   # degrees, AOI center for the Spratly demo
+AOI_ANCHOR_LON = 116.0  # degrees
