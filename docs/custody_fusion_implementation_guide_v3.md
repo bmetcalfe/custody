@@ -159,6 +159,7 @@ Sensor mapping for the demo: Umbra SAR, Sentinel-1 GRD, and Sentinel-2 L2A produ
 ### 2.4 Coordinate and time discipline — LOCKED
 
 - Internal: WGS84 + UTC epoch seconds. No exceptions.
+- Tangent plane: Azimuthal Equidistant projection anchored at AOI center (`AOI_ANCHOR_LAT`, `AOI_ANCHOR_LON` in config). All EKF predict/update math happens in this meters-basis frame; lat/lon is the external interface. See [ADR-0009](decisions/0009-global-tangent-plane-anchor-at-aoi-center.md).
 - Display: Web Mercator for map, UTC+8 for display clock (Philippines time).
 - SAR chip extraction: rasterio `Affine` per scene; never eyeball pixel→geo.
 - Scene-center timestamp with documented ±5 s absorbed into covariance.

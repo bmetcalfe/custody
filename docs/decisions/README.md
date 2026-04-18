@@ -19,3 +19,4 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0006 — TrackState converted from @dataclass to a plain class](0006-trackstate-plain-class.md)
 - [0007 — Default EKF velocity prior produces Phase 2 linear-σ envelope via F-coupling](0007-ekf-velocity-prior-for-phase2-envelope.md)
 - [0008 — Observation types split by what the sensor actually measures (polymorphic, not unified 4×4)](0008-polymorphic-observation-types.md)
+- [0009 — Global tangent-plane anchor at AOI center for lat/lon ↔ meters conversions](0009-global-tangent-plane-anchor-at-aoi-center.md)
