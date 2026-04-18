@@ -596,4 +596,58 @@ Reranked for v3:
 2. **Tipcue reasoning trace credibility.** If the justification text reads like marketing, the whole demo loses credibility. Mitigation: templated, literal, numeric. No adjectives. Show your work.
 3. **Frontend complexity for the trace panel.** New UI element, no clear reference implementation to copy. Mitigation: wireframe before coding, 2-pass approach (functional first, polish second).
 4. **CFAR noise near reefs.** Unchanged from v2.
-5. **Sentinel-2 cloud 
+5. **Sentinel-2 cloud cover.** Unchanged from v2.
+6. **Umbra STAC schema differences vs Element84.** Unchanged from v2.
+7. **TLE freshness.** Use TLEs from the exact week of each scene.
+8. **Cesium 3D scope creep.** Strict gate at end of Week 6. Cut without apology.
+9. **Voiceover overreach.** Script reviewed by non-technical reader before recording. If any sentence sounds like a commercial claim, rewrite it.
+10. **SDA framing overreach.** Every reference to the capability vectors has to be defensible. Positioning doc is the reference; voiceover follows it literally.
+
+### What this demo does NOT claim
+
+- Not hypersonic tracking.
+- Not a production system.
+- Not identifying specific flagged vessels.
+- Not a Sentry or BlackSky clone.
+- Not making legal or sovereignty claims about contested waters.
+- Not asserting the orchestration layer is novel — only that its output is legible in a way public commercial artifacts aren't.
+
+---
+
+## 9. Open Questions
+
+Down to 4:
+
+1. **Cesium 3D commit.** Gated on Week 6 completion.
+2. **Inter-node hypothesis passing stretch.** Gated on Week 7 completion.
+3. **Voiceover recording setup.** $80 USB mic, quiet room, Audacity. Buy this week.
+4. **LinkedIn post timing.** Recommend: publish Tuesday morning of Week 10 for maximum reader attention.
+
+---
+
+## 10. What to Say in an Interview
+
+One-minute version, use literally:
+
+> "I built an open-source reference implementation aligned with the Space Development Agency's Custody Layer capability vectors — multi-phenomenology fusion, hypothesis management, low-latency exploitation — applied to maritime domain awareness in the South China Sea. It federates Umbra SAR, Sentinel-1, Sentinel-2, and Global Fishing Watch AIS through a unified observation model with covariance and full provenance. The orchestration story has two layers: a portfolio layer that does attention allocation across the fleet — who's in active custody, who's on the watchlist, who's background — and a tipcue layer that scores candidate collections by expected information gain for individual tracks in active custody. The tipcue layer applies sensor-specific feasibility priors — cloud forecast for EO, grazing angle for SAR — and emits both a tasking decision and a natural-language reasoning trace for every cue. It's a 10-week reference implementation over curated open data — the architecture is real and the decisions are legible; the scenario is chosen because the AIS-dark dynamics in the Spratlys make SAR/AIS fusion the canonical real-world test case. The positioning is answering a community capability call, not a company pitch."
+
+Every sentence is defensible against a skeptical engineer. Every claim maps to a module in the repo.
+
+---
+
+## 11. Positioning Against Public Capability Calls
+
+Custody's feature set maps explicitly to published SDA Custody Layer capability vectors. This is the table that goes in `docs/positioning.md` and a condensed version in the README.
+
+| SDA capability vector | Custody implementation |
+|---|---|
+| "Automated processing and fusion of data from traditional space-based sensing payloads (visible, infrared, RF, SAR, multispectral)" | Multi-modal fusion of SAR (Umbra + Sentinel-1), EO (Sentinel-2), and AIS through unified Observation schema |
+| "Design of a multi-phenomenology fusion architecture that enables agile incorporation of new algorithms" | Pluggable detector interface, per-source STAC adapters, anomaly scorer registry — new sources add in ~200 LOC |
+| "Reduction in latency of processing, exploitation, and dissemination" | Architectural patterns for offline pipeline; noted explicitly that production latency work is out of scope for this reference |
+| "Memory management and target hypothesis distribution from one satellite node to the next" | Covariance-preserving track state serialization; inter-node handoff as flagged stretch goal |
+
+The table appears literally in the README so readers can verify the alignment claim.
+
+---
+
+*End of v3 guide. Week 1 starts with the scenario doc and observation model. Belief-state math has tests first. Cesium and inter-node are earned, not promised.*

@@ -84,4 +84,23 @@ Use these terms in code, comments, and documentation. Sloppy language is a credi
 - Dataclasses preferred over classes where possible
 - Type hints throughout
 - Functions under ~30 lines
-- No Docker, no database server, no cloud s
+- No Docker, no database server, no cloud services for demo runtime (DuckDB + Parquet only)
+- Frontend: React + Mapbox + deck.gl, dark intel-console aesthetic, CSS tokens before components
+
+## Known limitations — be explicit about these in docs and voiceover
+- Umbra coverage is 8 scenes on 2 features over 9 months — not continuous. Sentinel-1 fills gaps.
+- Sentinel-2 cloud cover in SCS ~60% — treat EO as opportunistic.
+- The demo does not identify specific flagged vessels. It detects AIS-dark activity consistent with published AMTI methodology.
+- CFAR detector has false positives near reefs; length-band filter (45–65 m) mitigates for the militia-specific anomaly.
+- Covariance propagation uses constant-velocity motion model with Gaussian process noise. Works for smoothly-moving commercial and militia trawler traffic; not appropriate for high-maneuver targets.
+
+## Day 0 artifacts
+- `day0/ship_detection_centroids.csv` — all 995 Umbra scene centroids
+- `day0/scan_output.txt` — full reconnaissance log
+- `data/raw/umbra/` — downloaded SAR scenes
+
+## Before starting any task
+1. Is this aligned with the hero capability or directly supporting it?
+2. Does this touch the belief-state math? If yes, write the test first. Uncertainty bugs are silent and catastrophic.
+3. Does this add vocabulary drift from the list above?
+4. Am I making a claim the demo can't back up? If yes, soften the claim.
