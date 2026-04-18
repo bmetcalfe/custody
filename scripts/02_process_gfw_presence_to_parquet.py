@@ -21,11 +21,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from custody.fusion.index import index_observations
-from custody.ingest.gfw_presence import parse_gfw_presence_response, DropReport
+# Make src/custody importable when invoked as a bare script.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT / "src"))
+
+from custody.fusion.index import index_observations  # noqa: E402
+from custody.ingest.gfw_presence import parse_gfw_presence_response, DropReport  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -96,7 +101,7 @@ def main():
     summary_path.write_text(json.dumps(summary, indent=2))
     print()
     print(json.dumps(summary, indent=2))
-    print(f"Wrote summary → {summary_path}")
+    print(f"Wrote summary -> {summary_path}")
 
 
 if __name__ == "__main__":
