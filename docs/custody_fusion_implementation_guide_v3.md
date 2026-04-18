@@ -114,27 +114,47 @@ Most decisions locked; remaining opens flagged `[OPEN]`.
 
 ### 2.3 Observation model — LOCKED
 
+`Observation` is a polymorphic sum type: the covariance shape matches what the sensor actually measured. Two variants cover the v1 sensor inventory — `PositionObservation` (2×2 position covariance) for image-derived fixes, and `PositionVelocityObservation` (4×4 covariance) for sensors that directly broadcast velocity. The EKF's update method dispatches on the variant and builds the appropriate measurement matrix `H`. See [ADR-0008](decisions/0008-polymorphic-observation-types.md) for the options analysis and rejected alternatives (unified 4×4 with `np.inf` velocity block; 2×2 plus parallel velocity scalars).
+
 ```python
 @dataclass(frozen=True)
-class Observation:
-    obs_id: str                    # ULID for ordering + uniqueness
-    source_id: str                 # "umbra", "sentinel1", "sentinel2", "gfw_ais"
-    modality: Literal["SAR","EO","AIS"]
-    acquisition_time: float        # UTC epoch seconds
+class PositionObservation:
+    obs_id: str
+    source_id: str
+    modality: Literal["SAR", "EO"]
+    acquisition_time: float       # UTC epoch seconds
     ingestion_time: float
     lat: float
     lon: float
-    cov: tuple[float, float, float]  # (σ_xx, σ_yy, σ_xy), meters²
+    cov_pos: np.ndarray           # 2×2 meters² in local tangent plane
+    raw_ref: str                  # provenance URI
+    detector_version: str | None
+    classification_conf: float | None
     vessel_length_est_m: float | None
     heading_est_deg: float | None
-    sog_est_kt: float | None
+    notes: dict[str, Any] = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class PositionVelocityObservation:
+    obs_id: str
+    source_id: str
+    modality: Literal["AIS"]
+    acquisition_time: float
+    ingestion_time: float
+    lat: float
+    lon: float
+    v_n: float                    # m/s, north component
+    v_e: float                    # m/s, east component
+    cov: np.ndarray               # 4×4 in (m², m², (m/s)², (m/s)²) basis
     mmsi: int | None
     vessel_name: str | None
-    classification_conf: float | None
-    raw_ref: str                   # S3 URI or local path + pixel/row index
-    detector_version: str | None
-    notes: dict[str, Any]
+    raw_ref: str
+    notes: dict[str, Any] = field(default_factory=dict)
+
+Observation = Union[PositionObservation, PositionVelocityObservation]
 ```
+
+Sensor mapping for the demo: Umbra SAR, Sentinel-1 GRD, and Sentinel-2 L2A produce `PositionObservation`s (image-derived centroids, 2×2 cov); GFW AIS produces `PositionVelocityObservation`s (the vessel's transponder broadcasts course-over-ground and speed-over-ground directly, so velocity is instrumentally measured rather than derived).
 
 ### 2.4 Coordinate and time discipline — LOCKED
 
