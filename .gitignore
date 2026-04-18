@@ -14,3 +14,6 @@ htmlcov/
 *.zip
 *.log
 pyproject.toml.save
+
+# Large raw data — Umbra mirror lives outside git (~56 GB)
+data/raw/
