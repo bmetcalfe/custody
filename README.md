@@ -1,6 +1,32 @@
 # Custody
 
-**Closed-loop maritime ISR reasoning system**
+> ## 🛰 Migration in progress: v3 SDA-Custody-Layer reference implementation
+>
+> This repository is actively migrating from its Phase 2 architecture (ML-based maritime ISR reasoning, described below) to a v3 architecture aligned with the Space Development Agency's publicly published [Custody Layer capability vectors](https://www.sda.mil/custody/).
+>
+> **What v3 is:** an open-source reference implementation of multi-phenomenology fusion and legible tip-and-cue orchestration for maritime domain awareness. It applies architectural patterns from the SDA Custody Layer capability vectors — multi-sensor fusion, hypothesis management, low-latency exploitation — to a domain where open data (Umbra SAR, Sentinel-1/2, Global Fishing Watch AIS) enables public validation.
+>
+> **What v3 is not:** a hypersonic or missile tracking system. SDA's Custody Layer primarily addresses ballistic and hypersonic threats, which have kinematics that do not translate to ships. Custody applies the *architectural patterns* described in those capability vectors to the maritime domain. See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping story.
+>
+> **Hero capability:** covariance-aware, explainable tip-and-cue orchestration. Every cueing decision emits both a tasking action and a reasoning trace — selected collect, expected information gain, feasibility priors, rejected alternatives with scores, plain-language justification.
+>
+> **Demo scenario:** Spratly Islands, June–August 2023. AIS-dark vessel persistence at Cuarteron-area feature across 5 Umbra SAR scenes spanning 41 days, ending in a cued 48-hour revisit. Grounded in published [CSIS AMTI methodology](https://amti.csis.org/) on Chinese maritime militia presence in the South China Sea.
+>
+> **Composition with Phase 2:** the Phase 2 portfolio/attention engine described below is preserved. v3 adds a `fusion/` package (multi-sensor observation model with covariance and provenance), a `tipcue/` package (per-track collection scoring by information gain), and a new frontend. Portfolio picks the track; tipcue picks the collect. See [ADR-0001](docs/decisions/0001-rename-v3-orchestration-to-tipcue.md).
+>
+> **Current migration state (Week 1):** Scenario locked. Positioning locked. Seven architecture decisions recorded in [`docs/decisions/`](docs/decisions/). EKF-based belief state replaces the Phase 2 scalar-radius track model with ~2,069 tests green. Portfolio, attention, ML, and the Streamlit/Dash UI described below remain operational during the migration.
+>
+> **Canonical v3 references:**
+> - [`docs/positioning.md`](docs/positioning.md) — the public-facing "why this exists"
+> - [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_implementation_guide_v3.md) — full v3 architecture and 10-week sequence
+> - [`docs/scenario.md`](docs/scenario.md) — locked AOI, time window, Umbra inventory
+> - [`docs/decisions/`](docs/decisions/) — architecture decision log
+>
+> The remainder of this README describes the Phase 2 implementation as it currently exists on disk. Full v3 rewrite is scheduled for end of Week 1 once the new module scaffolding lands.
+
+---
+
+**Closed-loop maritime ISR reasoning system** *(Phase 2 — see migration notice above)*
 
 Custody screens vessel populations, detects anomalous behavior using ML and heuristic signals, and converts that detection into prioritized, sensor-aware collection decisions — with a full reasoning chain behind every recommendation.
 
