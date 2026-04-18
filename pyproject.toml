@@ -32,3 +32,5 @@ override-dependencies = ["pandas>=3.0.1"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/app"]
+# day0/ contains archived legacy patches that are not part of the active test suite
+testpaths = ["tests"]
