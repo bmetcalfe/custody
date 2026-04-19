@@ -1,0 +1,14 @@
+{
+  "umbra": {
+    "default": {
+      "alpha": 7.0,
+      "comment": "Tuned for Tennent reclamation scenes (uint8 GEC, AOI crop, guard=20, ref=60)"
+    },
+    "scenes": {
+      "2023-12-06-02-06-24_UMBRA-04": {
+        "alpha": 4.0,
+        "comment": "Whitsun scene 1; brighter uniform background requires permissive alpha (sweep showed 75 dets at 4.0, 0 at 5.0+)"
+      }
+    }
+  }
+}

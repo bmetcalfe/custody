@@ -1,8 +1,8 @@
 """Run CA-CFAR on the Whitsun Reef 2023-12-06 (earlier) Umbra scene.
 
-Same defaults as scripts/03_detect_sar_umbra.py (Tennent):
+Mask + CFAR parameters match scripts/03_detect_sar_umbra.py (Tennent):
   - 2-km AOI crop around sceneCenterPointLla
-  - alpha = CFAR_DEFAULT_ALPHA_UMBRA_UINT8 (7.0)
+  - alpha from config/sar_detection_params.json (Whitsun scene 1: 4.0)
   - structure mask with sigma=80, pct=95, min_area=500, dilate=20
   - guard=20, reference=60, min_blob=4, max_blob=500
 
@@ -29,8 +29,8 @@ import numpy as np  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 from scipy.ndimage import binary_dilation  # noqa: E402
 
+from custody.detection.config import get_alpha  # noqa: E402
 from custody.detection.sar_cfar import (  # noqa: E402
-    CFAR_DEFAULT_ALPHA_UMBRA_UINT8,
     compute_structure_mask,
     detect_points_to_observations,
 )
@@ -113,9 +113,9 @@ def main():
     )
     print(f"  structure mask: {int(mask.sum())} px ({100*mask.sum()/mask.size:.2f}% of crop)")
 
-    chosen = CFAR_DEFAULT_ALPHA_UMBRA_UINT8
+    chosen = get_alpha("umbra", SCENE_DIR.name)
     print()
-    print(f"Running CFAR at alpha = {chosen}:")
+    print(f"Running CFAR at alpha = {chosen} (scene={SCENE_DIR.name}):")
     obs = detect_points_to_observations(
         crop_power,
         new_tfm,

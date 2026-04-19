@@ -13,8 +13,8 @@ This script:
   2. Crops to 2-km box around sceneCenterPointLla.
   3. Squares to power domain.
   4. Sweeps alpha over a user-supplied list, saving per-alpha preview PNGs.
-  5. Picks the final alpha (CFAR_DEFAULT_ALPHA_UMBRA_UINT8) and writes Parquet
-     via fusion.index.
+  5. Picks the per-scene alpha from config/sar_detection_params.json and
+     writes Parquet via fusion.index.
 
 Run::
 
@@ -36,8 +36,8 @@ import numpy as np  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 from scipy.ndimage import binary_dilation  # noqa: E402
 
+from custody.detection.config import get_alpha  # noqa: E402
 from custody.detection.sar_cfar import (  # noqa: E402
-    CFAR_DEFAULT_ALPHA_UMBRA_UINT8,
     compute_structure_mask,
     detect_points_cfar,
     detect_points_to_observations,
@@ -148,10 +148,10 @@ def main():
         preview_path = SCRATCH / f"umbra_2023_07_02_alpha{int(alpha)}_detections.png"
         _save_preview(cropped, detections, preview_path, mask=mask)
 
-    # --- Final run at CFAR_DEFAULT_ALPHA_UMBRA_UINT8
+    # --- Final run at per-scene alpha (from config/sar_detection_params.json)
     print()
-    chosen = CFAR_DEFAULT_ALPHA_UMBRA_UINT8
-    print(f"Final run at default alpha = {chosen}:")
+    chosen = get_alpha("umbra", SCENE_DIR.name)
+    print(f"Final run at alpha = {chosen} (scene={SCENE_DIR.name}):")
     obs = detect_points_to_observations(
         crop_power,
         new_tfm,
