@@ -27,6 +27,9 @@ dependencies = [
     "shapely>=2.0",
     "sgp4>=2.23",
     "streamlit>=1.55.0",
+    "yolo",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
 ]
 
 [project.urls]
@@ -41,6 +44,16 @@ dev = [
 # Streamlit's published metadata caps pandas at <3, but it works fine at runtime
 # with pandas 3.x.  Override the cap so uv can resolve without downgrading pandas.
 override-dependencies = ["pandas>=3.0.1"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]
+yolo = { git = "https://github.com/MultimediaTechLab/YOLO", rev = "main" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/app"]
