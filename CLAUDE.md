@@ -10,13 +10,15 @@ Custody is a 10-week open-source reference implementation of multi-sensor fusion
 
 ## What's the scenario
 
-**Primary case, in the 90-second demo cut:** Vietnamese land reclamation at Tennent Reef (Đá Tiên Nữ, 8.856°N / 114.665°E) during June–August 2023. Five Umbra SAR scenes over 41 days document active dredging at the eastern artificial island (Tiên Nữ B). The pipeline detects this as a persistent AIS-dark SAR return. CSIS AMTI has documented this feature's expansion in their December 2022 and November 2023 reports.
+The demo presents two co-equal case studies. Neither is primary or supplementary.
 
-**Supplementary case, documented but not in the demo cut:** Chinese maritime militia activity at Whitsun Reef (Đá Ba Đầu, 9.98°N / 114.63°E), December 2023 – March 2024, three Umbra scenes. Site of the March 2021 Chinese militia swarm event. Long-baseline change-detection case study.
+**Case Study A — Tennent Reef** (Đá Tiên Nữ, 8.856°N / 114.665°E). Vietnamese land reclamation, June–August 2023, 5 Umbra scenes over 41 days. AIS-dark reclamation activity, persistent structure monitoring narrative. AMTI-documented in Dec 2022 and Nov 2023 reports.
 
-**Not in scenario:** Cuarteron Reef (8.85°N / 112.85°E, Chinese-controlled, ~180 km west of our primary target) is a reference feature only. It is sometimes cited in Spratly reporting but is not in our Umbra inventory and is not part of the Custody demo. See ADR-0012 for how the primary and supplementary features were selected.
+**Case Study B — Whitsun Reef** (Đá Ba Đầu, 9.98°N / 114.63°E). Chinese maritime militia flotilla, December 2023 – March 2024, 3 Umbra scenes. AIS-dark vessel clusters, multi-target flotilla detection narrative. AMTI-documented via the March 2021 swarm event coverage.
 
-The pipeline is scenario-agnostic. CC should not make semantic assumptions about vessels, militias, or claimants in code — the architecture operates on AIS observations, SAR detections, and tracks, and the scenario-layer meaning comes from documentation and voiceover.
+**Not in scenario:** Cuarteron Reef (8.85°N / 112.85°E, Chinese-controlled, ~180 km west of Tennent) is a reference feature only. Sometimes cited in Spratly reporting but not in our Umbra inventory. See ADR-0012.
+
+The pipeline is scenario-agnostic. CC should not make semantic assumptions about vessels, militias, or claimants in code — the architecture operates on AIS observations, SAR detections, and tracks. Scenario-layer meaning comes from documentation and voiceover.
 
 ## What's built
 
