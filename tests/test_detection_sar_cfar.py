@@ -180,57 +180,141 @@ def test_two_targets_10_pixels_apart_documented_behavior():
 # ---------------------------------------------------------------------------
 
 
-def test_structure_mask_suppresses_bright_rectangle():
-    img = _expon_noise((512, 512), scale=1.0, seed=31)
-    # A 12x12 bright region is small enough that the CFAR ring (41-cell
-    # window, 5-cell guard) still captures mostly background, so the
-    # region *does* produce CFAR hits.  The structure mask is expected
-    # to suppress them.  3 distant point targets remain detectable.
-    img[100:112, 100:112] = 30.0
+# ---------------------------------------------------------------------------
+# Structure mask unit tests use zero-bg fixtures so the algorithm's
+# behavior is deterministic, not buffeted by spatially-correlated smoothed
+# noise.  Real SAR scenes have heterogeneous brightness where the percentile
+# threshold settles in a meaningful "background band"; uniform exp-noise test
+# scenes don't, so the noise statistics would otherwise dominate the tests.
+# ---------------------------------------------------------------------------
+
+
+def _zero_bg(shape: tuple[int, int]) -> np.ndarray:
+    """Zero-background scene, no noise — purely deterministic."""
+    return np.zeros(shape, dtype=np.float32)
+
+
+_MASK_KW = dict(smooth_sigma=2.0, bright_threshold_pct=95.0)
+
+
+def test_structure_mask_30x30_masked_point_targets_survive():
+    """Large bright region is masked; 3 scattered point targets pass through CFAR."""
+    img = _zero_bg((512, 512))
+    img[100:130, 100:130] = 30.0     # 30x30 at value 30 → smoothed footprint well over 500
     pts = [(300, 300), (350, 400), (400, 100)]
     for r, c in pts:
         img[r, c] = 25.0
 
-    # Without mask: structure-region hits show up.
-    detections_without = detect_points_cfar(
-        img, alpha=5.0, guard=5, reference=15,
-        mask_structures=False, min_blob_pixels=1,
+    mask = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=10,
     )
-    in_region_no_mask = [
-        d for d in detections_without if 95 <= d[0] < 117 and 95 <= d[1] < 117
-    ]
-    assert len(in_region_no_mask) > 0, "baseline had no hits on the 12x12 region; widen the region"
+    assert mask[115, 115], "mask missed center of 30x30 bright region"
+    for tr, tc in pts:
+        assert not mask[tr, tc], f"mask wrongly covered point target ({tr}, {tc})"
 
-    # With mask (sigma=20 + pct=99 so only region-scale bright features caught)
+    # CFAR with mask on: point targets detected.  (CFAR needs actual noise to
+    # exercise — use an exp-noise scene with the same features to drive CFAR.)
+    img_noise = _expon_noise((512, 512), scale=1.0, seed=31)
+    img_noise[100:130, 100:130] = 30.0
+    for r, c in pts:
+        img_noise[r, c] = 25.0
     detections_with = detect_points_cfar(
-        img, alpha=5.0, guard=5, reference=15,
+        img_noise, alpha=5.0, guard=5, reference=15,
         mask_structures=True,
-        structure_sigma=20.0,
-        structure_threshold_pct=99.0,
+        **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=10,
         min_blob_pixels=1,
     )
-    in_region_with_mask = [
-        d for d in detections_with if 95 <= d[0] < 117 and 95 <= d[1] < 117
-    ]
-    assert len(in_region_with_mask) < len(in_region_no_mask), (
-        "mask did not suppress region vs baseline "
-        f"({len(in_region_with_mask)} vs {len(in_region_no_mask)})"
-    )
-    # Point targets preserved
     for tr, tc in pts:
         assert any(abs(dr - tr) <= 1 and abs(dc - tc) <= 1 for dr, dc in detections_with), (
-            f"point target ({tr},{tc}) missed with mask on"
+            f"point target ({tr}, {tc}) missed with mask on"
         )
 
 
 def test_structure_mask_boundary_behavior():
-    img = _expon_noise((256, 256), scale=1.0, seed=37)
-    img[50:100, 50:100] = 30.0
-    mask = compute_structure_mask(img, structure_sigma=10.0, structure_threshold_pct=90.0)
-    # Centre of the structure should be masked
+    img = _zero_bg((256, 256))
+    img[50:100, 50:100] = 30.0   # 50x50 at value 30 → huge smoothed footprint
+    mask = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500, dilate_pixels=0,
+    )
     assert mask[75, 75], "structure mask missed centre of 50x50 bright block"
-    # A pixel far from the structure should not be masked
     assert not mask[200, 200], "structure mask over-extended into empty region"
+
+
+# ---------------------------------------------------------------------------
+# New mask behaviors (connected-components + min-area + dilation)
+# ---------------------------------------------------------------------------
+
+
+def test_small_bright_blob_below_min_area_is_not_masked():
+    """Small bright blob (5x5, vessel-scale) stays below the 500-pixel floor."""
+    img = _zero_bg((256, 256))
+    img[100:105, 100:105] = 30.0   # 5x5 blob
+    mask = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=0,
+    )
+    assert not mask[102, 102], "small 5x5 blob should not be masked (footprint < 500)"
+
+
+def test_large_bright_region_is_masked():
+    """50x50 bright region produces a smoothed footprint well over 500 — masked."""
+    img = _zero_bg((256, 256))
+    img[80:130, 80:130] = 30.0
+    mask = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=0,
+    )
+    assert mask[105, 105], "50x50 region should be masked"
+
+
+def test_dilation_extends_mask_by_configured_pixels():
+    """With dilate_pixels=10, mask extends 10 pixels beyond the un-dilated boundary."""
+    img = _zero_bg((1024, 1024))
+    img[400:460, 400:460] = 30.0   # 60x60 at value 30 on a 1024x1024 scene
+    mask_no_dilate = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=0,
+    )
+    mask_dilate = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=10,
+    )
+    row = 430
+    edge_cols = np.where(mask_no_dilate[row, :])[0]
+    assert edge_cols.size > 0, "no-dilate mask is empty on centre row"
+    last_col = int(edge_cols.max())
+    assert last_col + 11 < mask_dilate.shape[1], f"not enough image margin (last_col={last_col})"
+    assert mask_dilate[row, last_col + 9], "dilate=10 failed to extend +9 past edge"
+    assert not mask_dilate[row, last_col + 11], "dilate=10 extended past +11 incorrectly"
+
+
+def test_two_disconnected_small_blobs_not_merged_by_smoothing():
+    """Two separated small bright blobs stay as separate sub-min-area components.
+
+    At sigma=5, the Gaussian tail at 20 pixels (half-separation) is exp(-8) ≈ 3.4e-4,
+    so there's no measurable bridge of above-threshold smoothed value between the
+    blobs.  Guards against the naive "smooth + threshold" algorithm fusing nearby
+    vessels into a fake "structure".
+    """
+    img = _zero_bg((512, 512))
+    img[100:105, 100:105] = 30.0     # 5x5 at value 30
+    img[100:105, 140:145] = 30.0     # 5x5 at value 30, 40 px east
+    mask = compute_structure_mask(
+        img, **_MASK_KW,
+        min_structure_area_pixels=500,
+        dilate_pixels=0,
+    )
+    assert not mask[102, 102], "first small blob wrongly masked (smoothing merged?)"
+    assert not mask[102, 142], "second small blob wrongly masked (smoothing merged?)"
 
 
 # ---------------------------------------------------------------------------

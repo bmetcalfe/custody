@@ -30,6 +30,7 @@ from typing import Union
 
 import numpy as np
 from scipy.ndimage import (
+    binary_dilation,
     center_of_mass,
     gaussian_filter,
     label,
@@ -94,18 +95,44 @@ def compute_cfar_threshold(
 
 def compute_structure_mask(
     img: np.ndarray,
-    structure_sigma: float = 20.0,
-    structure_threshold_pct: float = 95.0,
+    smooth_sigma: float = 15.0,
+    bright_threshold_pct: float = 75.0,
+    min_structure_area_pixels: int = 500,
+    dilate_pixels: int = 20,
 ) -> np.ndarray:
-    """Return a bool mask: True where the image sits inside a large bright structure.
+    """Mask large bright structures (land, reclamation, reef, large platforms).
 
-    Gaussian-smoothed amplitude exceeding the ``structure_threshold_pct`` quantile
-    of the smoothed image.  Larger ``structure_sigma`` means the mask only fires
-    on genuinely region-scale bright structures, not individual pixels.
+    Returns a bool mask where True marks a pixel inside (or in the dilation
+    halo of) a contiguous bright region whose area meets the minimum-area
+    threshold.  Isolated bright pixels — vessels, speckle peaks — are NOT
+    masked, so CFAR can still fire on them.
+
+    Pipeline:
+
+    1. Gaussian smoothing with ``smooth_sigma`` to reduce speckle.
+    2. Threshold at the ``bright_threshold_pct`` percentile of the smoothed image.
+    3. Connected-component labeling (``scipy.ndimage.label``).
+    4. Keep only components whose pixel count ≥ ``min_structure_area_pixels``.
+    5. Dilate the surviving mask by ``dilate_pixels`` iterations to cover edge
+       artifacts that CFAR would otherwise fire on just outside the boundary.
     """
-    smoothed = gaussian_filter(img.astype(np.float32, copy=False), sigma=structure_sigma)
-    threshold = np.percentile(smoothed, structure_threshold_pct)
-    return smoothed > threshold
+    smoothed = gaussian_filter(img.astype(np.float32, copy=False), sigma=smooth_sigma)
+    threshold = np.percentile(smoothed, bright_threshold_pct)
+    bright = smoothed > threshold
+
+    labels, n_components = label(bright)
+    if n_components == 0:
+        return np.zeros_like(bright, dtype=bool)
+
+    sizes = np.bincount(labels.ravel())  # sizes[0] is the background
+    keep_component = sizes >= min_structure_area_pixels
+    keep_component[0] = False  # never keep the background label
+    mask = keep_component[labels]
+
+    if dilate_pixels > 0 and mask.any():
+        mask = binary_dilation(mask, iterations=int(dilate_pixels))
+
+    return mask
 
 
 # ---------------------------------------------------------------------------
@@ -120,8 +147,10 @@ def detect_points_cfar(
     guard: int = 5,
     reference: int = 15,
     mask_structures: bool = True,
-    structure_sigma: float = 20.0,
-    structure_threshold_pct: float = 95.0,
+    smooth_sigma: float = 15.0,
+    bright_threshold_pct: float = 75.0,
+    min_structure_area_pixels: int = 500,
+    dilate_pixels: int = 20,
     min_blob_pixels: int = 2,
     max_blob_pixels: int = 500,
 ) -> list[tuple[int, int]]:
@@ -140,8 +169,10 @@ def detect_points_cfar(
     if mask_structures:
         mask = compute_structure_mask(
             img,
-            structure_sigma=structure_sigma,
-            structure_threshold_pct=structure_threshold_pct,
+            smooth_sigma=smooth_sigma,
+            bright_threshold_pct=bright_threshold_pct,
+            min_structure_area_pixels=min_structure_area_pixels,
+            dilate_pixels=dilate_pixels,
         )
         hits &= ~mask
 

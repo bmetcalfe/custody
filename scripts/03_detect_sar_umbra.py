@@ -121,8 +121,8 @@ def main():
     crop_power = cropped.astype(np.float32) ** 2
     mask = compute_structure_mask(
         cropped.astype(np.float32),
-        structure_sigma=STRUCT_SIGMA,
-        structure_threshold_pct=STRUCT_THR_PCT,
+        smooth_sigma=STRUCT_SIGMA,
+        bright_threshold_pct=STRUCT_THR_PCT,
     )
 
     # --- Alpha sweep
@@ -137,8 +137,8 @@ def main():
             guard=GUARD,
             reference=REFERENCE,
             mask_structures=True,
-            structure_sigma=STRUCT_SIGMA,
-            structure_threshold_pct=STRUCT_THR_PCT,
+            smooth_sigma=STRUCT_SIGMA,
+            bright_threshold_pct=STRUCT_THR_PCT,
             min_blob_pixels=MIN_BLOB,
             max_blob_pixels=MAX_BLOB,
         )
@@ -162,8 +162,8 @@ def main():
         guard=GUARD,
         reference=REFERENCE,
         mask_structures=True,
-        structure_sigma=STRUCT_SIGMA,
-        structure_threshold_pct=STRUCT_THR_PCT,
+        smooth_sigma=STRUCT_SIGMA,
+        bright_threshold_pct=STRUCT_THR_PCT,
         min_blob_pixels=MIN_BLOB,
         max_blob_pixels=MAX_BLOB,
     )
