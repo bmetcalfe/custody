@@ -24,3 +24,4 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0011 — AIS ingestion uses GFW public-tier presence dataset; observations are position-only](0011-gfw-presence-as-position-only.md)
 - [0012 — Scenario reframe: primary narrative is Vietnamese reclamation at Tennent Reef; Whitsun becomes supplementary](0012-scenario-reframe-tennent-whitsun.md)
 - [0013 — Dual case studies — Tennent Reef and Whitsun Reef both primary, neither supplementary](0013-dual-case-studies.md)
+- [0014 — OS-CFAR as second detector variant for heterogeneous-clutter scenes](0014-os-cfar-for-heterogeneous-clutter.md)
