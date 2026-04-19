@@ -20,6 +20,7 @@ from custody.detection.sar_common import (
     latlon_to_pixel,
     detection_to_observation,
     detections_to_observations,
+    crop_to_aoi,
 )
 from custody.fusion.observations import PositionObservation
 
@@ -212,3 +213,85 @@ def test_detections_to_observations_batch(tmp_path: Path):
     assert len(out) == 3
     assert all(isinstance(o, PositionObservation) for o in out)
     assert len({o.obs_id for o in out}) == 3
+
+
+# ---------------------------------------------------------------------------
+# crop_to_aoi
+# ---------------------------------------------------------------------------
+
+
+def _synthetic_raster(tmp_path: Path, rot: bool = False) -> tuple[np.ndarray, Affine, str]:
+    img = (np.arange(256 * 256, dtype=np.uint8).reshape(256, 256)) & 0xFF
+    tfm = _rotated_transform() if rot else _straight_transform()
+    p = tmp_path / ("synth_rot.tif" if rot else "synth.tif")
+    _write_synthetic_tif(p, img, tfm)
+    arr, t, crs = read_geotiff(p)
+    return arr, t, crs
+
+
+def test_crop_to_aoi_shape_and_target_containment(tmp_path: Path):
+    img, tfm, crs = _synthetic_raster(tmp_path)
+    # Target at the centre of the 256x256 scene.
+    centre_lat, centre_lon = pixel_to_latlon(128, 128, tfm, crs)
+    cropped, new_tfm, bounds = crop_to_aoi(
+        img, tfm, centre_lat, centre_lon, crs, box_half_km=0.02
+    )
+    # box_half_km=0.02km at 1 m/pixel -> half_px=20 -> 41x41 crop
+    assert cropped.shape == (41, 41)
+    assert bounds["target_row"] == 128
+    assert bounds["target_col"] == 128
+    assert bounds["crop_target_row"] == pytest.approx(20.0, abs=0.01)
+    assert bounds["crop_target_col"] == pytest.approx(20.0, abs=0.01)
+
+
+def test_crop_to_aoi_new_transform_reprojects_to_original_latlon(tmp_path: Path):
+    img, tfm, crs = _synthetic_raster(tmp_path)
+    # Pick a target not at image center so offset is non-trivial
+    target_lat, target_lon = pixel_to_latlon(100, 150, tfm, crs)
+    cropped, new_tfm, bounds = crop_to_aoi(
+        img, tfm, target_lat, target_lon, crs, box_half_km=0.015
+    )
+    # The target pixel in cropped coords should reproject back to (target_lat, target_lon)
+    crop_r = bounds["crop_target_row"]
+    crop_c = bounds["crop_target_col"]
+    back_lat, back_lon = pixel_to_latlon(crop_r, crop_c, new_tfm, crs)
+    assert back_lat == pytest.approx(target_lat, abs=1e-8)
+    assert back_lon == pytest.approx(target_lon, abs=1e-8)
+
+
+def test_crop_to_aoi_rotated_transform_roundtrips(tmp_path: Path):
+    img, tfm, crs = _synthetic_raster(tmp_path, rot=True)
+    target_lat, target_lon = pixel_to_latlon(80, 170, tfm, crs)
+    cropped, new_tfm, bounds = crop_to_aoi(
+        img, tfm, target_lat, target_lon, crs, box_half_km=0.02
+    )
+    back_lat, back_lon = pixel_to_latlon(
+        bounds["crop_target_row"], bounds["crop_target_col"], new_tfm, crs
+    )
+    assert back_lat == pytest.approx(target_lat, abs=1e-8)
+    assert back_lon == pytest.approx(target_lon, abs=1e-8)
+
+
+def test_crop_to_aoi_clipping_at_image_edge(tmp_path: Path):
+    img, tfm, crs = _synthetic_raster(tmp_path)
+    # Near the top-left corner: the box will extend past the edge.
+    edge_lat, edge_lon = pixel_to_latlon(5, 5, tfm, crs)
+    cropped, new_tfm, bounds = crop_to_aoi(
+        img, tfm, edge_lat, edge_lon, crs, box_half_km=0.02
+    )
+    # Clipped: not 41x41; rows start at 0.
+    assert bounds["row_start"] == 0
+    assert bounds["col_start"] == 0
+    assert cropped.shape[0] < 41
+    assert cropped.shape[1] < 41
+    # Target still inside the cropped region
+    assert 0 <= bounds["crop_target_row"] < cropped.shape[0]
+    assert 0 <= bounds["crop_target_col"] < cropped.shape[1]
+
+
+def test_crop_to_aoi_target_outside_image_raises(tmp_path: Path):
+    img, tfm, crs = _synthetic_raster(tmp_path)
+    # Far away from the synthetic image's UTM region (origin is 240000 E, 980000 N)
+    with pytest.raises(ValueError, match="outside image bounds"):
+        crop_to_aoi(img, tfm, target_lat=0.0, target_lon=0.0,
+                    crs_wkt=crs, box_half_km=1.0)

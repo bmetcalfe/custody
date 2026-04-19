@@ -12,6 +12,7 @@ from typing import Iterable, Sequence, Union
 import numpy as np
 import rasterio
 from rasterio.transform import Affine, rowcol, xy
+from rasterio.windows import Window, transform as window_transform
 from pyproj import Transformer
 
 from custody.fusion.observations import PositionObservation
@@ -129,6 +130,68 @@ def detection_to_observation(
         heading_est_deg=None,
         notes={},
     )
+
+
+def crop_to_aoi(
+    img: np.ndarray,
+    transform: Affine,
+    target_lat: float,
+    target_lon: float,
+    crs_wkt: str,
+    box_half_km: float = 1.0,
+) -> tuple[np.ndarray, Affine, dict]:
+    """Crop ``img`` to a (2 × box_half_km) × (2 × box_half_km) box around a target lat/lon.
+
+    Returns ``(cropped_img, new_transform, bounds_dict)``.  The ``bounds_dict``
+    contains ``row_start``, ``row_end``, ``col_start``, ``col_end``,
+    ``target_row`` (in the original image), ``target_col`` (original), plus the
+    target's fractional pixel in the *cropped* image as ``crop_target_row``
+    and ``crop_target_col``.
+
+    Raises :class:`ValueError` if the target lat/lon projects outside the
+    image bounds.  When the box extends past the image edge, the crop is
+    clipped to the image extent (no crash, partial crop returned).
+    """
+    h, w = img.shape[:2]
+    tgt_row_f, tgt_col_f = latlon_to_pixel(target_lat, target_lon, transform, crs_wkt)
+    if not (0.0 <= tgt_row_f <= h - 1) or not (0.0 <= tgt_col_f <= w - 1):
+        raise ValueError(
+            f"target ({target_lat}, {target_lon}) projects to "
+            f"(row={tgt_row_f:.2f}, col={tgt_col_f:.2f}) which is outside "
+            f"image bounds ({h}×{w})"
+        )
+
+    # Pixel size (meters per pixel-step) from the transform's linear block.
+    # For a rotated GEC this is sqrt(a² + b²); equals the `scale` factor.
+    pixel_size_m = float(np.hypot(transform.a, transform.b))
+    if pixel_size_m <= 0.0:
+        raise ValueError(f"transform has zero pixel size: {transform}")
+    half_px = int(np.ceil(box_half_km * 1000.0 / pixel_size_m))
+
+    tgt_row = int(round(tgt_row_f))
+    tgt_col = int(round(tgt_col_f))
+    r0 = max(0, tgt_row - half_px)
+    r1 = min(h, tgt_row + half_px + 1)
+    c0 = max(0, tgt_col - half_px)
+    c1 = min(w, tgt_col + half_px + 1)
+
+    cropped = img[r0:r1, c0:c1]
+    win = Window(c0, r0, c1 - c0, r1 - r0)
+    new_tfm = window_transform(win, transform)
+
+    bounds = {
+        "row_start": r0,
+        "row_end": r1,
+        "col_start": c0,
+        "col_end": c1,
+        "target_row": tgt_row,
+        "target_col": tgt_col,
+        "crop_target_row": tgt_row_f - r0,
+        "crop_target_col": tgt_col_f - c0,
+        "pixel_size_m": pixel_size_m,
+        "half_px": half_px,
+    }
+    return cropped, new_tfm, bounds
 
 
 def detections_to_observations(

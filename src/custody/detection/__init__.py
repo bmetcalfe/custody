@@ -13,6 +13,7 @@ from custody.detection.sar_cfar import (
     detect_points_to_observations,
 )
 from custody.detection.sar_common import (
+    crop_to_aoi,
     detection_to_observation,
     detections_to_observations,
     latlon_to_pixel,
@@ -23,6 +24,7 @@ from custody.detection.sar_common import (
 __all__ = [
     "compute_cfar_threshold",
     "compute_structure_mask",
+    "crop_to_aoi",
     "detect_points_cfar",
     "detect_points_to_observations",
     "detection_to_observation",

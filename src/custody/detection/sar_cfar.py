@@ -41,6 +41,16 @@ from custody.detection.sar_common import detections_to_observations
 from custody.fusion.observations import PositionObservation
 
 
+# CA-CFAR threshold calibration for Umbra uint8 GEC imagery squared to the
+# power domain.  See ADR-less Phase 2A note:  uint8-amplitude-squared has
+# heavier tails than the exponential distribution CA-CFAR theory assumes, so
+# alpha on this input is substantially higher than a textbook Rayleigh/exp
+# setting.  Tuned against the 2023-07-02 Tennent scene 2-km AOI crop via the
+# alpha sweep in scripts/03_detect_sar_umbra.py.  Override per-scene when
+# needed.
+CFAR_DEFAULT_ALPHA_UMBRA_UINT8: float = 8.0
+
+
 # ---------------------------------------------------------------------------
 # CFAR threshold
 # ---------------------------------------------------------------------------
