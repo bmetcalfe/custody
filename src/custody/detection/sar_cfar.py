@@ -34,6 +34,7 @@ from scipy.ndimage import (
     center_of_mass,
     gaussian_filter,
     label,
+    percentile_filter,
     uniform_filter,
 )
 from rasterio.transform import Affine
@@ -197,6 +198,126 @@ def detect_points_to_observations(
 ) -> list[PositionObservation]:
     """End-to-end helper: image → detections → PositionObservation list."""
     detections = detect_points_cfar(img, **cfar_kwargs)
+    return detections_to_observations(
+        detections,
+        transform,
+        crs_wkt,
+        obs_id_prefix=source_id,
+        acquisition_time=acquisition_time,
+        source_id=source_id,
+        sigma_m=sigma_m,
+        detector_version=detector_version,
+    )
+
+
+# ---------------------------------------------------------------------------
+# OS-CFAR (Ordered-Statistic CFAR) — per ADR-0014
+# ---------------------------------------------------------------------------
+#
+# OS-CFAR replaces CA-CFAR's reference-cell mean with a fixed percentile
+# (default 75th).  This is robust to heterogeneous clutter (exponential +
+# lognormal mixtures, bright speckle clumps, bathymetry bleed-through) and
+# to target-near-target masking (a bright neighbour doesn't drag the
+# percentile the way it drags the mean).  Trade-off: percentile_filter is
+# more expensive than uniform_filter, so OS-CFAR is ~10x slower than CA.
+#
+# Window implementation: rectangular percentile_filter at side
+# (2*(guard+reference)+1), no explicit guard exclusion.  The percentile's
+# intrinsic outlier-robustness tolerates guard contamination.  An annular
+# (guard-excluded) percentile would be precise but ~10x slower still — see
+# ADR-0014 for the trade-off and the path for a future upgrade.
+
+
+def compute_os_cfar_threshold(
+    img_power: np.ndarray,
+    guard: int,
+    reference: int,
+    alpha: float,
+    k_percentile: float = 0.75,
+) -> np.ndarray:
+    """Return the per-pixel OS-CFAR threshold.
+
+    ``k_percentile`` is a fraction in (0, 1] — 0.75 picks the 75th percentile
+    of the window.  The window side is ``2*(guard+reference)+1``; the guard
+    region is not explicitly excluded (see ADR-0014).
+    """
+    img = img_power.astype(np.float32, copy=False)
+    window_size = 2 * (guard + reference) + 1
+    if not 0.0 < k_percentile <= 1.0:
+        raise ValueError(f"k_percentile must be in (0, 1]; got {k_percentile}")
+    pct = k_percentile * 100.0
+    ref_quantile = percentile_filter(img, percentile=pct, size=window_size, mode="reflect")
+    return alpha * ref_quantile
+
+
+def detect_points_os_cfar(
+    img: np.ndarray,
+    *,
+    alpha: float = 3.0,
+    guard: int = 20,
+    reference: int = 60,
+    k_percentile: float = 0.75,
+    mask_structures: bool = True,
+    smooth_sigma: float = 15.0,
+    bright_threshold_pct: float = 75.0,
+    min_structure_area_pixels: int = 500,
+    dilate_pixels: int = 20,
+    min_blob_pixels: int = 2,
+    max_blob_pixels: int = 500,
+) -> list[tuple[int, int]]:
+    """Run OS-CFAR, optionally suppress structure hits, return pixel-space centroids.
+
+    ``img`` is taken to be already in the power/intensity domain.  For raw
+    amplitude imagery, square the input first: ``detect_points_os_cfar(img**2, ...)``.
+    """
+    power = img.astype(np.float32, copy=False)
+    threshold = compute_os_cfar_threshold(
+        power, guard=guard, reference=reference,
+        alpha=alpha, k_percentile=k_percentile,
+    )
+    hits = power > threshold
+
+    if mask_structures:
+        mask = compute_structure_mask(
+            img,
+            smooth_sigma=smooth_sigma,
+            bright_threshold_pct=bright_threshold_pct,
+            min_structure_area_pixels=min_structure_area_pixels,
+            dilate_pixels=dilate_pixels,
+        )
+        hits &= ~mask
+
+    if not hits.any():
+        return []
+
+    labels, n = label(hits)
+    if n == 0:
+        return []
+
+    sizes = np.bincount(labels.ravel())
+    centroids = center_of_mass(hits, labels, range(1, n + 1))
+
+    out: list[tuple[int, int]] = []
+    for i, (r, c) in enumerate(centroids):
+        size = sizes[i + 1]
+        if min_blob_pixels <= size <= max_blob_pixels:
+            out.append((int(round(r)), int(round(c))))
+    return out
+
+
+def detect_points_os_cfar_to_observations(
+    img: np.ndarray,
+    transform: Affine,
+    crs_wkt: str,
+    *,
+    acquisition_time: float,
+    source_id: str,
+    sigma_m: float = 10.0,
+    detector_version: str = "sar_os_cfar_v1",
+    **cfar_kwargs,
+) -> list[PositionObservation]:
+    """End-to-end helper (OS-CFAR): image → detections → PositionObservation list."""
+    detections = detect_points_os_cfar(img, **cfar_kwargs)
     return detections_to_observations(
         detections,
         transform,
