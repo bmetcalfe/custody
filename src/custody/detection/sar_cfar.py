@@ -34,11 +34,11 @@ from scipy.ndimage import (
     center_of_mass,
     gaussian_filter,
     label,
-    percentile_filter,
     uniform_filter,
 )
 from rasterio.transform import Affine
 
+from custody.detection.annular_percentile import annular_percentile_filter
 from custody.detection.sar_common import detections_to_observations
 from custody.fusion.observations import PositionObservation
 
@@ -218,14 +218,13 @@ def detect_points_to_observations(
 # (default 75th).  This is robust to heterogeneous clutter (exponential +
 # lognormal mixtures, bright speckle clumps, bathymetry bleed-through) and
 # to target-near-target masking (a bright neighbour doesn't drag the
-# percentile the way it drags the mean).  Trade-off: percentile_filter is
-# more expensive than uniform_filter, so OS-CFAR is ~10x slower than CA.
+# percentile the way it drags the mean).
 #
-# Window implementation: rectangular percentile_filter at side
-# (2*(guard+reference)+1), no explicit guard exclusion.  The percentile's
-# intrinsic outlier-robustness tolerates guard contamination.  An annular
-# (guard-excluded) percentile would be precise but ~10x slower still — see
-# ADR-0014 for the trade-off and the path for a future upgrade.
+# Window implementation: annular (ring-shaped) window with the guard region
+# explicitly excluded — the correct formulation per Rohling (1983).  The
+# numba JIT implementation in custody.detection.annular_percentile makes
+# this tractable at full Umbra scene scale (17602x17602).  Resolves the
+# "annular-window implementation deferred" caveat in ADR-0014.
 
 
 def compute_os_cfar_threshold(
@@ -235,18 +234,18 @@ def compute_os_cfar_threshold(
     alpha: float,
     k_percentile: float = 0.75,
 ) -> np.ndarray:
-    """Return the per-pixel OS-CFAR threshold.
+    """Return the per-pixel OS-CFAR threshold over an annular reference window.
 
     ``k_percentile`` is a fraction in (0, 1] — 0.75 picks the 75th percentile
-    of the window.  The window side is ``2*(guard+reference)+1``; the guard
-    region is not explicitly excluded (see ADR-0014).
+    of the reference ring (the annulus from guard+1 to guard+reference half-width,
+    centre guard square excluded).
     """
     img = img_power.astype(np.float32, copy=False)
-    window_size = 2 * (guard + reference) + 1
     if not 0.0 < k_percentile <= 1.0:
         raise ValueError(f"k_percentile must be in (0, 1]; got {k_percentile}")
-    pct = k_percentile * 100.0
-    ref_quantile = percentile_filter(img, percentile=pct, size=window_size, mode="reflect")
+    ref_quantile = annular_percentile_filter(
+        img, guard=guard, reference=reference, percentile=k_percentile * 100.0,
+    )
     return alpha * ref_quantile
 
 
