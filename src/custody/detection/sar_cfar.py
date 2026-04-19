@@ -49,7 +49,7 @@ from custody.fusion.observations import PositionObservation
 # setting.  Tuned against the 2023-07-02 Tennent scene 2-km AOI crop via the
 # alpha sweep in scripts/03_detect_sar_umbra.py.  Override per-scene when
 # needed.
-CFAR_DEFAULT_ALPHA_UMBRA_UINT8: float = 8.0
+CFAR_DEFAULT_ALPHA_UMBRA_UINT8: float = 7.0
 
 
 # ---------------------------------------------------------------------------
