@@ -75,7 +75,7 @@ def main():
 
     # --- Full-resolution final pass ---
     print()
-    print("Full-resolution pass (12045x12045 ≈ 145 Mpx squared to power domain)...")
+    print("Full-resolution pass (~145 Mpx squared to power domain)...")
     img_full_power = img.astype(np.float32) ** 2
     t0 = time.perf_counter()
     obs_full = detect_points_to_observations(
