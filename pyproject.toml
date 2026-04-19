@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "python-ulid>=3.0",
     "pyarrow>=16",
+    "rasterio>=1.5",
     "requests>=2.31",
     "scikit-learn>=1.5",
     "shapely>=2.0",
