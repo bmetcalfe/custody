@@ -22,6 +22,9 @@ data/raw/
 # Intermediate Parquet + COG outputs (regeneratable from raw/)
 data/processed/
 
+# Model checkpoints (fetched from upstream sources, not source-tracked)
+data/models/
+
 # Day-0 scratch workspace — rerun outputs, ad-hoc probes
 day0/scratch/*
 !day0/scratch/.gitkeep
