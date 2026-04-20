@@ -35,7 +35,10 @@ class AnthropicBackend(VLMBackend):
 
     @property
     def approx_cost_per_tile_usd(self) -> float:
-        return 0.01
+        # Measured on 4 real SAR tiles in the Task-2 cross-model validation
+        # (2026-04-20): claude-sonnet-4-6 averaged ~$0.014/call.  Previous 0.01
+        # was from an n=1 spike on a single tile with fewer output tokens.
+        return 0.014
 
     def detect_tile(self, tile: np.ndarray, prompt: str) -> VLMResponse:
         img_b64 = _encode_tile_as_png_b64(tile)

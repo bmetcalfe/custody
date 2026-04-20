@@ -241,7 +241,7 @@ def test_backend_detect_tile_malformed_response_empty_detections_no_raise():
 def test_backend_properties():
     be = AnthropicBackend(model="claude-opus-4-7", api_key="fake")
     assert be.model_name == "claude-opus-4-7"
-    assert be.approx_cost_per_tile_usd == pytest.approx(0.01)
+    assert be.approx_cost_per_tile_usd == pytest.approx(0.014)
 
 
 # ---------------------------------------------------------------------------
