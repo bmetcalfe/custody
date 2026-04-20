@@ -85,6 +85,7 @@ class PositionObservation:
     heading_est_deg: float | None = None
     notes: dict[str, Any] = field(default_factory=dict)
     detector_reasoning: str | None = None
+    bbox_px: tuple[int, int, int, int] | None = None  # (x1, y1, x2, y2) in scene-space pixels
 
     def __post_init__(self) -> None:
         _validate_obs_id(self.obs_id)

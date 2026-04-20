@@ -65,6 +65,10 @@ def _position_row(obs: PositionObservation) -> dict[str, Any]:
         "heading_est_deg": obs.heading_est_deg,
         "notes_json": json.dumps(obs.notes),
         "detector_reasoning": obs.detector_reasoning,
+        "bbox_x1": int(obs.bbox_px[0]) if obs.bbox_px is not None else None,
+        "bbox_y1": int(obs.bbox_px[1]) if obs.bbox_px is not None else None,
+        "bbox_x2": int(obs.bbox_px[2]) if obs.bbox_px is not None else None,
+        "bbox_y2": int(obs.bbox_px[3]) if obs.bbox_px is not None else None,
         "h3_cell_r8": h3.latlng_to_cell(obs.lat, obs.lon, _H3_RES),
         "time_bucket_hour": int(obs.acquisition_time // 3600),
     }
@@ -117,7 +121,16 @@ def _position_from_row(row: dict[str, Any]) -> PositionObservation:
         heading_est_deg=row["heading_est_deg"],
         notes=json.loads(row["notes_json"] or "{}"),
         detector_reasoning=row.get("detector_reasoning"),
+        bbox_px=_bbox_px_from_row(row),
     )
+
+
+def _bbox_px_from_row(row: dict[str, Any]) -> tuple[int, int, int, int] | None:
+    """Recover ``bbox_px`` from the four Parquet columns, or None if absent/null."""
+    parts = (row.get("bbox_x1"), row.get("bbox_y1"), row.get("bbox_x2"), row.get("bbox_y2"))
+    if any(p is None for p in parts):
+        return None
+    return (int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]))
 
 
 def _posvel_from_row(row: dict[str, Any]) -> PositionVelocityObservation:

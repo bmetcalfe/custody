@@ -824,6 +824,294 @@ def test_detect_tiles_real_sdk_rate_limit_classes_are_loaded():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# _nms_observations + bbox_px schema extension (Phase F.4)
+# ---------------------------------------------------------------------------
+
+
+def _make_obs(
+    obs_id: str,
+    bbox_px=(0, 0, 100, 100),
+    classification_conf: float | None = 0.60,
+    acquisition_time: float = 1_000.0,
+) -> "PositionObservation":
+    from custody.fusion.observations import PositionObservation
+
+    return PositionObservation(
+        obs_id=obs_id,
+        source_id="test",
+        modality="SAR",
+        acquisition_time=acquisition_time,
+        ingestion_time=acquisition_time + 1,
+        lat=9.0, lon=114.0,
+        cov_pos=np.eye(2) * 400.0,
+        raw_ref="test",
+        detector_version="vlm_test",
+        classification_conf=classification_conf,
+        bbox_px=bbox_px,
+    )
+
+
+def test_bbox_iou_on_identical_boxes_is_one():
+    from custody.detection.vlm_sar import _bbox_iou
+    assert _bbox_iou((0, 0, 100, 100), (0, 0, 100, 100)) == pytest.approx(1.0)
+
+
+def test_bbox_iou_on_disjoint_boxes_is_zero():
+    from custody.detection.vlm_sar import _bbox_iou
+    assert _bbox_iou((0, 0, 50, 50), (200, 200, 250, 250)) == 0.0
+
+
+def test_bbox_iou_on_half_overlap_is_one_third():
+    """Two 100x100 boxes offset by (50, 0): intersection 50x100=5000,
+    union = 2 * 100*100 - 5000 = 15000, IoU = 5000/15000 = 1/3.
+    """
+    from custody.detection.vlm_sar import _bbox_iou
+    iou = _bbox_iou((0, 0, 100, 100), (50, 0, 150, 100))
+    assert iou == pytest.approx(1.0 / 3.0)
+
+
+def test_nms_keeps_higher_confidence_on_high_iou_pair():
+    from custody.detection.vlm_sar import _nms_observations
+
+    a = _make_obs("low-conf",  bbox_px=(0, 0, 100, 100), classification_conf=0.35)
+    b = _make_obs("high-conf", bbox_px=(5, 5, 105, 105), classification_conf=0.85)
+    kept = _nms_observations([a, b], iou_threshold=0.5)
+    assert len(kept) == 1
+    assert kept[0].obs_id == "high-conf"
+
+
+def test_nms_keeps_both_on_low_iou_pair():
+    from custody.detection.vlm_sar import _nms_observations
+
+    a = _make_obs("a", bbox_px=(0, 0, 100, 100))
+    b = _make_obs("b", bbox_px=(200, 200, 300, 300))
+    kept = _nms_observations([a, b], iou_threshold=0.5)
+    assert {o.obs_id for o in kept} == {"a", "b"}
+
+
+def test_nms_confidence_tie_broken_by_earlier_acquisition_time():
+    """Same bbox, same confidence; keep the earlier acquisition_time."""
+    from custody.detection.vlm_sar import _nms_observations
+
+    a = _make_obs("later",   bbox_px=(0, 0, 100, 100),
+                  classification_conf=0.60, acquisition_time=2_000.0)
+    b = _make_obs("earlier", bbox_px=(0, 0, 100, 100),
+                  classification_conf=0.60, acquisition_time=1_000.0)
+    kept = _nms_observations([a, b], iou_threshold=0.5)
+    assert len(kept) == 1
+    assert kept[0].obs_id == "earlier"
+
+
+def test_nms_conf_and_time_tie_broken_by_obs_id_lexicographic():
+    from custody.detection.vlm_sar import _nms_observations
+
+    a = _make_obs("zzz", bbox_px=(0, 0, 100, 100))
+    b = _make_obs("aaa", bbox_px=(0, 0, 100, 100))
+    kept = _nms_observations([a, b], iou_threshold=0.5)
+    assert len(kept) == 1
+    assert kept[0].obs_id == "aaa"
+
+
+def test_nms_empty_input_returns_empty():
+    from custody.detection.vlm_sar import _nms_observations
+    assert _nms_observations([]) == []
+
+
+def test_nms_passes_through_observations_without_bbox_px():
+    """CFAR-origin observations (no bbox_px) aren't NMS-candidates; preserve them."""
+    from custody.detection.vlm_sar import _nms_observations
+
+    cfar_obs = _make_obs("cfar-1", bbox_px=None)  # no bbox
+    vlm_a   = _make_obs("vlm-a",  bbox_px=(0, 0, 100, 100), classification_conf=0.85)
+    vlm_b   = _make_obs("vlm-b",  bbox_px=(0, 0, 100, 100), classification_conf=0.35)  # drops
+    kept = _nms_observations([cfar_obs, vlm_a, vlm_b], iou_threshold=0.5)
+    ids = [o.obs_id for o in kept]
+    # CFAR passes through; NMS resolves vlm-a over vlm-b.
+    assert ids == ["cfar-1", "vlm-a"]
+
+
+def test_nms_preserves_input_order_stability():
+    """Non-overlapping detections keep their original ordering in the result."""
+    from custody.detection.vlm_sar import _nms_observations
+
+    obs = [
+        _make_obs("z", bbox_px=(0,   0,   50,  50), classification_conf=0.60),
+        _make_obs("a", bbox_px=(100, 0,   150, 50), classification_conf=0.60),
+        _make_obs("m", bbox_px=(200, 0,   250, 50), classification_conf=0.60),
+    ]
+    kept = _nms_observations(obs, iou_threshold=0.5)
+    # No overlaps → all kept; original order (z, a, m) preserved.
+    assert [o.obs_id for o in kept] == ["z", "a", "m"]
+
+
+def test_nms_iou_threshold_strict_inequality_at_boundary():
+    """Pair with IoU slightly above threshold merges; slightly below keeps both."""
+    from custody.detection.vlm_sar import _bbox_iou, _nms_observations
+
+    # IoU = 1/3 (see test_bbox_iou_on_half_overlap_is_one_third)
+    a = _make_obs("a", bbox_px=(0, 0, 100, 100), classification_conf=0.85)
+    b = _make_obs("b", bbox_px=(50, 0, 150, 100), classification_conf=0.60)
+    # Threshold just above the IoU → both kept.
+    kept_strict = _nms_observations([a, b], iou_threshold=0.5)
+    assert {o.obs_id for o in kept_strict} == {"a", "b"}
+    # Threshold at or below the IoU → only higher-confidence survives.
+    kept_merge = _nms_observations([a, b], iou_threshold=0.3)
+    assert {o.obs_id for o in kept_merge} == {"a"}
+
+
+# ---------------------------------------------------------------------------
+# bbox_px population via vlm_detection_to_observation (Phase F.4)
+# ---------------------------------------------------------------------------
+
+
+def test_vlm_detection_to_observation_populates_bbox_px_in_scene_coords():
+    """Tile-local bbox (10, 20, 30, 40) + tile_origin (500, 600) → scene (610, 520, 630, 540).
+    (x is column, y is row — offset x by col_origin and y by row_origin.)
+    """
+    backend = _FakeBackend(model="test-model")
+    det = _make_detection(bbox=(10, 20, 30, 40))
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs = vlm_detection_to_observation(
+            det, transform=Affine.identity(), crs_wkt="x",
+            tile_origin=(500, 600),  # (row, col)
+            acquisition_time=1.0, source_id="probe", backend=backend,
+        )
+    assert obs.bbox_px == (610, 520, 630, 540)
+
+
+def test_vlm_detection_to_observation_bbox_px_none_not_populated_by_default():
+    """Sanity: creating a PositionObservation directly without bbox_px defaults to None."""
+    from custody.fusion.observations import PositionObservation
+    obs = PositionObservation(
+        obs_id="x", source_id="y", modality="SAR",
+        acquisition_time=1.0, ingestion_time=2.0,
+        lat=9.0, lon=114.0, cov_pos=np.eye(2) * 100.0,
+        raw_ref="y",
+    )
+    assert obs.bbox_px is None
+
+
+# ---------------------------------------------------------------------------
+# End-to-end NMS integration through detect_vessels_in_scene (Phase F.4)
+# ---------------------------------------------------------------------------
+
+
+def test_detect_vessels_in_scene_applies_nms_across_tile_boundaries(monkeypatch):
+    """Two adjacent overlapping tiles script the SAME real-world detection at
+    their shared overlap region.  Without NMS we'd get 2 observations for one
+    vessel; with NMS (default iou_threshold=0.5) we should get 1.
+
+    Scene layout: 1000 wide × 500 tall; tile=500, overlap=100 → 2 tiles at
+    col 0 and col 400 (stride 400). Overlap region = cols [400, 500).
+    Detection at tile-local x=420-460 on tile 0 → scene (420, 40, 460, 80).
+    Detection at tile-local x=20-60 on tile 1 (origin col=400) → scene
+    (420, 40, 460, 80).  Identical scene bbox → IoU = 1.0 → merged.
+    """
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    resp_tile0 = VLMResponse(
+        detections=[_make_detection(bbox=(420, 40, 460, 80),
+                                     confidence="medium", reasoning="left")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    resp_tile1 = VLMResponse(
+        detections=[_make_detection(bbox=(20, 40, 60, 80),
+                                     confidence="high", reasoning="right")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[resp_tile0, resp_tile1], cost_per_tile=0.01)
+    scene = np.full((500, 1000), 200, dtype=np.uint8)
+
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=100, skip_empty=False,
+            confidence_threshold="low",
+        )
+    assert len(obs) == 1
+    # Tile 1's detection had higher confidence (high vs medium) → it survives.
+    assert obs[0].detector_reasoning == "right"
+    assert obs[0].classification_conf == pytest.approx(0.85)
+
+
+def test_detect_vessels_in_scene_nms_disabled_high_threshold_keeps_duplicates(monkeypatch):
+    """Same fixture as above, but iou_threshold=1.01 (impossible) disables merging."""
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    resp_tile0 = VLMResponse(
+        detections=[_make_detection(bbox=(420, 40, 460, 80), confidence="medium")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    resp_tile1 = VLMResponse(
+        detections=[_make_detection(bbox=(20, 40, 60, 80), confidence="high")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[resp_tile0, resp_tile1], cost_per_tile=0.01)
+    scene = np.full((500, 1000), 200, dtype=np.uint8)
+
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=100, skip_empty=False,
+            confidence_threshold="low", nms_iou_threshold=1.01,
+        )
+    assert len(obs) == 2  # NMS never merges anything
+
+
+# ---------------------------------------------------------------------------
+# Parquet round-trip of bbox_px (Phase F.4)
+# ---------------------------------------------------------------------------
+
+
+def test_parquet_roundtrip_bbox_px_populated(tmp_path):
+    """bbox_px survives the PositionObservation → Parquet → PositionObservation round trip."""
+    from custody.fusion.index import _position_from_row, index_observations
+    import duckdb
+
+    obs = _make_obs("bbox-round-trip", bbox_px=(100, 200, 300, 400),
+                    classification_conf=0.85)
+    # _make_obs's obs_id isn't unique-per-call; regenerate schema-valid
+    index_observations([obs], out_dir=tmp_path)
+    pq = tmp_path / "position.parquet"
+    rows = duckdb.execute(
+        f"SELECT * FROM read_parquet('{pq.as_posix()}') WHERE obs_id='bbox-round-trip'"
+    ).fetchall()
+    cols = [c[0] for c in duckdb.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{pq.as_posix()}')"
+    ).fetchall()]
+    # All four bbox columns should be present
+    for col in ("bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2"):
+        assert col in cols, f"missing column {col}"
+    row = dict(zip(cols, rows[0]))
+    loaded = _position_from_row(row)
+    assert loaded.bbox_px == (100, 200, 300, 400)
+
+
+def test_parquet_roundtrip_bbox_px_none_stays_none(tmp_path):
+    from custody.fusion.index import _position_from_row, index_observations
+    import duckdb
+
+    obs = _make_obs("bbox-none", bbox_px=None)
+    index_observations([obs], out_dir=tmp_path)
+    pq = tmp_path / "position.parquet"
+    rows = duckdb.execute(
+        f"SELECT * FROM read_parquet('{pq.as_posix()}') WHERE obs_id='bbox-none'"
+    ).fetchall()
+    cols = [c[0] for c in duckdb.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{pq.as_posix()}')"
+    ).fetchall()]
+    row = dict(zip(cols, rows[0]))
+    loaded = _position_from_row(row)
+    assert loaded.bbox_px is None
+
+
 def test_count_tiles_matches_iter_tiles_on_several_configurations():
     """count_tiles is the fast estimator for progress totals — must match iter_tiles."""
     from custody.detection.tiling import count_tiles, iter_tiles

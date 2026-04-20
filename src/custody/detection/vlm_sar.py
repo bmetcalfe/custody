@@ -189,6 +189,13 @@ def vlm_detection_to_observation(
     conf = detection.confidence.lower() if isinstance(detection.confidence, str) else "medium"
     classification_conf = _CONF_TO_SCORE.get(conf, _CONF_TO_SCORE["medium"])
 
+    scene_bbox = (
+        int(x1 + tile_col_origin),
+        int(y1 + tile_row_origin),
+        int(x2 + tile_col_origin),
+        int(y2 + tile_row_origin),
+    )
+
     return PositionObservation(
         obs_id=(
             f"{source_id}-{int(acquisition_time)}-"
@@ -205,6 +212,7 @@ def vlm_detection_to_observation(
         detector_version=f"vlm_{backend.model_name}",
         classification_conf=classification_conf,
         detector_reasoning=detection.reasoning or None,
+        bbox_px=scene_bbox,
     )
 
 
@@ -294,6 +302,81 @@ def _detect_one_with_retry(
 _CONFIDENCE_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
 
 
+def _bbox_iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
+    """IoU of two (x1, y1, x2, y2) pixel-space bboxes.
+
+    Returns 0.0 for degenerate (zero-area) inputs or non-overlapping pairs.
+    """
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    iw = ix2 - ix1
+    ih = iy2 - iy1
+    if iw <= 0 or ih <= 0:
+        return 0.0
+    inter = iw * ih
+    a_area = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+    b_area = max(0, bx2 - bx1) * max(0, by2 - by1)
+    union = a_area + b_area - inter
+    if union <= 0:
+        return 0.0
+    return float(inter) / float(union)
+
+
+def _nms_observations(
+    observations: list[PositionObservation],
+    iou_threshold: float = 0.5,
+) -> list[PositionObservation]:
+    """Remove near-duplicate VLM detections via IoU-based NMS on scene pixel bboxes.
+
+    Operates only on observations carrying ``bbox_px``; observations without
+    scene-space bbox metadata (e.g. CFAR centroids) pass through untouched.
+    Within the VLM subset, detections are sorted by ``classification_conf``
+    descending; ties broken by earlier ``acquisition_time`` then smaller
+    ``obs_id``.  Greedy pass: keep the current head, drop any later item whose
+    IoU with the head exceeds ``iou_threshold``.
+
+    Returns a new list in the original input ordering (non-bbox passthroughs
+    first, NMS-survivors after, keyed off input index for stability).
+    """
+    if not observations:
+        return []
+
+    # Partition input by bbox presence.
+    with_bbox: list[tuple[int, PositionObservation]] = []
+    without_bbox: list[tuple[int, PositionObservation]] = []
+    for i, o in enumerate(observations):
+        if o.bbox_px is None:
+            without_bbox.append((i, o))
+        else:
+            with_bbox.append((i, o))
+
+    # Sort bbox-carrying detections by (confidence desc, time asc, obs_id asc).
+    def _sort_key(pair: tuple[int, PositionObservation]) -> tuple[float, float, str]:
+        _, obs = pair
+        conf = -(obs.classification_conf if obs.classification_conf is not None else 0.0)
+        return (conf, obs.acquisition_time, obs.obs_id)
+
+    with_bbox_sorted = sorted(with_bbox, key=_sort_key)
+
+    kept_sorted: list[tuple[int, PositionObservation]] = []
+    for cand_idx, cand in with_bbox_sorted:
+        keep = True
+        for _, existing in kept_sorted:
+            if _bbox_iou(cand.bbox_px, existing.bbox_px) >= iou_threshold:  # type: ignore[arg-type]
+                keep = False
+                break
+        if keep:
+            kept_sorted.append((cand_idx, cand))
+
+    # Restore original input order for stability.
+    merged = sorted(without_bbox + kept_sorted, key=lambda p: p[0])
+    return [obs for _, obs in merged]
+
+
 def estimate_scene_cost(
     scene: np.ndarray,
     backend: VLMBackend,
@@ -345,6 +428,7 @@ def detect_vessels_in_scene(
     max_retries: int = 3,
     retry_backoff_base: float = 2.0,
     sigma_m: float = 20.0,
+    nms_iou_threshold: float = 0.5,
     progress_callback: Optional[Callable[[TileInfo, Optional[VLMResponse], int, int], None]] = None,
 ) -> list[PositionObservation]:
     """Run VLM detection across a full scene and return :class:`PositionObservation` list.
@@ -411,4 +495,4 @@ def detect_vessels_in_scene(
                 sigma_m=sigma_m,
             )
             observations.append(obs)
-    return observations
+    return _nms_observations(observations, iou_threshold=nms_iou_threshold)
