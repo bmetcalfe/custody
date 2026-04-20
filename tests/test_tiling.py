@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from pyproj import CRS
+from rasterio.transform import Affine
 
-from custody.detection.tiling import TileInfo, iter_tiles
+from custody.detection.tiling import TileInfo, describe_aoi_bounds, iter_tiles
 
 
 def _count_tiles(scene: np.ndarray, **kwargs) -> int:
@@ -216,3 +218,125 @@ def test_iter_tiles_3d_scene_ignores_channel_axis_for_geometry():
     for t in tiles:
         assert t.tile.shape == (500, 500, 3)
         assert t.tile_shape == (500, 500)
+
+
+# ---------------------------------------------------------------------------
+# describe_aoi_bounds
+# ---------------------------------------------------------------------------
+
+
+def _utm50n_transform_and_crs():
+    """UTM 50N, 1 m/pixel, anchored at (683000 E, 983000 N) near Tennent Reef."""
+    transform = Affine.translation(683_000.0, 983_000.0) * Affine.scale(1.0, -1.0)
+    crs_wkt = CRS.from_epsg(32650).to_wkt()
+    return transform, crs_wkt
+
+
+def test_describe_aoi_bounds_returns_required_fields():
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(0, 1000, 0, 1000),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    assert set(info.keys()) == {
+        "pixel_bounds", "corner_latlon", "center_latlon", "approx_extent_km",
+    }
+    assert info["pixel_bounds"] == (0, 1000, 0, 1000)
+    assert len(info["corner_latlon"]) == 4
+    assert isinstance(info["center_latlon"], tuple) and len(info["center_latlon"]) == 2
+
+
+def test_describe_aoi_bounds_lat_lon_inside_south_china_sea_envelope():
+    """Synthetic UTM50N anchor near Tennent Reef should project into the SCS window."""
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(0, 2000, 0, 2000),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    center_lat, center_lon = info["center_latlon"]
+    assert 5.0 < center_lat < 15.0
+    assert 110.0 < center_lon < 125.0
+    for lat, lon in info["corner_latlon"]:
+        assert 5.0 < lat < 15.0
+        assert 110.0 < lon < 125.0
+
+
+def test_describe_aoi_bounds_approx_extent_matches_pixel_size():
+    """1 m/pixel × 2000 px = 2 km per side.  Verify the extent estimate."""
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(0, 2000, 0, 2000),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    ns_km, ew_km = info["approx_extent_km"]
+    # Allow wide tolerance because 111-km-per-degree is a sphere approximation
+    # and UTM is a projected CRS.  We just want to see we're in the 1.5–2.5 km ballpark,
+    # not a 20-km or 0.2-km blunder.
+    assert 1.5 < ns_km < 2.5, f"north-south extent {ns_km} km outside expected range"
+    assert 1.5 < ew_km < 2.5, f"east-west extent {ew_km} km outside expected range"
+
+
+def test_describe_aoi_bounds_zero_size_aoi_collapses_corners_to_one_point():
+    """AOI with row_end == row_start + 1 and col_end == col_start + 1 is a 1-pixel AOI.
+
+    All four corners project to the same pixel and therefore the same lat/lon.
+    """
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(500, 501, 500, 501),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    corners = info["corner_latlon"]
+    # All corners degenerate to the same point → zero spread.
+    lats = {round(lat, 9) for lat, _ in corners}
+    lons = {round(lon, 9) for _, lon in corners}
+    assert len(lats) == 1
+    assert len(lons) == 1
+    ns_km, ew_km = info["approx_extent_km"]
+    assert ns_km == pytest.approx(0.0)
+    assert ew_km == pytest.approx(0.0)
+
+
+def test_describe_aoi_bounds_rejects_inverted_bounds():
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    with pytest.raises(ValueError, match="row_end"):
+        describe_aoi_bounds(
+            aoi_bounds=(500, 100, 0, 1000),  # row_end < row_start
+            transform=transform, crs_wkt=crs_wkt,
+        )
+
+
+def test_describe_aoi_bounds_scene_edge_aoi():
+    """AOI that reaches the scene edge (e.g., full-scene) still produces sensible output."""
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(0, 5000, 0, 5000),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    # 5000 m x 5000 m = 5 km extent per axis.
+    ns_km, ew_km = info["approx_extent_km"]
+    assert 4.0 < ns_km < 6.0
+    assert 4.0 < ew_km < 6.0
+
+
+def test_describe_aoi_bounds_corner_ordering_nw_ne_se_sw():
+    """Corners are ordered NW, NE, SE, SW (row=top→bottom, col=left→right).
+
+    Relative ordering holds (N > S lat, E > W lon).  We do NOT assert that
+    two corners share the exact same lat/lon — UTM-to-WGS84 projection has
+    small non-axis-aligned distortion (grid convergence) that produces
+    tens-of-meter-scale lat differences between corners on the same raster
+    row, so strict equality would be wrong.
+    """
+    transform, crs_wkt = _utm50n_transform_and_crs()
+    info = describe_aoi_bounds(
+        aoi_bounds=(0, 1000, 0, 1000),
+        transform=transform, crs_wkt=crs_wkt,
+    )
+    nw, ne, se, sw = info["corner_latlon"]
+    # N > S (UTM 50N is northern hemisphere, y grows south in raster).
+    assert nw[0] > sw[0], f"NW lat {nw[0]} should exceed SW lat {sw[0]}"
+    assert ne[0] > se[0]
+    # E > W.
+    assert ne[1] > nw[1], f"NE lon {ne[1]} should exceed NW lon {nw[1]}"
+    assert se[1] > sw[1]

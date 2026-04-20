@@ -22,9 +22,12 @@ a VLM call would waste cost and tokens.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from rasterio.transform import Affine
 
 
 @dataclass(eq=False)
@@ -146,6 +149,78 @@ def _starts_along_axis(lo: int, hi: int, tile_size: int, overlap: int) -> list[i
             break
         s += stride
     return starts
+
+
+def describe_aoi_bounds(
+    aoi_bounds: tuple[int, int, int, int],
+    transform: "Affine",
+    crs_wkt: str,
+) -> dict:
+    """Describe what geographic region an ``aoi_bounds`` tuple covers.
+
+    Intended as a pre-flight sanity check before
+    :func:`custody.detection.vlm_sar.detect_vessels_in_scene` runs on real
+    imagery — avoids surprises from mental UTM↔WGS84 estimates (see F.5
+    integration-test discovery notes; UTM50N easting 683000 back-projects
+    to ~118.7°E, not the ~114.7°E I initially guessed).
+
+    Args:
+        aoi_bounds: ``(row_start, row_end, col_start, col_end)`` half-open
+            scene-pixel window, matching :func:`iter_tiles`' ``aoi_bounds``
+            parameter.
+        transform: rasterio Affine for the scene (as returned by
+            :func:`custody.detection.sar_common.read_geotiff`).
+        crs_wkt: scene CRS as WKT.
+
+    Returns:
+        ``{
+            "pixel_bounds": (r0, r1, c0, c1),
+            "corner_latlon": [(lat, lon), (lat, lon), (lat, lon), (lat, lon)],
+                # NW, NE, SE, SW — row/col ordering mirrors the raster's
+                # top-left origin convention.
+            "center_latlon": (lat, lon),
+            "approx_extent_km": (north_south_km, east_west_km),
+        }``
+    """
+    # Deferred import — keeps tiling.py free of rasterio/pyproj at module
+    # load while still allowing callers to use this helper when they have
+    # already constructed an Affine via read_geotiff or similar.
+    from custody.detection.sar_common import pixel_to_latlon
+
+    r0, r1, c0, c1 = aoi_bounds
+    if r1 < r0 or c1 < c0:
+        raise ValueError(
+            f"aoi_bounds must satisfy row_end >= row_start and col_end >= col_start; got {aoi_bounds}"
+        )
+
+    # Corner pixels in (row, col) raster convention.  Half-open bounds —
+    # subtract 1 from the ends so we sample the last in-range pixel, not
+    # one past it.
+    last_row = max(r0, r1 - 1)
+    last_col = max(c0, c1 - 1)
+    nw = pixel_to_latlon(r0,       c0,       transform, crs_wkt)
+    ne = pixel_to_latlon(r0,       last_col, transform, crs_wkt)
+    se = pixel_to_latlon(last_row, last_col, transform, crs_wkt)
+    sw = pixel_to_latlon(last_row, c0,       transform, crs_wkt)
+    corners = [nw, ne, se, sw]
+    center_row = (r0 + last_row) / 2.0
+    center_col = (c0 + last_col) / 2.0
+    center = pixel_to_latlon(center_row, center_col, transform, crs_wkt)
+
+    lats = [lat for lat, _ in corners]
+    lons = [lon for _, lon in corners]
+    # Approximate great-circle distance: 111 km per degree lat; lon varies
+    # with cos(lat).  Good enough for a "what size is my AOI" sanity check.
+    ns_km = (max(lats) - min(lats)) * 111.0
+    mean_lat = sum(lats) / len(lats)
+    ew_km = (max(lons) - min(lons)) * 111.0 * float(np.cos(np.radians(mean_lat)))
+
+    return {
+        "pixel_bounds": (int(r0), int(r1), int(c0), int(c1)),
+        "corner_latlon": [(float(lat), float(lon)) for lat, lon in corners],
+        "center_latlon": (float(center[0]), float(center[1])),
+        "approx_extent_km": (float(ns_km), float(ew_km)),
+    }
 
 
 def _is_empty(tile: np.ndarray, threshold: float) -> bool:
