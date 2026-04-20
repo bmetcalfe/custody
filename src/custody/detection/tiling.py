@@ -100,6 +100,39 @@ def iter_tiles(
             idx += 1
 
 
+def count_tiles(
+    scene_shape: tuple[int, int],
+    tile_size: int = 640,
+    tile_overlap: int = 64,
+    aoi_bounds: Optional[tuple[int, int, int, int]] = None,
+) -> int:
+    """Return the number of tiles :func:`iter_tiles` would yield (ignoring ``skip_empty``).
+
+    Fast, allocation-free geometric count — suitable for progress-bar totals and
+    pre-flight cost estimation when the full tile array materialization would
+    be prohibitive on large Umbra scenes.
+    """
+    if tile_size <= 0:
+        raise ValueError(f"tile_size must be positive; got {tile_size}")
+    if tile_overlap < 0 or tile_overlap >= tile_size:
+        raise ValueError(
+            f"tile_overlap must be in [0, tile_size); got {tile_overlap} vs {tile_size}"
+        )
+    H, W = int(scene_shape[0]), int(scene_shape[1])
+    if aoi_bounds is not None:
+        r0, r1, c0, c1 = aoi_bounds
+        if not (0 <= r0 < r1 <= H and 0 <= c0 < c1 <= W):
+            raise ValueError(
+                f"aoi_bounds {aoi_bounds} out of range for scene shape {scene_shape}"
+            )
+    else:
+        r0, r1, c0, c1 = 0, H, 0, W
+    return (
+        len(_starts_along_axis(r0, r1, tile_size, tile_overlap))
+        * len(_starts_along_axis(c0, c1, tile_size, tile_overlap))
+    )
+
+
 def _starts_along_axis(lo: int, hi: int, tile_size: int, overlap: int) -> list[int]:
     """Return tile start positions along one axis covering [lo, hi)."""
     stride = tile_size - overlap

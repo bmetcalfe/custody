@@ -329,3 +329,232 @@ def test_observation_obs_id_unique_across_bboxes_in_same_scene():
 def test_detect_vessels_in_scene_raises_not_implemented():
     with pytest.raises(NotImplementedError, match="Phase F"):
         detect_vessels_in_scene()
+
+
+# ---------------------------------------------------------------------------
+# _detect_tiles — per-tile retry loop (Phase F.2)
+# ---------------------------------------------------------------------------
+
+
+class _SimulatedRateLimitError(Exception):
+    """Stand-in for anthropic/openai RateLimitError classes in tests.
+
+    Injected via monkeypatch onto vlm_sar._RATE_LIMIT_EXCEPTIONS so we can
+    simulate rate-limit behavior without constructing real SDK exceptions
+    (which require httpx.Response objects and other plumbing).
+    """
+
+
+class _ScriptedBackend(VLMBackend):
+    """Backend that returns scripted responses or raises scripted exceptions.
+
+    Accepts a list of per-call scripts: each entry is either a VLMResponse (to
+    return) or an Exception instance (to raise).  The backend fires through
+    the script in order; one scripted entry = one call attempt.
+    """
+
+    def __init__(self, scripts: list, model: str = "scripted"):
+        self._scripts = list(scripts)
+        self._model = model
+        self.call_count = 0
+
+    def detect_tile(self, tile, prompt):
+        self.call_count += 1
+        if not self._scripts:
+            raise AssertionError("Scripted backend exhausted; unexpected extra call")
+        entry = self._scripts.pop(0)
+        if isinstance(entry, Exception):
+            raise entry
+        return entry
+
+    @property
+    def model_name(self):
+        return self._model
+
+    @property
+    def approx_cost_per_tile_usd(self):
+        return 0.001
+
+
+def _trivial_response(n: int = 0) -> VLMResponse:
+    dets = [_make_detection(bbox=(i, i, i + 5, i + 5)) for i in range(n)]
+    return VLMResponse(
+        detections=dets,
+        tokens_used={"input": 100, "output": 50},
+        wall_time_seconds=0.05,
+    )
+
+
+def _patch_rate_limit_and_sleep(monkeypatch):
+    """Swap the live rate-limit tuple for our simulated class and no-op sleep."""
+    import custody.detection.vlm_sar as vlm_sar
+
+    monkeypatch.setattr(vlm_sar, "_RATE_LIMIT_EXCEPTIONS", (_SimulatedRateLimitError,))
+    monkeypatch.setattr(vlm_sar._time, "sleep", lambda *_: None)
+
+
+def test_detect_tiles_happy_path_yields_every_tile(monkeypatch):
+    """All tiles succeed; every iter_tiles yield produces a (tile, response) result."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)  # bright everywhere; skip_empty won't drop
+    # 1000 / (500 - 0) = 4 tiles with tile_size=500, overlap=0
+    backend = _ScriptedBackend([_trivial_response(n=1) for _ in range(4)])
+    results = list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=False,
+    ))
+    assert len(results) == 4
+    assert backend.call_count == 4
+    for tile_info, response in results:
+        assert len(response.detections) == 1
+
+
+def test_detect_tiles_rate_limit_retry_succeeds_on_second_attempt(monkeypatch):
+    """First call rate-limited; retry succeeds."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    scene = np.full((500, 500), 200, dtype=np.uint8)
+    backend = _ScriptedBackend([
+        _SimulatedRateLimitError("rate limited"),
+        _trivial_response(n=1),
+    ])
+    results = list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=False, max_retries=3,
+    ))
+    assert len(results) == 1
+    assert backend.call_count == 2  # one retry
+
+
+def test_detect_tiles_rate_limit_exhaustion_skips_tile_without_crashing(monkeypatch):
+    """All rate-limit attempts fail; tile skipped, no crash, iteration continues."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    # 2 tiles total: first exhausts retries, second succeeds.
+    scene = np.full((500, 1000), 200, dtype=np.uint8)
+    backend = _ScriptedBackend([
+        _SimulatedRateLimitError("rl 1"),
+        _SimulatedRateLimitError("rl 2"),
+        _SimulatedRateLimitError("rl 3"),
+        _SimulatedRateLimitError("rl 4"),  # max_retries=3 → 4 attempts total
+        _trivial_response(n=1),             # second tile succeeds first try
+    ])
+    results = list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=False, max_retries=3,
+    ))
+    # Only second tile yields a result.
+    assert len(results) == 1
+    assert backend.call_count == 5
+    assert results[0][0].origin == (0, 500)  # the second tile
+
+
+def test_detect_tiles_non_rate_limit_error_skips_tile_and_continues(monkeypatch):
+    """ValueError / other transient error: tile skipped, iteration continues, no retry."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    scene = np.full((500, 1000), 200, dtype=np.uint8)
+    backend = _ScriptedBackend([
+        ValueError("transient parse error"),
+        _trivial_response(n=2),
+    ])
+    results = list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=False,
+    ))
+    assert len(results) == 1
+    assert backend.call_count == 2  # no retry for non-rate-limit error
+    assert len(results[0][1].detections) == 2
+
+
+def test_detect_tiles_progress_callback_fires_per_tile(monkeypatch):
+    """Callback fires once per attempted tile with (tile_info, response_or_none, done, total)."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    scene = np.full((500, 1000), 200, dtype=np.uint8)  # 2 tiles at tile=500, overlap=0
+    backend = _ScriptedBackend([
+        ValueError("fail"),
+        _trivial_response(n=1),
+    ])
+    events = []
+
+    def cb(tile_info, response, done, total):
+        events.append({
+            "origin": tile_info.origin,
+            "response_is_none": response is None,
+            "done": done,
+            "total": total,
+        })
+
+    list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=False,
+        progress_callback=cb,
+    ))
+    assert len(events) == 2
+    assert events[0] == {"origin": (0, 0),   "response_is_none": True,  "done": 1, "total": 2}
+    assert events[1] == {"origin": (0, 500), "response_is_none": False, "done": 2, "total": 2}
+
+
+def test_detect_tiles_respects_skip_empty(monkeypatch):
+    """skip_empty=True drops uniform-zero tiles; backend is not called for them."""
+    from custody.detection.vlm_sar import _detect_tiles
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    scene = np.zeros((500, 1000), dtype=np.uint8)
+    scene[:, :500] = 200  # left tile bright, right tile empty
+    backend = _ScriptedBackend([_trivial_response(n=1)])  # only one call expected
+    results = list(_detect_tiles(
+        scene, backend, prompt="test",
+        tile_size=500, tile_overlap=0, skip_empty=True,
+    ))
+    assert len(results) == 1
+    assert backend.call_count == 1
+    assert results[0][0].origin == (0, 0)
+
+
+def test_detect_tiles_real_sdk_rate_limit_classes_are_loaded():
+    """Sanity: the module-level tuple should contain the real SDK classes at import time.
+
+    Guards against future SDK reshuffles that might rename RateLimitError.
+    """
+    import custody.detection.vlm_sar as vlm_sar
+    from anthropic import RateLimitError as AnthropicRateLimit
+    from openai import RateLimitError as OpenAIRateLimit
+
+    classes = vlm_sar._compute_rate_limit_exceptions()
+    assert AnthropicRateLimit in classes
+    assert OpenAIRateLimit in classes
+
+
+# ---------------------------------------------------------------------------
+# count_tiles helper (Phase F.2)
+# ---------------------------------------------------------------------------
+
+
+def test_count_tiles_matches_iter_tiles_on_several_configurations():
+    """count_tiles is the fast estimator for progress totals — must match iter_tiles."""
+    from custody.detection.tiling import count_tiles, iter_tiles
+
+    cases = [
+        ((1000, 1000), 500, 0, None),
+        ((1800, 1800), 500, 50, None),
+        ((2000, 2000), 500, 50, None),
+        ((2000, 2000), 500, 50, (500, 1500, 500, 1500)),
+        ((17602, 17602), 640, 64, None),
+        ((640, 640), 640, 64, None),   # exact fit → 1 tile
+        ((100, 150), 640, 64, None),   # scene smaller than tile → 1 tile
+    ]
+    for shape, ts, ov, aoi in cases:
+        scene = np.zeros(shape, dtype=np.uint8)
+        counted = count_tiles(shape, tile_size=ts, tile_overlap=ov, aoi_bounds=aoi)
+        iterated = sum(1 for _ in iter_tiles(
+            scene, tile_size=ts, tile_overlap=ov, aoi_bounds=aoi,
+        ))
+        assert counted == iterated, f"mismatch at {(shape, ts, ov, aoi)}: {counted} != {iterated}"
