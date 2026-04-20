@@ -64,6 +64,7 @@ def _position_row(obs: PositionObservation) -> dict[str, Any]:
         "vessel_length_est_m": obs.vessel_length_est_m,
         "heading_est_deg": obs.heading_est_deg,
         "notes_json": json.dumps(obs.notes),
+        "detector_reasoning": obs.detector_reasoning,
         "h3_cell_r8": h3.latlng_to_cell(obs.lat, obs.lon, _H3_RES),
         "time_bucket_hour": int(obs.acquisition_time // 3600),
     }
@@ -115,6 +116,7 @@ def _position_from_row(row: dict[str, Any]) -> PositionObservation:
         vessel_length_est_m=row["vessel_length_est_m"],
         heading_est_deg=row["heading_est_deg"],
         notes=json.loads(row["notes_json"] or "{}"),
+        detector_reasoning=row.get("detector_reasoning"),
     )
 
 
