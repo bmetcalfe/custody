@@ -13,14 +13,17 @@ import pytest
 from scipy.ndimage import percentile_filter
 from scipy.stats import spearmanr
 
-from custody.detection.annular_percentile import (
-    annular_percentile_filter,
-    annular_percentile_filter_gpu,
-)
+from custody.detection.annular_percentile import annular_percentile_filter
 
-from numba import cuda
+try:
+    from custody.detection.annular_percentile_gpu import annular_percentile_filter_gpu
+    import custody.detection.annular_percentile_gpu as _ap_gpu_mod
+    _cuda_available = _ap_gpu_mod.cuda.is_available()
+except ImportError:
+    annular_percentile_filter_gpu = None  # type: ignore[assignment]
+    _ap_gpu_mod = None  # type: ignore[assignment]
+    _cuda_available = False
 
-_cuda_available = cuda.is_available()
 _requires_cuda = pytest.mark.skipif(not _cuda_available, reason="CUDA not available")
 
 
@@ -170,15 +173,14 @@ def test_annular_gpu_dtype_preservation():
     assert out32.dtype == np.float32
 
 
+@pytest.mark.skipif(_ap_gpu_mod is None, reason="numba.cuda not installed; nothing to fall back from")
 def test_annular_gpu_fallback_when_cuda_unavailable(monkeypatch):
     """If cuda.is_available() is False, the GPU wrapper should fall through
     to the CPU implementation and still produce correct output.
     """
-    import custody.detection.annular_percentile as mod
-
     def fake_is_available():
         return False
-    monkeypatch.setattr(mod.cuda, "is_available", fake_is_available)
+    monkeypatch.setattr(_ap_gpu_mod.cuda, "is_available", fake_is_available)
 
     rng = np.random.default_rng(53)
     img = rng.standard_normal((128, 128)).astype(np.float32)
