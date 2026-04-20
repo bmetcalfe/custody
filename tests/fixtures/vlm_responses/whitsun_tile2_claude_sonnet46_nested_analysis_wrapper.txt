@@ -1,0 +1,50 @@
+```json
+{
+  "analysis": {
+    "image_info": {
+      "sensor": "Umbra-04 SAR",
+      "band": "X-band (~9.6 GHz)",
+      "resolution": "~0.25 m/pixel",
+      "image_size": "640x640 pixels",
+      "location": "Whitsun Reef, South China Sea"
+    },
+    "vessels": [
+      {
+        "vessel_id": 1,
+        "bounding_box": {
+          "x1": 90,
+          "y1": 270,
+          "x2": 580,
+          "y2": 480
+        },
+        "confidence": "high",
+        "reasoning": "Large, elongated bright return consistent with a major vessel or cluster of vessels. Strong specular/corner reflector returns visible in the central-bright region (~200-400, 300-400). Significant azimuth smearing (horizontal streaking) extending left and right indicates motion of the target(s) during SAR aperture collection. The elongated smear pattern from approximately x=90 to x=580 is characteristic of moving vessels in SAR imagery. The brightest core return suggests a large metal hull with strong radar cross-section.",
+        "estimated_length_pixels": "~80-120 px core (20-30 m physical length per vessel)",
+        "vessel_type": "Likely large vessel(s), possibly militia or fishing vessels based on context",
+        "notes": "Azimuth smear extends significantly; may represent multiple closely-spaced vessels or a single large vessel with strong motion artifact"
+      },
+      {
+        "vessel_id": 2,
+        "bounding_box": {
+          "x1": 200,
+          "y1": 220,
+          "x2": 460,
+          "y2": 300
+        },
+        "confidence": "medium",
+        "reasoning": "Secondary bright return above the primary vessel cluster, showing a distinct elongated bright feature. Could represent an additional vessel or the superstructure/bow return of a larger vessel separated from the main hull return due to SAR geometry. The separation from the primary return and distinct shape suggest it may be an independent vessel.",
+        "estimated_length_pixels": "~60-80 px core",
+        "vessel_type": "Possible additional vessel, smaller than primary return",
+        "notes": "May be part of the same vessel as ID 1 (superstructure return) or a separate smaller vessel rafted nearby"
+      }
+    ],
+    "summary": {
+      "total_vessels_identified": 2,
+      "high_confidence": 1,
+      "medium_confidence": 1,
+      "low_confidence": 0,
+      "scene_notes": "The dominant feature is a large azimuth-smeared return indicating one or more moving or recently-moved vessels. The smearing pattern (horizontal streaks) is a well-known SAR artifact for moving targets. The Whitsun Reef context is consistent with reports of large numbers of Chinese maritime militia vessels. However, the smearing makes it difficult to resolve individual vessels with precision. The bright core region may contain multiple vessels that cannot be individually resolved at this viewing scale."
+    }
+  }
+}
+```

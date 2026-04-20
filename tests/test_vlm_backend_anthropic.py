@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -111,6 +110,79 @@ def test_parse_missing_bbox_skips_item():
     dets = parse_vlm_response(raw)
     assert len(dets) == 1
     assert dets[0].bbox == (1, 2, 3, 4)
+
+
+def test_parse_detections_nested_in_top_level_wrapper_key():
+    """Regression: the Task-2 cross-model spike caught a Claude response that
+    wrapped detections as {"analysis": {"vessels": [...]}}.  The parser must
+    descend into wrapper dicts to find the detection list.  Uses the real
+    captured raw response as a committed fixture so this replays exactly what
+    Claude Sonnet 4.6 produced on whitsun_tile2.
+    """
+    fixture = (
+        Path(__file__).parent
+        / "fixtures/vlm_responses/whitsun_tile2_claude_sonnet46_nested_analysis_wrapper.txt"
+    )
+    raw = fixture.read_text(encoding="utf-8")
+    dets = parse_vlm_response(raw)
+    assert len(dets) == 2, f"expected 2 detections from nested wrapper; got {len(dets)}"
+    # The first detection in the fixture is bbox {x1:90, y1:270, x2:580, y2:480}.
+    assert dets[0].bbox == (90, 270, 580, 480)
+    assert dets[0].confidence == "high"
+    assert "azimuth smearing" in dets[0].reasoning.lower()
+
+
+def test_parse_triple_nested_wrapper_still_finds_detections():
+    """Wrap a detection list three levels deep; parser must walk down to it."""
+    raw = json.dumps(
+        {
+            "wrapper_a": {
+                "wrapper_b": {
+                    "wrapper_c": {
+                        "vessels": [
+                            {"bbox": [1, 2, 3, 4], "confidence": "high"},
+                            {"bbox": [5, 6, 7, 8], "confidence": "low"},
+                        ]
+                    }
+                }
+            }
+        }
+    )
+    dets = parse_vlm_response(raw)
+    assert len(dets) == 2
+    assert dets[0].bbox == (1, 2, 3, 4)
+    assert dets[1].confidence == "low"
+
+
+def test_parse_bfs_prefers_shallowest_detection_list_match():
+    """If the same detection-list key appears at multiple depths, prefer shallowest.
+
+    Here the real list is at depth 1 (``payload.detections``).  A deeper
+    ``notes.examples.detections`` is a red-herring that predates the real list
+    in iteration order.  Shallowest-wins BFS picks the correct list regardless
+    of which appears first during tree traversal.
+    """
+    raw = json.dumps(
+        {
+            "notes": {
+                "examples": {
+                    "detections": [{"bbox": [99, 99, 100, 100], "confidence": "low"}]
+                }
+            },
+            "payload": {
+                "detections": [
+                    {"bbox": [10, 20, 30, 40], "confidence": "high"},
+                    {"bbox": [50, 60, 70, 80], "confidence": "medium"},
+                ]
+            },
+        }
+    )
+    dets = parse_vlm_response(raw)
+    # Two detections from the shallow payload.detections, NOT one from the
+    # deeper notes.examples.detections.
+    assert len(dets) == 2
+    assert dets[0].bbox == (10, 20, 30, 40)
+    assert dets[0].confidence == "high"
 
 
 # ---------------------------------------------------------------------------

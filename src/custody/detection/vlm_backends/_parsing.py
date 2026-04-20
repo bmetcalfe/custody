@@ -99,15 +99,41 @@ def _extract_first_json_block(text: str) -> Optional[Any]:
     return None
 
 
+_MAX_RECURSION_DEPTH = 10
+
+
 def _extract_detection_list(data: Any) -> list[Any]:
+    """Find the detection list, searching nested dict wrappers (BFS, shallowest wins).
+
+    Some VLMs occasionally wrap detections inside a top-level key such as
+    ``{"analysis": {"vessels": [...]}}``.  We search breadth-first so the
+    *shallowest* matching key wins — this avoids accidentally matching a
+    deeply-nested ``examples``/``notes`` list before reaching the real
+    detections.  Recursion is bounded at ``_MAX_RECURSION_DEPTH`` levels to
+    guard against pathological inputs.
+    """
     if isinstance(data, list):
         return data
     if not isinstance(data, dict):
         return []
-    for key in _DETECTION_LIST_KEYS:
-        value = data.get(key)
-        if isinstance(value, list):
-            return value
+
+    frontier: list[dict] = [data]
+    for _depth in range(_MAX_RECURSION_DEPTH + 1):
+        # Check every node at this depth first — shallowest match wins.
+        for node in frontier:
+            for key in _DETECTION_LIST_KEYS:
+                value = node.get(key)
+                if isinstance(value, list):
+                    return value
+        # Expand to next depth.
+        next_frontier: list[dict] = []
+        for node in frontier:
+            for v in node.values():
+                if isinstance(v, dict):
+                    next_frontier.append(v)
+        if not next_frontier:
+            break
+        frontier = next_frontier
     return []
 
 
