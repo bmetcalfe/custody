@@ -25,3 +25,5 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0012 — Scenario reframe: primary narrative is Vietnamese reclamation at Tennent Reef; Whitsun becomes supplementary](0012-scenario-reframe-tennent-whitsun.md)
 - [0013 — Dual case studies — Tennent Reef and Whitsun Reef both primary, neither supplementary](0013-dual-case-studies.md)
 - [0014 — OS-CFAR as second detector variant for heterogeneous-clutter scenes](0014-os-cfar-for-heterogeneous-clutter.md)
+- [0015 — Detection pivot to VLM candidate-generator + CFAR-refinement hybrid](0015-detection-pivot-to-vlm-cfar-hybrid.md)
+- [0016 — Project scope expansion to Story 2 applied research framing](0016-scope-expansion-to-story-2.md)

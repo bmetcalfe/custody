@@ -6,7 +6,12 @@
 
 ## One-line project definition
 
-Custody is a 10-week open-source reference implementation of multi-sensor fusion and covariance-aware tip-and-cue orchestration for maritime domain awareness, aligned with the SDA Custody Layer capability vectors, built on open data.
+Custody is a **20-24 week private applied-research project** on multi-sensor fusion and covariance-aware tip-and-cue orchestration for maritime domain awareness, aligned with the SDA Custody Layer capability vectors, built on open data.
+
+**Week 2 pivots (2026-04-20):**
+- Scope expanded from 10-week public reference to 20-24 week private project (ADR-0016).
+- Detection architecture changed to a VLM-candidate-generator + CFAR-refinement hybrid after evaluating five detection approaches (ADR-0015; investigation in `docs/investigations/detection-approaches.md`).
+- Full content update to the rest of this file deferred to tomorrow; treat ADR-0015 and ADR-0016 as authoritative for current framing until the rewrite lands.
 
 ## What's the scenario
 

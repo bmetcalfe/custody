@@ -2,6 +2,8 @@
 
 *This is the honest-scoping document. It exists to say publicly what this project is, what it is not, who it is for, and what it answers. If any section of it embarrasses you to read, that section is wrong.*
 
+> **Week 2 update (2026-04-20):** Scope expanded per ADR-0016 from a 10-week public reference implementation to a **20-24 week private applied-research project**. Primary deliverables are a demo walkthrough + technical whitepaper rather than a public codebase. Detection architecture pivoted from CFAR to a VLM-candidate-generator + CFAR-refinement hybrid per ADR-0015. Full content update to this document deferred; see ADR-0015 and ADR-0016 for current framing.
+
 ---
 
 ## What this is
