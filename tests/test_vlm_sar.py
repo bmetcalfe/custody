@@ -322,13 +322,299 @@ def test_observation_obs_id_unique_across_bboxes_in_same_scene():
 
 
 # ---------------------------------------------------------------------------
-# detect_vessels_in_scene stub
+# estimate_scene_cost + CostExceededError + detect_vessels_in_scene (Phase F.3)
 # ---------------------------------------------------------------------------
 
 
-def test_detect_vessels_in_scene_raises_not_implemented():
-    with pytest.raises(NotImplementedError, match="Phase F"):
-        detect_vessels_in_scene()
+def _reusable_backend_class():
+    """Small VLMBackend subclass that scripts per-call responses and records calls."""
+    from custody.detection.vlm_backends.base import VLMBackend as _VLMBackend
+
+    class _TileScriptedBackend(_VLMBackend):
+        def __init__(self, scripts, model="scripted-f3", cost_per_tile=0.01):
+            self._scripts = list(scripts)
+            self._model = model
+            self._cost = cost_per_tile
+            self.calls = []  # list of (tile_shape, prompt)
+
+        def detect_tile(self, tile, prompt):
+            self.calls.append((tile.shape, prompt))
+            entry = self._scripts.pop(0) if self._scripts else _trivial_response(0)
+            if isinstance(entry, Exception):
+                raise entry
+            return entry
+
+        @property
+        def model_name(self):
+            return self._model
+
+        @property
+        def approx_cost_per_tile_usd(self):
+            return self._cost
+
+    return _TileScriptedBackend
+
+
+def test_estimate_scene_cost_returns_required_fields():
+    from custody.detection.vlm_sar import estimate_scene_cost
+
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[], model="test-model", cost_per_tile=0.02)
+    scene = np.zeros((1000, 1000), dtype=np.uint8)
+    est = estimate_scene_cost(scene, backend, tile_size=500, tile_overlap=0, skip_empty=False)
+    assert est["tile_count"] == 4
+    assert est["estimated_cost_usd"] == pytest.approx(0.08)
+    assert est["model"] == "test-model"
+    assert est["skip_empty"] is False
+    assert est["estimate_type"] == "exact"
+
+
+def test_estimate_scene_cost_skip_empty_marks_upper_bound():
+    from custody.detection.vlm_sar import estimate_scene_cost
+
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[], cost_per_tile=0.01)
+    scene = np.zeros((1000, 1000), dtype=np.uint8)
+    est = estimate_scene_cost(scene, backend, tile_size=500, tile_overlap=0, skip_empty=True)
+    assert est["estimate_type"] == "upper_bound"
+    assert est["skip_empty"] is True
+
+
+def test_estimate_scene_cost_matches_count_tiles_on_large_aoi():
+    from custody.detection.tiling import count_tiles
+    from custody.detection.vlm_sar import estimate_scene_cost
+
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[], cost_per_tile=0.014)
+    scene = np.zeros((5000, 5000), dtype=np.uint8)
+    aoi = (1000, 4000, 1000, 4000)
+    est = estimate_scene_cost(
+        scene, backend, tile_size=640, tile_overlap=64, aoi_bounds=aoi,
+    )
+    n = count_tiles(scene.shape[:2], tile_size=640, tile_overlap=64, aoi_bounds=aoi)
+    assert est["tile_count"] == n
+    assert est["estimated_cost_usd"] == pytest.approx(n * 0.014)
+
+
+def test_cost_exceeded_error_has_estimated_cost_attribute():
+    from custody.detection.vlm_sar import CostExceededError
+
+    err = CostExceededError("too expensive", estimated_cost=42.17)
+    assert err.estimated_cost == pytest.approx(42.17)
+    assert "too expensive" in str(err)
+
+
+def test_detect_vessels_in_scene_raises_cost_exceeded_before_any_api_call(monkeypatch):
+    """Cost gate fires before any backend.detect_tile call."""
+    from custody.detection.vlm_sar import CostExceededError, detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[], cost_per_tile=5.0)  # 4 tiles × $5 = $20 projected
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+    with pytest.raises(CostExceededError) as exc_info:
+        detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=0, skip_empty=False,
+            max_cost_usd=10.0,
+        )
+    assert exc_info.value.estimated_cost == pytest.approx(20.0)
+    assert backend.calls == []  # no calls were made
+
+
+def test_detect_vessels_in_scene_with_max_cost_none_bypasses_gate(monkeypatch):
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    Backend = _reusable_backend_class()
+    backend = Backend(
+        scripts=[_trivial_response(n=0) for _ in range(4)],
+        cost_per_tile=1_000.0,  # absurdly high unit cost
+    )
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+    obs = detect_vessels_in_scene(
+        scene, transform=Affine.identity(), crs_wkt="x",
+        acquisition_time=1.0, source_id="probe", backend=backend,
+        tile_size=500, tile_overlap=0, skip_empty=False,
+        max_cost_usd=None,
+    )
+    assert obs == []
+    assert len(backend.calls) == 4
+
+
+def test_detect_vessels_in_scene_happy_path_returns_observations(monkeypatch):
+    """Scripted responses on each of 4 tiles produce scene-coord PositionObservations."""
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    # Two detections on the top-left tile, one on bottom-right, empty on the others.
+    tl_response = VLMResponse(
+        detections=[
+            _make_detection(bbox=(10, 20, 30, 40), confidence="high", reasoning="r1"),
+            _make_detection(bbox=(100, 100, 120, 120), confidence="medium", reasoning="r2"),
+        ],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    br_response = VLMResponse(
+        detections=[_make_detection(bbox=(50, 50, 60, 60), confidence="high", reasoning="r3")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    empty_response = VLMResponse(detections=[], tokens_used={"input": 50, "output": 5},
+                                 wall_time_seconds=0.05)
+    Backend = _reusable_backend_class()
+    backend = Backend(
+        scripts=[tl_response, empty_response, empty_response, br_response],
+        cost_per_tile=0.01,
+    )
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1_688_306_455.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=0, skip_empty=False,
+            confidence_threshold="low",  # keep everything
+        )
+    assert len(obs) == 3
+    # Provenance propagated correctly
+    assert all(o.detector_version == "vlm_scripted-f3" for o in obs)
+    assert all(o.source_id == "probe" for o in obs)
+    # Reasoning strings distinct per observation
+    reasons = {o.detector_reasoning for o in obs}
+    assert reasons == {"r1", "r2", "r3"}
+
+
+def test_detect_vessels_in_scene_confidence_threshold_filters(monkeypatch):
+    """confidence_threshold='high' drops medium/low detections."""
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    response = VLMResponse(
+        detections=[
+            _make_detection(bbox=(0, 0, 10, 10), confidence="low"),
+            _make_detection(bbox=(20, 20, 30, 30), confidence="medium"),
+            _make_detection(bbox=(40, 40, 50, 50), confidence="high"),
+        ],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[response] * 4, cost_per_tile=0.01)
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs_high = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=0, skip_empty=False,
+            confidence_threshold="high",
+        )
+    # 4 tiles × 1 'high' detection each = 4 obs
+    assert len(obs_high) == 4
+    assert all(o.classification_conf == pytest.approx(0.85) for o in obs_high)
+
+    # Reset backend for second run
+    backend2 = Backend(scripts=[response] * 4, cost_per_tile=0.01)
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", return_value=(9.0, 114.0)):
+        obs_medium = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend2,
+            tile_size=500, tile_overlap=0, skip_empty=False,
+            confidence_threshold="medium",
+        )
+    # 4 tiles × 2 (medium + high) = 8 obs
+    assert len(obs_medium) == 8
+
+
+def test_detect_vessels_in_scene_rejects_invalid_threshold(monkeypatch):
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[])
+    scene = np.full((500, 500), 200, dtype=np.uint8)
+    with pytest.raises(ValueError, match="confidence_threshold"):
+        detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            confidence_threshold="extreme",
+        )
+
+
+def test_detect_vessels_in_scene_rejects_invalid_prompt_variant(monkeypatch):
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[])
+    scene = np.full((500, 500), 200, dtype=np.uint8)
+    with pytest.raises(ValueError, match="unknown prompt_variant"):
+        detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            prompt_variant="nonsense_v99",  # type: ignore[arg-type]
+        )
+
+
+def test_detect_vessels_in_scene_passes_progress_callback_through(monkeypatch):
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[_trivial_response(n=0) for _ in range(4)], cost_per_tile=0.01)
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+
+    events = []
+    def cb(tile_info, response, done, total):
+        events.append((tile_info.origin, response is not None, done, total))
+
+    detect_vessels_in_scene(
+        scene, transform=Affine.identity(), crs_wkt="x",
+        acquisition_time=1.0, source_id="probe", backend=backend,
+        tile_size=500, tile_overlap=0, skip_empty=False,
+        max_cost_usd=None, progress_callback=cb,
+    )
+    assert len(events) == 4
+    assert events[0] == ((0, 0), True, 1, 4)
+    assert events[-1] == ((500, 500), True, 4, 4)
+
+
+def test_detect_vessels_in_scene_applies_tile_origin_to_bbox(monkeypatch):
+    """Detection at tile-local (10, 20, 30, 40) in the bottom-right tile (origin
+    (500, 500)) must project through with scene-space pixel (bbox center offset
+    by tile origin).  Verifies F.2/F.3 plumbing is wired correctly.
+    """
+    from custody.detection.vlm_sar import detect_vessels_in_scene
+
+    _patch_rate_limit_and_sleep(monkeypatch)
+    response_br = VLMResponse(
+        detections=[_make_detection(bbox=(10, 20, 30, 40), confidence="high")],
+        tokens_used={"input": 100, "output": 50}, wall_time_seconds=0.1,
+    )
+    empty = VLMResponse(detections=[], tokens_used={"input": 50, "output": 5}, wall_time_seconds=0.05)
+    Backend = _reusable_backend_class()
+    backend = Backend(scripts=[empty, empty, empty, response_br], cost_per_tile=0.01)
+    scene = np.full((1000, 1000), 200, dtype=np.uint8)
+
+    captured_scene_px: list[tuple[float, float]] = []
+
+    def fake_pixel_to_latlon(row, col, transform, crs_wkt):
+        captured_scene_px.append((float(row), float(col)))
+        return (9.0, 114.0)
+
+    with patch("custody.detection.vlm_sar.pixel_to_latlon", side_effect=fake_pixel_to_latlon):
+        obs = detect_vessels_in_scene(
+            scene, transform=Affine.identity(), crs_wkt="x",
+            acquisition_time=1.0, source_id="probe", backend=backend,
+            tile_size=500, tile_overlap=0, skip_empty=False,
+            confidence_threshold="low",
+        )
+    # bbox center (20, 30) + tile origin (500, 500) = scene pixel (530, 520)
+    # (row=y-center=30+500, col=x-center=20+500 — bbox is (x1,y1,x2,y2))
+    assert len(obs) == 1
+    assert len(captured_scene_px) == 1
+    scene_row, scene_col = captured_scene_px[0]
+    assert scene_row == pytest.approx(530.0)
+    assert scene_col == pytest.approx(520.0)
 
 
 # ---------------------------------------------------------------------------

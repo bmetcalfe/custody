@@ -79,6 +79,19 @@ class _NeverRaised(Exception):
 _RATE_LIMIT_EXCEPTIONS: tuple[type, ...] = _compute_rate_limit_exceptions() or (_NeverRaised,)
 
 
+class CostExceededError(Exception):
+    """Raised when ``estimate_scene_cost`` projects a spend above ``max_cost_usd``.
+
+    The projected cost is attached as :attr:`estimated_cost` so callers can
+    catch the error, surface the estimate to a human operator, and opt in to
+    the run by raising ``max_cost_usd`` or passing ``max_cost_usd=None``.
+    """
+
+    def __init__(self, message: str, estimated_cost: float) -> None:
+        super().__init__(message)
+        self.estimated_cost = estimated_cost
+
+
 PromptVariant = Literal["direct_v1", "contextualized_v1", "reasoning_first_v1"]
 
 
@@ -278,18 +291,124 @@ def _detect_one_with_retry(
     return None
 
 
-def detect_vessels_in_scene(
-    *args,
-    **kwargs,
-) -> list[PositionObservation]:
-    """Scene-level tiling entry point — not yet implemented.
+_CONFIDENCE_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
 
-    Phase F.3 wires :func:`_detect_tiles` into a cost-gated public API that
-    returns :class:`PositionObservation` lists with NMS across tile
-    boundaries.  Until then, callers can drive the tile loop directly via
-    :func:`_detect_tiles` + :func:`vlm_detection_to_observation` per tile.
+
+def estimate_scene_cost(
+    scene: np.ndarray,
+    backend: VLMBackend,
+    tile_size: int = 640,
+    tile_overlap: int = 64,
+    aoi_bounds: Optional[tuple[int, int, int, int]] = None,
+    skip_empty: bool = True,
+) -> dict:
+    """Return the projected tile count and USD cost for a scene-level run.
+
+    The estimate is the geometric tile count (via
+    :func:`custody.detection.tiling.count_tiles`) multiplied by the backend's
+    ``approx_cost_per_tile_usd``.  When ``skip_empty`` is True the real run may
+    process fewer tiles, so the estimate is an upper bound — flagged in the
+    returned dict's ``estimate_type`` field.
     """
-    raise NotImplementedError(
-        "detect_vessels_in_scene: full scene API lands in Phase F.3. "
-        "Use _detect_tiles + vlm_detection_to_observation per tile until then."
+    tile_count = count_tiles(
+        scene.shape[:2],
+        tile_size=tile_size,
+        tile_overlap=tile_overlap,
+        aoi_bounds=aoi_bounds,
     )
+    est_cost = float(tile_count * backend.approx_cost_per_tile_usd)
+    return {
+        "tile_count": int(tile_count),
+        "estimated_cost_usd": est_cost,
+        "model": backend.model_name,
+        "skip_empty": bool(skip_empty),
+        "estimate_type": "upper_bound" if skip_empty else "exact",
+    }
+
+
+def detect_vessels_in_scene(
+    scene: np.ndarray,
+    transform: Affine,
+    crs_wkt: str,
+    *,
+    acquisition_time: float,
+    source_id: str,
+    backend: VLMBackend,
+    prompt_variant: PromptVariant = "contextualized_v1",
+    confidence_threshold: str = "medium",
+    tile_size: int = 640,
+    tile_overlap: int = 64,
+    aoi_bounds: Optional[tuple[int, int, int, int]] = None,
+    skip_empty: bool = True,
+    empty_threshold: float = 0.05,
+    max_cost_usd: Optional[float] = 20.0,
+    max_retries: int = 3,
+    retry_backoff_base: float = 2.0,
+    sigma_m: float = 20.0,
+    progress_callback: Optional[Callable[[TileInfo, Optional[VLMResponse], int, int], None]] = None,
+) -> list[PositionObservation]:
+    """Run VLM detection across a full scene and return :class:`PositionObservation` list.
+
+    Pre-flight: :func:`estimate_scene_cost` computes the projected spend; if it
+    exceeds ``max_cost_usd`` a :class:`CostExceededError` is raised before any
+    API calls are made.  Pass ``max_cost_usd=None`` to disable the gate.
+
+    Runtime: iterates tiles via :func:`_detect_tiles`, converts each surviving
+    :class:`VLMDetection` into a :class:`PositionObservation` via
+    :func:`vlm_detection_to_observation`, and filters by
+    ``confidence_threshold``.  Detections whose confidence string ranks below
+    the threshold (``low`` < ``medium`` < ``high``) are dropped.
+
+    Phase F.3 does *not* perform NMS across tile boundaries — overlapping-tile
+    duplicates can still appear.  NMS is Phase F.4.
+    """
+    if prompt_variant not in PROMPTS:
+        raise ValueError(
+            f"unknown prompt_variant {prompt_variant!r}; valid: {sorted(PROMPTS.keys())}"
+        )
+    threshold_rank = _CONFIDENCE_RANK.get(confidence_threshold.lower())
+    if threshold_rank is None:
+        raise ValueError(
+            f"confidence_threshold must be one of {list(_CONFIDENCE_RANK)}; "
+            f"got {confidence_threshold!r}"
+        )
+    prompt = PROMPTS[prompt_variant]
+
+    estimate = estimate_scene_cost(
+        scene, backend,
+        tile_size=tile_size, tile_overlap=tile_overlap,
+        aoi_bounds=aoi_bounds, skip_empty=skip_empty,
+    )
+    if max_cost_usd is not None and estimate["estimated_cost_usd"] > max_cost_usd:
+        raise CostExceededError(
+            f"scene-level detection estimate ${estimate['estimated_cost_usd']:.2f} "
+            f"exceeds max_cost_usd ${max_cost_usd:.2f} "
+            f"({estimate['tile_count']} tiles × ${backend.approx_cost_per_tile_usd:.4f}/tile "
+            f"with model {estimate['model']}). "
+            "Pass max_cost_usd=None or a higher cap to proceed.",
+            estimated_cost=estimate["estimated_cost_usd"],
+        )
+
+    observations: list[PositionObservation] = []
+    for tile_info, response in _detect_tiles(
+        scene, backend, prompt,
+        tile_size=tile_size, tile_overlap=tile_overlap,
+        aoi_bounds=aoi_bounds, skip_empty=skip_empty,
+        empty_threshold=empty_threshold,
+        max_retries=max_retries, retry_backoff_base=retry_backoff_base,
+        progress_callback=progress_callback,
+    ):
+        for det in response.detections:
+            conf = (det.confidence or "medium").lower()
+            if _CONFIDENCE_RANK.get(conf, 0) < threshold_rank:
+                continue
+            obs = vlm_detection_to_observation(
+                det, transform=transform, crs_wkt=crs_wkt,
+                tile_origin=tile_info.origin,
+                acquisition_time=acquisition_time,
+                source_id=source_id,
+                backend=backend,
+                sigma_m=sigma_m,
+            )
+            observations.append(obs)
+    return observations
