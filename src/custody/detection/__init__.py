@@ -23,8 +23,15 @@ from custody.detection.sar_common import (
     pixel_to_latlon,
     read_geotiff,
 )
+from custody.detection.vlm_sar import (
+    PROMPTS,
+    detect_vessels_in_scene,
+    detect_vessels_in_tile,
+    vlm_detection_to_observation,
+)
 
 __all__ = [
+    "PROMPTS",
     "compute_cfar_threshold",
     "compute_os_cfar_threshold",
     "compute_structure_mask",
@@ -33,9 +40,12 @@ __all__ = [
     "detect_points_os_cfar",
     "detect_points_os_cfar_to_observations",
     "detect_points_to_observations",
+    "detect_vessels_in_scene",
+    "detect_vessels_in_tile",
     "detection_to_observation",
     "detections_to_observations",
     "latlon_to_pixel",
     "pixel_to_latlon",
     "read_geotiff",
+    "vlm_detection_to_observation",
 ]
