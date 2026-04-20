@@ -100,12 +100,82 @@ def test_backend_extracts_text_from_output_blocks_when_output_text_missing():
 def test_backend_properties():
     be = OpenAIBackend(model="gpt-5.4", api_key="fake")
     assert be.model_name == "gpt-5.4"
-    assert be.approx_cost_per_tile_usd == pytest.approx(0.005)
+    assert be.approx_cost_per_tile_usd == pytest.approx(0.003)
 
 
 def test_backend_default_model_is_mini():
     be = OpenAIBackend(api_key="fake")
     assert be.model_name == "gpt-5.4-mini"
+
+
+# ---------------------------------------------------------------------------
+# Model-dependent cost lookup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "model,expected_cost",
+    [
+        ("gpt-5.4-mini", 0.0005),
+        ("gpt-5.4-nano", 0.0003),
+        ("gpt-5.4",      0.003),
+        ("gpt-5.4-pro",  0.015),
+    ],
+)
+def test_cost_lookup_returns_expected_value_for_known_models(model, expected_cost):
+    be = OpenAIBackend(model=model, api_key="fake")
+    assert be.approx_cost_per_tile_usd == pytest.approx(expected_cost)
+
+
+@pytest.mark.parametrize(
+    "effort,expected_cost",
+    [
+        ("minimal", 0.004),
+        ("low",     0.010),
+        ("medium",  0.020),
+        ("high",    0.040),
+        ("xhigh",   0.080),
+    ],
+)
+def test_cost_lookup_accounts_for_reasoning_effort(effort, expected_cost):
+    be = OpenAIBackend(model="gpt-5.4", api_key="fake", reasoning_effort=effort)
+    assert be.approx_cost_per_tile_usd == pytest.approx(expected_cost)
+
+
+def test_cost_lookup_unknown_model_falls_back_to_conservative_estimate(caplog):
+    import logging
+    be = OpenAIBackend(model="gpt-9.9-hyper-experimental", api_key="fake")
+    with caplog.at_level(logging.WARNING, logger="custody.detection.vlm_backends.openai_backend"):
+        cost = be.approx_cost_per_tile_usd
+    assert cost == pytest.approx(0.04)
+    # A warning should surface so users notice they're on an unrecognized model.
+    assert any(
+        "gpt-9.9-hyper-experimental" in rec.message and "fallback" in rec.message.lower()
+        for rec in caplog.records
+    ), f"expected fallback warning; got {[r.message for r in caplog.records]}"
+
+
+def test_cost_lookup_unknown_reasoning_effort_falls_back():
+    """Reasoning effort 'extreme' is not in the lookup; falls back to conservative value."""
+    be = OpenAIBackend(model="gpt-5.4", api_key="fake", reasoning_effort="extreme")
+    assert be.approx_cost_per_tile_usd == pytest.approx(0.04)
+
+
+def test_reasoning_effort_is_forwarded_to_client():
+    """When reasoning_effort is set, detect_tile must pass it to responses.create."""
+    be = _make_backend_with_mock(_mock_openai_response("[]"))
+    be._reasoning_effort = "high"
+    be.detect_tile(np.zeros((32, 32), dtype=np.uint8), prompt="x")
+    call_kwargs = be._client.responses.create.call_args.kwargs
+    assert call_kwargs["reasoning"] == {"effort": "high"}
+
+
+def test_reasoning_effort_absent_means_no_reasoning_kwarg():
+    """When reasoning_effort is None (default), 'reasoning' must not appear in call kwargs."""
+    be = _make_backend_with_mock(_mock_openai_response("[]"))
+    be.detect_tile(np.zeros((32, 32), dtype=np.uint8), prompt="x")
+    call_kwargs = be._client.responses.create.call_args.kwargs
+    assert "reasoning" not in call_kwargs
 
 
 def test_backend_max_tokens_configurable():
