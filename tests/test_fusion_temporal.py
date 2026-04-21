@@ -19,7 +19,9 @@ from custody.fusion.scenes import Scene, load_scene_from_parquet
 from custody.fusion.temporal import (
     DirectSpatialMatcher,
     Match,
+    SignatureMatcher,
     TemporalComparisonResult,
+    _signature_vector,
     temporal_persistence,
 )
 
@@ -43,12 +45,17 @@ def _offset_latlon(lat: float, lon: float, dist_m: float, bearing_deg: float = 0
     return float(lat2), float(lon2)
 
 
-def _mk_obs(obs_id: str, lat: float, lon: float, acq: float = 1_688_306_455.0) -> PositionObservation:
+def _mk_obs(
+    obs_id: str, lat: float, lon: float, acq: float = 1_688_306_455.0,
+    bbox_px: tuple[int, int, int, int] | None = None,
+    classification_conf: float | None = None,
+) -> PositionObservation:
     return PositionObservation(
         obs_id=obs_id, source_id="test", modality="SAR",
         acquisition_time=acq, ingestion_time=acq + 1.0,
         lat=lat, lon=lon, cov_pos=np.eye(2) * 100.0,
         raw_ref="test",
+        bbox_px=bbox_px, classification_conf=classification_conf,
     )
 
 
@@ -307,3 +314,197 @@ def test_direct_spatial_matcher_is_frozen():
     m = DirectSpatialMatcher(gate_m=50.0)
     with pytest.raises(AttributeError):
         m.gate_m = 100.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# SignatureMatcher — V1 geometry-aware matcher (ADR-0019)
+# ---------------------------------------------------------------------------
+
+
+def test_signature_vector_wide_bbox_components():
+    """100 × 50 px bbox → width 0.5, height 0.25, log2(2)/3 = 0.333, conf."""
+    o = _mk_obs("x", 8.85, 114.66, bbox_px=(0, 0, 100, 50), classification_conf=0.85)
+    v = _signature_vector(o)
+    assert v is not None
+    assert v[0] == pytest.approx(0.5)                # width / 200
+    assert v[1] == pytest.approx(0.25)               # height / 200
+    assert v[2] == pytest.approx(1.0 / 3.0)          # log2(100/50) / 3 = 1/3
+    assert v[3] == pytest.approx(0.85)
+
+
+def test_signature_vector_tall_bbox_has_negative_log_aspect():
+    """50 × 100 px bbox → log2(0.5)/3 = -1/3 (symmetric around 0 for inverse aspect)."""
+    o = _mk_obs("x", 8.85, 114.66, bbox_px=(0, 0, 50, 100), classification_conf=0.5)
+    v = _signature_vector(o)
+    assert v is not None
+    assert v[2] == pytest.approx(-1.0 / 3.0)
+
+
+def test_signature_vector_square_bbox_has_zero_log_aspect():
+    o = _mk_obs("x", 8.85, 114.66, bbox_px=(0, 0, 60, 60), classification_conf=0.6)
+    v = _signature_vector(o)
+    assert v is not None
+    assert v[2] == pytest.approx(0.0)
+
+
+def test_signature_vector_returns_none_when_bbox_px_missing():
+    o = _mk_obs("x", 8.85, 114.66, bbox_px=None, classification_conf=0.5)
+    assert _signature_vector(o) is None
+
+
+def test_signature_vector_returns_none_when_classification_conf_missing():
+    o = _mk_obs("x", 8.85, 114.66, bbox_px=(0, 0, 50, 50), classification_conf=None)
+    assert _signature_vector(o) is None
+
+
+def test_signature_matcher_name_property():
+    assert SignatureMatcher(gate_m=50.0, sig_gate=0.8).name == (
+        "SignatureMatcher(gate_m=50.0, sig_gate=0.8)"
+    )
+
+
+def test_signature_matcher_is_frozen():
+    m = SignatureMatcher()
+    with pytest.raises(AttributeError):
+        m.gate_m = 100.0  # type: ignore[misc]
+
+
+def test_signature_matcher_permits_pair_with_similar_signatures():
+    """Two obs within spatial gate with near-identical signatures → match."""
+    base_lat, base_lon = 8.856, 114.665
+    a = _mk_obs("a", base_lat, base_lon,
+                bbox_px=(0, 0, 100, 50), classification_conf=0.85)
+    b_lat, b_lon = _offset_latlon(base_lat, base_lon, 10, 0)
+    b = _mk_obs("b", b_lat, b_lon,
+                bbox_px=(0, 0, 102, 48), classification_conf=0.85)
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.2)
+    matches = matcher.match((a,), (b,))
+    assert len(matches) == 1
+    assert matches[0].obs_a_id == "a"
+    assert matches[0].obs_b_id == "b"
+
+
+def test_signature_matcher_rejects_pair_with_dissimilar_signatures():
+    """Two obs within spatial gate but very different bbox sizes → not matched."""
+    base_lat, base_lon = 8.856, 114.665
+    a = _mk_obs("a", base_lat, base_lon,
+                bbox_px=(0, 0, 20, 20), classification_conf=0.85)
+    b_lat, b_lon = _offset_latlon(base_lat, base_lon, 10, 0)
+    b = _mk_obs("b", b_lat, b_lon,
+                bbox_px=(0, 0, 400, 400), classification_conf=0.35)  # 20x bigger + different conf
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.3)  # tight sig gate
+    matches = matcher.match((a,), (b,))
+    assert matches == []
+
+
+def test_signature_matcher_missing_bbox_bypasses_signature_gate():
+    """Pair where one obs lacks bbox_px falls back to spatial-only eligibility."""
+    base_lat, base_lon = 8.856, 114.665
+    # Obs a has no bbox; obs b has one.  Signature distance is undefined for the
+    # pair.  Matcher should treat as signature-eligible and fall through to
+    # spatial gate.
+    a = _mk_obs("a", base_lat, base_lon, bbox_px=None, classification_conf=0.85)
+    b_lat, b_lon = _offset_latlon(base_lat, base_lon, 20, 0)
+    b = _mk_obs("b", b_lat, b_lon,
+                bbox_px=(0, 0, 400, 400), classification_conf=0.35)
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.01)  # pathologically tight
+    matches = matcher.match((a,), (b,))
+    # Sig gate would reject if applied; missing-signature fallback allows
+    # the pair via spatial gate alone.
+    assert len(matches) == 1
+
+
+def test_signature_matcher_missing_classification_conf_also_falls_back():
+    """Same as above but with classification_conf=None instead of bbox_px=None."""
+    base_lat, base_lon = 8.856, 114.665
+    a = _mk_obs("a", base_lat, base_lon,
+                bbox_px=(0, 0, 100, 50), classification_conf=None)
+    b_lat, b_lon = _offset_latlon(base_lat, base_lon, 15, 0)
+    b = _mk_obs("b", b_lat, b_lon,
+                bbox_px=(0, 0, 300, 100), classification_conf=0.3)
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.01)
+    matches = matcher.match((a,), (b,))
+    assert len(matches) == 1
+
+
+def test_signature_matcher_one_to_many_signature_similarity_wins():
+    """Two A obs both within spatial gate of one B; the similar-signature one wins.
+
+    Spatial-only matcher would pick whichever is spatially closer; signature
+    matcher filters out the dissimilar pair up-front so Hungarian has only one
+    option — even if the similar-signature one is slightly farther away.
+    """
+    base_lat, base_lon = 8.856, 114.665
+    # B is the reference
+    b = _mk_obs("b", base_lat, base_lon,
+                bbox_px=(0, 0, 100, 50), classification_conf=0.85)
+    # a_close: 5 m away, VERY different bbox
+    a_close_lat, a_close_lon = _offset_latlon(base_lat, base_lon, 5, 0)
+    a_close = _mk_obs("a_close", a_close_lat, a_close_lon,
+                      bbox_px=(0, 0, 500, 10), classification_conf=0.35)
+    # a_similar: 20 m away, similar bbox
+    a_sim_lat, a_sim_lon = _offset_latlon(base_lat, base_lon, 20, 90)
+    a_similar = _mk_obs("a_similar", a_sim_lat, a_sim_lon,
+                        bbox_px=(0, 0, 98, 52), classification_conf=0.85)
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.3)  # tight sig gate
+    matches = matcher.match((a_close, a_similar), (b,))
+    assert len(matches) == 1
+    assert matches[0].obs_a_id == "a_similar"
+
+
+def test_signature_matcher_empty_inputs_return_empty():
+    m = SignatureMatcher()
+    assert m.match((), ()) == []
+    a = _mk_obs("a", 8.85, 114.66, bbox_px=(0, 0, 50, 50), classification_conf=0.5)
+    assert m.match((a,), ()) == []
+    assert m.match((), (a,)) == []
+
+
+def test_signature_matcher_emits_debug_log_on_fallback(caplog):
+    """DEBUG log fires when signature fallback is exercised for any pair."""
+    import logging
+    base_lat, base_lon = 8.856, 114.665
+    a = _mk_obs("a", base_lat, base_lon, bbox_px=None, classification_conf=None)
+    b_lat, b_lon = _offset_latlon(base_lat, base_lon, 10, 0)
+    b = _mk_obs("b", b_lat, b_lon,
+                bbox_px=(0, 0, 50, 50), classification_conf=0.8)
+    matcher = SignatureMatcher(gate_m=50.0, sig_gate=0.8)
+    with caplog.at_level(logging.DEBUG, logger="custody.fusion.temporal"):
+        matcher.match((a,), (b,))
+    assert any(
+        "SignatureMatcher" in r.message and "bypassed the signature gate" in r.message
+        for r in caplog.records
+    )
+
+
+# ---------------------------------------------------------------------------
+# SignatureMatcher same-geometry sanity integration (ADR-0019)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    not (PQ_0702.exists() and PQ_0723.exists()),
+    reason="committed Tennent parquets not on disk",
+)
+def test_signature_matcher_on_same_geometry_pair_does_not_regress():
+    """V1 sanity: SignatureMatcher on same-geometry pair should produce a
+    persistent-count comparable to DirectSpatialMatcher's baseline of 22.
+
+    A pure-regression tripwire — not a correctness assertion on the
+    final V1 parameters (sig_gate may be tuned empirically before flip to
+    accepted).  The test passes as long as SignatureMatcher recovers
+    substantially all of DirectSpatialMatcher's matches on the easy case.
+    """
+    sa = load_scene_from_parquet(PQ_0702, case_study="tennent")
+    sb = load_scene_from_parquet(PQ_0723, case_study="tennent")
+    r = temporal_persistence(
+        sa, sb, matcher=SignatureMatcher(gate_m=50.0, sig_gate=0.8),
+    )
+    # Baseline is 22 persistent.  Require >= 15 — generous tolerance lets us
+    # catch catastrophic regression (e.g., sig gate so tight nothing passes)
+    # without pinning the precise tuning.
+    assert len(r.matches) >= 15, (
+        f"SignatureMatcher recovered only {len(r.matches)} matches on the "
+        "same-geometry Tennent 07-02↔07-23 pair; DirectSpatialMatcher baseline "
+        "is 22.  V1 signature gating appears to be over-filtering same-geom matches."
+    )

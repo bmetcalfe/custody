@@ -11,12 +11,17 @@ matching under a fixed meter gate, projected to tangent-plane meters via
 Hungarian assignment (``scipy.optimize.linear_sum_assignment``); pairs
 outside the gate are dropped.
 
-Geometry-aware matchers for heterogeneous scene pairs (across-orbit,
-across-resolution) are future work per ADR-0018's downstream ADR candidates;
-the :class:`Matcher` protocol is the extension point.
+:class:`SignatureMatcher` is the V1 geometry-aware matcher per ADR-0019.
+Combines spatial proximity with per-observation feature-signature
+similarity — same spatial gate as ``DirectSpatialMatcher``, plus a
+signature-distance gate over a fixed-reference-normalized vector of
+[bbox_width, bbox_height, log2(aspect_ratio), classification_conf].
+Designed as a drop-in for the same :class:`Matcher` protocol so downstream
+code (``temporal_persistence``, test fixtures, scripts) stays unchanged.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -26,6 +31,9 @@ from scipy.optimize import linear_sum_assignment
 from custody.fusion.geo import to_tangent_plane_array
 from custody.fusion.observations import PositionObservation
 from custody.fusion.scenes import Scene
+
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +129,143 @@ class DirectSpatialMatcher:
         dy = ys_a[:, None] - ys_b[None, :]
         dist = np.hypot(dx, dy)
         cost = np.where(dist <= self.gate_m, dist, _BIG_COST)
+
+        row_idx, col_idx = linear_sum_assignment(cost)
+        out: list[Match] = []
+        for i, j in zip(row_idx, col_idx):
+            c = cost[i, j]
+            if c < _BIG_COST:
+                out.append(Match(
+                    obs_a_id=obs_a[int(i)].obs_id,
+                    obs_b_id=obs_b[int(j)].obs_id,
+                    distance_m=float(c),
+                ))
+        return out
+
+
+# ---------------------------------------------------------------------------
+# SignatureMatcher (ADR-0019 V1)
+# ---------------------------------------------------------------------------
+
+
+# Fixed-reference normalization constants.  Chosen to land typical VLM-detection
+# signatures roughly inside the unit interval on each axis; not data-dependent.
+# See ADR-0019 for rationale.
+_BBOX_REF_PX = 200.0
+_LOG2_ASPECT_REF = 3.0
+
+
+def _signature_vector(obs: PositionObservation) -> np.ndarray | None:
+    """Return normalized signature vector for ``obs`` or ``None`` if fields missing.
+
+    Vector components:
+      [0] bbox width  / _BBOX_REF_PX
+      [1] bbox height / _BBOX_REF_PX
+      [2] log2(width / height) / _LOG2_ASPECT_REF
+      [3] classification_conf as-is (already in [0, 1])
+
+    Returns ``None`` when either ``bbox_px`` or ``classification_conf`` is
+    missing on the observation.  Callers should treat None as "no signature
+    comparison possible" and fall back to spatial-gate-only eligibility.
+    """
+    if obs.bbox_px is None or obs.classification_conf is None:
+        return None
+    x1, y1, x2, y2 = obs.bbox_px
+    w = max(1, x2 - x1)   # guard against zero-width bboxes
+    h = max(1, y2 - y1)
+    return np.array([
+        w / _BBOX_REF_PX,
+        h / _BBOX_REF_PX,
+        float(np.log2(w / h)) / _LOG2_ASPECT_REF,
+        float(obs.classification_conf),
+    ], dtype=float)
+
+
+@dataclass(frozen=True)
+class SignatureMatcher:
+    """Geometry-aware V1 matcher — spatial gate + feature-signature similarity (ADR-0019).
+
+    Two observations are match-eligible only when:
+
+    - spatial distance ≤ ``gate_m`` (same tangent-plane AEQD as
+      :class:`DirectSpatialMatcher`), **and**
+    - signature distance (L2 on normalized vector) ≤ ``sig_gate``.
+
+    For pairs where either observation is missing ``bbox_px`` or
+    ``classification_conf``, the signature gate is *not applied* — spatial
+    gating alone determines eligibility, and the matcher degrades to
+    ``DirectSpatialMatcher``-like behavior for those pairs.  A DEBUG-level
+    message is emitted summarizing the count of signature-fallback pairs on
+    each call.
+
+    Hungarian cost for eligible pairs is the spatial distance (not a combined
+    metric) — signatures participate in gating but don't weight the
+    assignment.  This keeps the cost surface consistent with
+    :class:`DirectSpatialMatcher` and makes same-geometry results directly
+    comparable.
+    """
+
+    gate_m: float = 50.0
+    sig_gate: float = 0.8
+
+    @property
+    def name(self) -> str:
+        return f"SignatureMatcher(gate_m={self.gate_m}, sig_gate={self.sig_gate})"
+
+    def match(
+        self,
+        obs_a: tuple[PositionObservation, ...],
+        obs_b: tuple[PositionObservation, ...],
+    ) -> list[Match]:
+        if not obs_a or not obs_b:
+            return []
+
+        # --- Spatial distance (same as DirectSpatialMatcher) ---
+        lats_a = np.array([o.lat for o in obs_a], dtype=float)
+        lons_a = np.array([o.lon for o in obs_a], dtype=float)
+        lats_b = np.array([o.lat for o in obs_b], dtype=float)
+        lons_b = np.array([o.lon for o in obs_b], dtype=float)
+        xs_a, ys_a = to_tangent_plane_array(lats_a, lons_a)
+        xs_b, ys_b = to_tangent_plane_array(lats_b, lons_b)
+        dx = xs_a[:, None] - xs_b[None, :]
+        dy = ys_a[:, None] - ys_b[None, :]
+        spatial_dist = np.hypot(dx, dy)
+        spatial_pass = spatial_dist <= self.gate_m
+
+        # --- Signature distance ---
+        sig_a_list = [_signature_vector(o) for o in obs_a]
+        sig_b_list = [_signature_vector(o) for o in obs_b]
+        has_sig_a = np.array([v is not None for v in sig_a_list])
+        has_sig_b = np.array([v is not None for v in sig_b_list])
+        # Fill missing signatures with zeros; gate-pass logic below makes those
+        # pairs automatically eligible on the signature axis.
+        sig_a_mat = np.stack([
+            v if v is not None else np.zeros(4, dtype=float) for v in sig_a_list
+        ])
+        sig_b_mat = np.stack([
+            v if v is not None else np.zeros(4, dtype=float) for v in sig_b_list
+        ])
+        sig_diff = sig_a_mat[:, None, :] - sig_b_mat[None, :, :]
+        sig_dist = np.sqrt(np.sum(sig_diff * sig_diff, axis=-1))
+
+        # sig_pass[i, j] is True when (a) either side lacks a signature — fall
+        # back to spatial-only — or (b) signature distance is within sig_gate.
+        both_have_sig = has_sig_a[:, None] & has_sig_b[None, :]
+        sig_pass = (~both_have_sig) | (sig_dist <= self.sig_gate)
+
+        # --- Fallback count for debugging ---
+        n_fallback = int((~both_have_sig & spatial_pass).sum())
+        if n_fallback:
+            _log.debug(
+                "SignatureMatcher: %d candidate pairs within spatial gate "
+                "bypassed the signature gate due to missing signatures "
+                "(|obs_a|=%d, |obs_b|=%d)",
+                n_fallback, len(obs_a), len(obs_b),
+            )
+
+        # --- Compose cost matrix and assign ---
+        eligible = spatial_pass & sig_pass
+        cost = np.where(eligible, spatial_dist, _BIG_COST)
 
         row_idx, col_idx = linear_sum_assignment(cost)
         out: list[Match] = []
