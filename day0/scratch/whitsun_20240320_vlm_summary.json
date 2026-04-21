@@ -1,0 +1,81 @@
+{
+  "scene": "2024-03-20-02-09-55_UMBRA-05_GEC.tif",
+  "acquisition_time_utc": "2024-03-20T02:09:56+00:00",
+  "scene_center_latlon": [
+    9.985499426136824,
+    114.64160098616412
+  ],
+  "full_scene_shape_px": [
+    14660,
+    14659
+  ],
+  "aoi_center_latlon_from_helper": [
+    9.985499003558001,
+    114.641592620651
+  ],
+  "approx_extent_km": [
+    6.371454575331766,
+    6.330287610415753
+  ],
+  "backend_model": "claude-sonnet-4-6",
+  "prompt_variant": "contextualized_v1",
+  "confidence_threshold": "medium",
+  "nms_iou_threshold": 0.5,
+  "tile_size": 640,
+  "tile_overlap": 64,
+  "tiles_total_estimate": 676,
+  "tiles_attempted": 676,
+  "tiles_errored": 0,
+  "errored_tile_origins": [],
+  "detections_pre_nms": 98,
+  "detections_post_nms_post_threshold": 80,
+  "total_tokens_in": 465933,
+  "total_tokens_out": 284570,
+  "estimated_cost_usd": 9.464,
+  "actual_cost_usd_from_tokens": 5.666349,
+  "wall_time_total_s": 7046.65134099999,
+  "wall_time_mean_per_tile_s": 10.412150793050063,
+  "top5_tiles_by_detection_count": [
+    {
+      "tile_index": 454,
+      "origin": [
+        9792,
+        6912
+      ],
+      "detection_count": 7
+    },
+    {
+      "tile_index": 429,
+      "origin": [
+        9216,
+        7488
+      ],
+      "detection_count": 5
+    },
+    {
+      "tile_index": 110,
+      "origin": [
+        2304,
+        3456
+      ],
+      "detection_count": 4
+    },
+    {
+      "tile_index": 430,
+      "origin": [
+        9216,
+        8064
+      ],
+      "detection_count": 4
+    },
+    {
+      "tile_index": 639,
+      "origin": [
+        13824,
+        8640
+      ],
+      "detection_count": 4
+    }
+  ],
+  "parquet_path": "data/processed/vlm_detections/whitsun_20240320_position.parquet"
+}
