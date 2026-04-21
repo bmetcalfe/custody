@@ -2,7 +2,7 @@
 id: 0018
 title: Heterogeneous-scene reconciliation — architecture for pooling detections across non-uniform SAR acquisitions
 date: 2026-04-21
-status: proposed
+status: accepted
 ---
 
 ## Context
@@ -124,6 +124,18 @@ Independent of options A–D, **adopt a minimal scene quality screen before VLM 
 - **ADR-TBD — per-scene covariance calibration methodology.**  If / when we commit to populating scene-derived covariances rigorously, the calibration procedure (incidence-angle lookup, pixel-size scaling, look-direction resolution-anisotropy, etc.) needs its own decision record.
 - **ADR-TBD — Sentinel-1 Scene subtype or shared Scene.**  When Sentinel-1 integration lands, a decision on whether Scene is a union type with per-sensor subtypes or a single type with polymorphic metadata.
 
+## Implementation (2026-04-21)
+
+Accepted and implemented same day as drafted:
+
+- `src/custody/fusion/scenes.py` (commit `b25bf91`): Scene dataclass + `load_scene_from_parquet` with pragmatic fallback chain (kwargs → notes_json → sidecar → filename → observation-derived approximation → `SceneLoaderError`).  All 6 committed parquets load cleanly via sidecar fallback.
+- `src/custody/detection/quality.py` (commit `02958c7`): Scene quality screen per the sub-decision.  Dynamic-range metric (p99 − p50) instead of the provisional p99-alone threshold — empirical calibration across all 7 scenes showed Whitsun's dim-water characteristic defeats p99-alone; dynamic-range discriminates cleanly.  Thresholds: AOI-mode red < 15, yellow < 25, green ≥ 25; full-scene-mode red < 10, yellow < 12, green ≥ 12.
+- `src/custody/fusion/temporal.py` (commit `63fb4a8`): first downstream consumer of Scene.  `Matcher` Protocol + `DirectSpatialMatcher` + `temporal_persistence(scene_a, scene_b, *, matcher)`.  Reproduces Week 3 Tennent 07-02↔07-23 result (22 persistent / 22 emerged / 20 disappeared) via Scene pairs.
+
+Part D diagnostic (`day0/scratch/tennent_all_pairs_persistence.md`, uncommitted) ran all Tennent scene pairs through the migrated classifier.  Confirms: same-geometry pairs (07-02↔07-23) cluster matches well inside the 50 m gate; cross-geometry pairs (anything involving 08-07, 08-13) produce fewer matches with mean distance pushed toward the gate boundary.  Mean distance inflation is the signal of forced Hungarian couplings across genuine scatterer displacement.  This empirically confirms the need for a geometry-aware Matcher implementation (ADR-TBD) and validates that the Matcher Protocol extension point is the right architectural location for it.
+
+Deferred to future ADR-TBD work: per-scene covariance calibration methodology, geometry-aware matcher, Sentinel-1 Scene subtype.
+
 ## Status
 
-**Proposed** — pending review before moving to accepted.  Does not commit to any implementation; implementation begins after this ADR is accepted and a follow-up scoping conversation sets Week-4 or Week-5 deliverables.
+**Accepted** — implementation landed in commits `b25bf91`, `02958c7`, `63fb4a8` on 2026-04-21.
