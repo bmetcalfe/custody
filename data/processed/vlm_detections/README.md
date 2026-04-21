@@ -9,8 +9,9 @@ Vessel-detection Parquet outputs produced by `custody.detection.vlm_sar.detect_v
 | `position.parquet` | Tennent 2023-07-02 (2 km AOI crop) | 42 | `scripts/05_detect_vlm_tennent.py` |
 | `tennent_20230723_position.parquet` | Tennent 2023-07-23 (2 km AOI crop, same geometry as 07-02) | 44 | `scripts/07_detect_vlm_tennent_0723.py` |
 | `whitsun_20231206_position.parquet` | Whitsun 2023-12-06 (full scene) | 115 | `scripts/06_detect_vlm_whitsun.py` |
+| `tennent_temporal_comparison.parquet` | Tennent 07-02 ↔ 07-23 per-observation classification | 86 | `day0/scratch/tennent_temporal_comparison.py` |
 
-The two Tennent scenes are acquired 21 days apart over the same AOI for temporal change detection.  See the temporal-comparison section at the end of this document.
+The two Tennent scenes are acquired 21 days apart over the same AOI for temporal change detection.  The comparison parquet carries one row per observation (42 + 44 = 86) with a `category` label of `PERSISTENT_07-02`, `PERSISTENT_07-23`, `EMERGED`, or `DISAPPEARED`; see the persistence-classification section below.
 
 ## Schema
 
@@ -239,6 +240,70 @@ Limitation: "same location" is fuzzy at the tile scale.  Two vessels anchoring a
 
 ---
 
+## Temporal persistence classification (Tennent 07-02 ↔ 07-23)
+
+First temporal analysis exercising the custody architecture against real multi-timestamp SAR data.  Classifies each of the 86 combined observations (42 on 07-02 + 44 on 07-23) into one of four categories based on spatial matching across the 21-day interval.
+
+Output: `data/processed/vlm_detections/tennent_temporal_comparison.parquet` — one row per observation with fields `obs_id`, `scene` ("07-02" or "07-23"), `category`, `match_obs_id` (nullable), `match_distance_m` (nullable), `lat`, `lon`, `classification_conf`, `bbox_x1..y2`, `detector_reasoning`.  Driver: `day0/scratch/tennent_temporal_comparison.py`.
+
+### Methodology
+
+Direct spatial matching, **not the fusion tracker**.
+
+- **Distance**: pyproj.Geod WGS84 geodetic distance between each 07-02 observation's `(lat, lon)` and each 07-23 observation's `(lat, lon)`.
+- **Gate**: 50 m threshold — slightly larger than Claude Sonnet 4.6's observed VLM bbox centroid jitter on identical features (per Phase D.5 findings).
+- **Assignment**: `scipy.optimize.linear_sum_assignment` (Hungarian) on a cost matrix where `C[i, j]` is the geodetic distance if within the gate and a `_BIG_COST` sentinel otherwise.  Produces the global minimum-total-distance pairing subject to the 50 m constraint.  Observations left unmatched after assignment become `DISAPPEARED` (07-02 side) or `EMERGED` (07-23 side).
+
+### Why direct matching and not the tracker
+
+`src/custody/fusion/tracker.py` is built for continuous observation streams — the EKF predicts track state forward between observations using a velocity prior (ADR-0007) with a covariance that grows as `σ²_v · dt²`.  Over a 21-day `dt`, that prediction covariance is effectively scene-wide: the gate would admit nearly any match and the tracker would produce noise instead of signal.
+
+Direct matching at a fixed distance is the honest tool for two single-timestamp SAR scenes 21 days apart.  The tracker's continuous-regime design fits multi-scene streams where the observation cadence is close to the target's dynamics timescale; that isn't what we have here.  See ADR-0017 for the Week-3 design decision and the investigation that motivated it.
+
+### Aggregate counts
+
+| category | count | % of scene |
+|---|---:|---:|
+| PERSISTENT_07-02 (07-02 obs with 07-23 match ≤ 50 m) | 22 | 52.4% of 42 |
+| PERSISTENT_07-23 (reciprocal) | 22 | 50.0% of 44 |
+| EMERGED (07-23 only) | 22 | 50.0% of 44 |
+| DISAPPEARED (07-02 only) | 20 | 47.6% of 42 |
+
+Persistent pair count is balanced on both sides (22 = 22), as expected for a one-to-one assignment under a symmetric gate.
+
+### Match-distance distribution
+
+Across the 22 persistent pairs:
+
+- min: **6.6 m**
+- mean: **21.4 m**
+- max: **44.3 m**
+
+All well below the 50 m gate, which matters: it rules out the "the gate is too permissive and Hungarian is fishing for matches near the boundary" failure mode.  The mean of ~21 m is consistent with the VLM bbox centroid jitter Phase D.5 measured on identical features (different prompts on the same tile produced bbox centers shifted by a few pixels, which at 0.34 m/pixel corresponds to tens of meters in geographic coordinates).
+
+### Interpretive findings
+
+These are observations about the spatial patterns in the overlay image (`day0/scratch/tennent_temporal_comparison.png`), not ground-truth-validated classifications.
+
+1. **Persistent markers cluster on the reclamation structure centerline and southern platform.**  The spatial pattern is consistent with fixed reclamation infrastructure (cranes, containers, platform edges) producing repeatable SAR returns across both acquisitions.  Persistence at matched locations across 21 days is stronger evidence of fixed infrastructure than position alone.
+2. **Disappeared markers form localized clusters, not random scatter.**  The ~20 disappeared 07-02 observations concentrate in two zones: an east-side line along the pier and a northern-tip cluster.  If the disappeared category were pure VLM detection noise, we'd expect it to scatter randomly; the observed clustering suggests **localized changes in the structure itself** between scenes — plausibly active construction, equipment relocation, or transient objects (vessels, containers) that were at specific work areas on 07-02 and had moved by 07-23.
+3. **Emerged markers include clearly-new vessels.**  Two prominent features visible on 07-23 only are flagged emerged: the strong azimuth-smear starburst target east of the structure (already called out in the 07-23 run README as a probable moving vessel) and a lower-right cluster of bright point scatterers with azimuth-smear tails.  Classic moving-vessel SAR signatures, arriving during the 21-day interval.
+4. **Southern open-water persistent detections suggest long-duration anchored vessels.**  Several persistent pairs sit in open water south of the reef at positions that aren't near any visible structure.  Most consistent interpretation: moored or anchored vessels that remained at the same location across both scenes — common for work vessels supporting reef construction or support tenders.
+
+### Caveats
+
+1. **Two timestamps is the minimum for "persistence" to mean anything.**  With only two observations per spatial cell, we can distinguish "matched across 21 days" from "only in one scene," but not "vessel vs infrastructure."  A third scene would materially tighten the infrastructure-vs-long-moored-vessel distinction.
+2. **Persistence classification is subject to VLM detection variance.**  Mean match distance of ~21 m is on the order of Claude's bbox centroid jitter on identical features.  A target that is genuinely at the same position across both scenes can still appear at slightly different VLM-reported positions; the Hungarian match absorbs that noise up to 50 m.  Beyond that gate, a genuinely-persistent target with high bbox jitter could be misclassified as disappeared + emerged.  The mean distance staying well inside the gate (21 m vs 50 m) suggests this failure mode is rare in practice here.
+3. **The 50 m threshold is calibrated for VLM localization, not per-hull tracking.**  A per-hull-accurate threshold for moving-target SAR tracking would be tens of meters; we're not doing that.  A different detector output (YOLO, CFAR point centroids) would warrant a different threshold.
+4. **Interpretation as "construction activity" or "moored vessels" is hypothesis-level.**  The spatial patterns support those narratives, but nothing here is ground-truth validated — there's no AIS to cross-reference (see ADR-0017 findings) and no human annotation of the SAR imagery.
+5. **Greedy global assignment, not mutual-nearest-neighbor.**  Hungarian pairs A with its globally-best partner under the gate even if an asymmetric-mutual-nearest rule would have left A unmatched.  For pairs well below the gate the two approaches agree; near the gate boundary they can differ.
+
+### Future work: external validation via GFW
+
+The GFW `public-global-fixed-infrastructure:latest` dataset provides pre-computed fixed-vs-mobile classification from Sentinel-1 time-series analysis and would provide independent validation of which structure-interior detections represent fixed features.  The dataset is tier-locked on our current GFW API key (see `docs/investigations/ais_coverage_investigation.md`); upgrading the key via a research-partner application is a future track.  Not blocking — this temporal-persistence classifier is a useful signal on its own — but would materially strengthen the interpretive claims above if available.
+
+---
+
 ## Reproducibility
 
 ```bash
@@ -248,6 +313,8 @@ uv run python scripts/05_detect_vlm_tennent.py
 uv run python scripts/07_detect_vlm_tennent_0723.py
 # Whitsun (~2.5 hour wall time)
 uv run python scripts/06_detect_vlm_whitsun.py
+# Tennent temporal persistence comparison (reads both parquets above; no API calls)
+uv run python day0/scratch/tennent_temporal_comparison.py
 ```
 
 Both require `ANTHROPIC_API_KEY`.  Tennent ~$1/run, Whitsun ~$8/run.  Outputs overwrite the per-scene Parquet files above.
