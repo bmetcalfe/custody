@@ -23,6 +23,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 import numpy as np  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
+from custody.detection.quality import assess_scene_quality  # noqa: E402
 from custody.detection.sar_common import crop_to_aoi, read_geotiff  # noqa: E402
 from custody.detection.tiling import describe_aoi_bounds  # noqa: E402
 from custody.detection.vlm_backends import AnthropicBackend  # noqa: E402
@@ -136,6 +137,31 @@ def main() -> None:
     print(f"  estimated cost ${est['estimated_cost_usd']:.2f} in [${GATE_EST_COST[0]}, ${GATE_EST_COST[1]}]")
     print(f"  center ({center_lat:.4f}, {center_lon:.4f}) in "
           f"({GATE_CENTER_LAT[0]}-{GATE_CENTER_LAT[1]} N, {GATE_CENTER_LON[0]}-{GATE_CENTER_LON[1]} E)")
+
+    # ---- Scene quality screen (ADR-0018 sub-decision) ----
+    aoi_bounds = (
+        bounds["row_start"], bounds["row_end"],
+        bounds["col_start"], bounds["col_end"],
+    )
+    quality = assess_scene_quality(GEC_PATH, aoi_bounds=aoi_bounds)
+    print()
+    print("=== Scene quality screen ===")
+    print(f"  full-scene  p99={quality.full_scene_stats.p99:.1f}  "
+          f"dynamic_range={quality.full_scene_stats.dynamic_range:.1f}")
+    if quality.aoi_stats is not None:
+        print(f"  AOI         p99={quality.aoi_stats.p99:.1f}  "
+              f"dynamic_range={quality.aoi_stats.dynamic_range:.1f}")
+    print(f"  quality_flag: {quality.quality_flag.upper()}")
+    for reason in quality.flag_reasons:
+        print(f"    - {reason}")
+    if quality.quality_flag == "red":
+        if "--force" in sys.argv:
+            print("  NOTE: --force flag set; proceeding despite red quality flag.")
+        else:
+            print("\nAborting: scene quality flagged red.  Re-run with --force to proceed anyway.")
+            sys.exit(3)
+    elif quality.quality_flag == "yellow":
+        print("  WARNING: proceeding despite yellow flag.")
 
     # ---- Progress callback ----
     OUT_DIR.mkdir(parents=True, exist_ok=True)
