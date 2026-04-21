@@ -1,0 +1,74 @@
+{
+  "scene": "2023-07-02-14-00-55_UMBRA-05_GEC.tif",
+  "acquisition_time_utc": "2023-07-02T14:00:55.344368+00:00",
+  "target_latlon": [
+    8.855687162564129,
+    114.6651454417613
+  ],
+  "aoi_shape_px": [
+    5849,
+    5849
+  ],
+  "pixel_size_m": 0.34204988357833005,
+  "backend_model": "claude-sonnet-4-6",
+  "prompt_variant": "contextualized_v1",
+  "confidence_threshold": "medium",
+  "nms_iou_threshold": 0.5,
+  "tile_size": 640,
+  "tile_overlap": 64,
+  "tiles_total_estimate": 121,
+  "tiles_attempted": 121,
+  "tiles_errored": 0,
+  "errored_tile_origins": [],
+  "detections_pre_nms": 53,
+  "detections_post_nms_post_threshold": 42,
+  "total_tokens_in": 76899,
+  "total_tokens_out": 52629,
+  "estimated_cost_usd": 1.694,
+  "actual_cost_usd_from_tokens": 1.020132,
+  "wall_time_total_s": 1219.336133099976,
+  "wall_time_mean_per_tile_s": 10.065836230576739,
+  "top5_tiles_by_detection_count": [
+    {
+      "tile_index": 38,
+      "origin": [
+        1728,
+        2880
+      ],
+      "detection_count": 5
+    },
+    {
+      "tile_index": 39,
+      "origin": [
+        1728,
+        3456
+      ],
+      "detection_count": 5
+    },
+    {
+      "tile_index": 26,
+      "origin": [
+        1152,
+        2304
+      ],
+      "detection_count": 4
+    },
+    {
+      "tile_index": 27,
+      "origin": [
+        1152,
+        2880
+      ],
+      "detection_count": 4
+    },
+    {
+      "tile_index": 49,
+      "origin": [
+        2304,
+        2880
+      ],
+      "detection_count": 4
+    }
+  ],
+  "parquet_path": "data/processed/vlm_detections/position.parquet"
+}
