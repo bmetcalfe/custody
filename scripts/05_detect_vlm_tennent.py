@@ -161,13 +161,19 @@ def main() -> None:
           f"(post-NMS, post-threshold) in {det_wall:.1f}s")
 
     # ---- Parquet output ----
+    # Handles empty-observations case (index_observations doesn't create a
+    # file when the obs list is empty; .stat() would then crash).
     for stale in (OUT_DIR / "position.parquet", OUT_DIR / "posvel.parquet"):
         if stale.exists():
             stale.unlink()
     index_observations(observations, out_dir=OUT_DIR)
     pq_path = OUT_DIR / "position.parquet"
-    print(f"Wrote: {pq_path.relative_to(REPO_ROOT)} "
-          f"({pq_path.stat().st_size/1024:.1f} KB)")
+    if pq_path.exists():
+        print(f"Wrote: {pq_path.relative_to(REPO_ROOT)} "
+              f"({pq_path.stat().st_size/1024:.1f} KB)")
+    else:
+        print(f"Skipped parquet (0 observations).  Nothing to write at "
+              f"{pq_path.relative_to(REPO_ROOT)}.")
 
     # ---- Aggregate stats ----
     n_tiles_attempted = len(tile_records)

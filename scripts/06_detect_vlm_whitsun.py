@@ -215,6 +215,8 @@ def main() -> None:
           f"(post-NMS, post-threshold) in {det_wall:.1f}s")
 
     # ---- Parquet output — filename-distinct from Tennent per spec ----
+    # Handles empty-observations case (index_observations doesn't create a
+    # file when the obs list is empty; rename would then crash).
     pq_path = OUT_DIR / "whitsun_20231206_position.parquet"
     if pq_path.exists():
         pq_path.unlink()
@@ -226,7 +228,13 @@ def main() -> None:
         if stale.exists():
             stale.unlink()
     index_observations(observations, out_dir=tmp_dir)
-    (tmp_dir / "position.parquet").rename(pq_path)
+    tmp_pq = tmp_dir / "position.parquet"
+    if tmp_pq.exists():
+        tmp_pq.rename(pq_path)
+        print(f"Wrote: {pq_path.relative_to(REPO_ROOT)} ({pq_path.stat().st_size/1024:.1f} KB)")
+    else:
+        print(f"Skipped parquet (0 observations).  Nothing to write at "
+              f"{pq_path.relative_to(REPO_ROOT)}.")
     # Best-effort cleanup
     posvel = tmp_dir / "posvel.parquet"
     if posvel.exists():
@@ -235,7 +243,6 @@ def main() -> None:
         tmp_dir.rmdir()
     except OSError:
         pass
-    print(f"Wrote: {pq_path.relative_to(REPO_ROOT)} ({pq_path.stat().st_size/1024:.1f} KB)")
 
     # ---- Aggregate stats ----
     n_tiles_attempted = len(tile_records)

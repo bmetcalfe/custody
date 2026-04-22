@@ -199,6 +199,8 @@ def main() -> None:
           f"(post-NMS, post-threshold) in {det_wall:.1f}s")
 
     # ---- Parquet output — per-scene filename ----
+    # Handles empty-observations case (index_observations doesn't create a
+    # file when the obs list is empty; rename would then crash).
     if PARQUET_PATH.exists():
         PARQUET_PATH.unlink()
     tmp_dir = OUT_DIR / "_tmp_tennent_20230723"
@@ -207,7 +209,13 @@ def main() -> None:
         if stale.exists():
             stale.unlink()
     index_observations(observations, out_dir=tmp_dir)
-    (tmp_dir / "position.parquet").rename(PARQUET_PATH)
+    tmp_pq = tmp_dir / "position.parquet"
+    if tmp_pq.exists():
+        tmp_pq.rename(PARQUET_PATH)
+        print(f"Wrote: {PARQUET_PATH.relative_to(REPO_ROOT)} ({PARQUET_PATH.stat().st_size/1024:.1f} KB)")
+    else:
+        print(f"Skipped parquet (0 observations).  Nothing to write at "
+              f"{PARQUET_PATH.relative_to(REPO_ROOT)}.")
     posvel = tmp_dir / "posvel.parquet"
     if posvel.exists():
         posvel.unlink()
@@ -215,7 +223,6 @@ def main() -> None:
         tmp_dir.rmdir()
     except OSError:
         pass
-    print(f"Wrote: {PARQUET_PATH.relative_to(REPO_ROOT)} ({PARQUET_PATH.stat().st_size/1024:.1f} KB)")
 
     # ---- Aggregate stats ----
     n_tiles_attempted = len(tile_records)
