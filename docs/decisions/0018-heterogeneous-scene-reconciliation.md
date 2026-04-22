@@ -132,6 +132,61 @@ Accepted and implemented same day as drafted:
 - `src/custody/detection/quality.py` (commit `02958c7`): Scene quality screen per the sub-decision.  Dynamic-range metric (p99 − p50) instead of the provisional p99-alone threshold — empirical calibration across all 7 scenes showed Whitsun's dim-water characteristic defeats p99-alone; dynamic-range discriminates cleanly.  Thresholds: AOI-mode red < 15, yellow < 25, green ≥ 25; full-scene-mode red < 10, yellow < 12, green ≥ 12.
 - `src/custody/fusion/temporal.py` (commit `63fb4a8`): first downstream consumer of Scene.  `Matcher` Protocol + `DirectSpatialMatcher` + `temporal_persistence(scene_a, scene_b, *, matcher)`.  Reproduces Week 3 Tennent 07-02↔07-23 result (22 persistent / 22 emerged / 20 disappeared) via Scene pairs.
 
+### Calibration
+
+The initial sub-decision proposed `p99 < 75` on uint8 GEC amplitude
+as the low-SNR flag. Implementation measurement across all 7 scenes
+showed this rule fails on Whitsun: healthy Whitsun full-scene p99
+(60-61) is nearly identical to the 08-09 null's full-scene p99 (58).
+A p99-only threshold either false-flags healthy Whitsun or misses
+the confirmed 08-09 null.
+
+Dynamic range (p99 − p50) discriminates cleanly across the 7-scene
+dataset:
+
+| scene | DR | mode | flag |
+|---|---:|---|---|
+| tennent_20230702 | 80 | AOI | green |
+| tennent_20230723 | 69 | AOI | green |
+| tennent_20230807 | 35 | AOI | green (tightest Tennent margin) |
+| tennent_20230809 |  9 | AOI | **red** |
+| tennent_20230813 | 77 | AOI | green |
+| whitsun_20231206 | 12 | full-scene | green (zero-slack boundary) |
+| whitsun_20240320 | 12 | full-scene | green (zero-slack boundary) |
+
+Final thresholds:
+
+- AOI mode: red < 15, yellow < 25, green ≥ 25
+- Full-scene mode: red < 10, yellow < 12, green ≥ 12
+
+Two calibration anchors worth naming explicitly because each drives
+a threshold choice:
+
+1. **Tennent 08-07 at AOI DR=35** is the floor of the healthy Tennent
+   AOI distribution (other scenes sit at DR=69-80). It was collected
+   under the coarsest pixel size in the Tennent set (UMBRA-04, 0.52
+   m/px), which aligns with its compressed dynamic range. The AOI
+   yellow threshold of 25 leaves 08-07 with 10 points of margin.
+2. **Whitsun at full-scene DR=12 exactly** for both scenes is
+   zero-slack against the strict-less-than-12 yellow threshold. The
+   thresholds are fit to the two observed Whitsun scenes; a future
+   Whitsun-like scene measuring DR=11 would trip yellow. This is
+   deliberate, not accidental — the calibration is tuned to the
+   present dataset and assumes future Whitsun-like captures will
+   cluster near the observed values.
+
+The AOI-vs-full-scene threshold asymmetry reflects a distribution
+difference, not a threshold inconsistency: AOI crops concentrate the
+bright-scatterer population into a smaller frame, producing
+systematically higher DR than full-scene mode over the same
+underlying scene. The same physical signal quality produces different
+DR values at different crop extents.
+
+Full per-scene stats (mean / std / p50 / p90 / p99 / DR, full-scene
+and AOI) and the interpretation behind each anchor are preserved in
+`docs/calibration/scene_quality_7scene_20260421.md`. Re-run via
+`day0/scratch/quality_calibration_run.py`.
+
 Part D diagnostic (`day0/scratch/tennent_all_pairs_persistence.md`, uncommitted) ran all Tennent scene pairs through the migrated classifier.  Confirms: same-geometry pairs (07-02↔07-23) cluster matches well inside the 50 m gate; cross-geometry pairs (anything involving 08-07, 08-13) produce fewer matches with mean distance pushed toward the gate boundary.  Mean distance inflation is the signal of forced Hungarian couplings across genuine scatterer displacement.  This empirically confirms the need for a geometry-aware Matcher implementation (ADR-TBD) and validates that the Matcher Protocol extension point is the right architectural location for it.
 
 Deferred to future ADR-TBD work: per-scene covariance calibration methodology, geometry-aware matcher, Sentinel-1 Scene subtype.
