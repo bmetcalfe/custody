@@ -1,18 +1,26 @@
-"""Ground-truth preparation — build the hand-labeling sheet.
+"""Ground-truth preparation — build the hand-labeling sheet for a scene pair.
 
-Enumerate all observation pairs on the Tennent 07-02 <-> 07-23 pair whose
-tangent-plane distance is within 50 m, extract a same-size SAR chip crop for
-each observation (AOI-local crop, centered on the detector's bbox centroid),
-and write:
+Enumerate all observation pairs on the chosen scene pair whose tangent-plane
+distance is within 50 m, extract a same-size SAR chip crop for each
+observation (AOI-local crop centered on the detector's bbox centroid for
+AOI-processed scenes; full-scene bbox centroid for full-scene-processed
+scenes), and write:
 
-  * tests/fixtures/ground_truth/tennent_0702_0723.md       — human reading view
-  * tests/fixtures/ground_truth/tennent_0702_0723.csv      — programmatic reimport
-  * tests/fixtures/ground_truth/chips/tennent_0702_0723/pair_NN_a.png
-  * tests/fixtures/ground_truth/chips/tennent_0702_0723/pair_NN_b.png
+  * tests/fixtures/ground_truth/{case_study}_{mmdd_a}_{mmdd_b}.md    — reading view
+  * tests/fixtures/ground_truth/{case_study}_{mmdd_a}_{mmdd_b}.csv   — reimport CSV
+  * tests/fixtures/ground_truth/chips/{case_study}_{mmdd_a}_{mmdd_b}/pair_NN_{a,b}.png
 
 Every row includes the DirectSpatialMatcher and SignatureMatcher(V1) verdicts
 for that exact (obs_a_id, obs_b_id), plus a ``Human label:`` line in the MD
 the user fills in manually (``same`` / ``different`` / ``ambiguous``).
+
+Usage
+-----
+
+  uv run python scripts/ground_truth_prepare.py <scene_a> <scene_b>
+
+where ``<scene_a>`` and ``<scene_b>`` are keys into the ``SCENES`` dict below,
+in chronological order (the earlier scene is A, the later scene is B).
 
 Idempotent re-run
 -----------------
@@ -21,8 +29,9 @@ If the output MD already exists, ``parse_existing_labels`` reads each pair's
 existing ``Human label`` value and ``merge_labels`` splices those values back
 into the freshly-generated MD.  Pairs that exist in the regenerated MD but
 not in the old one get blank labels (new pairs since last run).  This keeps
-the script safe to re-run after the file has been promoted to a labeled
-ground-truth artifact.
+the script safe to re-run after a sheet has been promoted to a labeled
+ground-truth artifact.  Any leading HTML comment block (provenance header)
+also survives regeneration.
 
 Chip sizing
 -----------
@@ -35,6 +44,7 @@ the same chip size to both observations in a pair for visual comparability.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import re
@@ -59,37 +69,67 @@ from custody.fusion.temporal import (  # noqa: E402
 )
 
 
-SCENE_A_PARQUET = REPO_ROOT / "data/processed/vlm_detections/position.parquet"
-SCENE_B_PARQUET = REPO_ROOT / "data/processed/vlm_detections/tennent_20230723_position.parquet"
+# ---------------------------------------------------------------------------
+# Canonical scene registry
+# ---------------------------------------------------------------------------
+#
+# Scene keys follow the {case_study}_{YYYYMMDD} convention used across the
+# repo (see day0/scratch/quality_calibration_run.py).  Each entry points at:
+#   * parquet — VLM-detection output consumed via load_scene_from_parquet
+#   * tif     — raw SAR scene from which chip crops are read
+#   * sidecar — detection-run summary JSON (provides target_latlon when
+#               detection was AOI-cropped; None when detection was full-scene)
+#
+# Tennent 2023-08-09 is deliberately excluded — the scene is red-flagged by
+# the quality screen and no VLM-detections parquet is committed for it.
 
-SCENE_A_TIF = (
-    REPO_ROOT
-    / "data/raw/umbra/sar-data/tasks/ship_detection_testdata"
-    / "f0730a1d-2bf7-4193-b2fe-ec8bfb2e1aef/2023-07-02-14-00-55_UMBRA-05"
-    / "2023-07-02-14-00-55_UMBRA-05_GEC.tif"
-)
-SCENE_B_TIF = (
-    REPO_ROOT
-    / "data/raw/umbra/sar-data/tasks/ship_detection_testdata"
-    / "a9fceda5-7fa5-4849-b76b-dd6d7a50dae9/2023-07-23-14-02-49_UMBRA-05"
-    / "2023-07-23-14-02-49_UMBRA-05_GEC.tif"
-)
+VLM_OUT = REPO_ROOT / "data/processed/vlm_detections"
+RAW_TASKS = REPO_ROOT / "data/raw/umbra/sar-data/tasks/ship_detection_testdata"
+SCRATCH = REPO_ROOT / "day0/scratch"
 
-AOI_HALF_KM = 1.0          # same as detection runs
+SCENES: dict[str, dict[str, Path]] = {
+    "tennent_20230702": {
+        # Legacy filename for the first Tennent parquet — predates the
+        # {scene}_position.parquet convention.
+        "parquet": VLM_OUT / "position.parquet",
+        "tif": RAW_TASKS / "f0730a1d-2bf7-4193-b2fe-ec8bfb2e1aef/2023-07-02-14-00-55_UMBRA-05/2023-07-02-14-00-55_UMBRA-05_GEC.tif",
+        "sidecar": SCRATCH / "tennent_20230702_vlm_summary.json",
+    },
+    "tennent_20230723": {
+        "parquet": VLM_OUT / "tennent_20230723_position.parquet",
+        "tif": RAW_TASKS / "a9fceda5-7fa5-4849-b76b-dd6d7a50dae9/2023-07-23-14-02-49_UMBRA-05/2023-07-23-14-02-49_UMBRA-05_GEC.tif",
+        "sidecar": SCRATCH / "tennent_20230723_vlm_summary.json",
+    },
+    "tennent_20230807": {
+        "parquet": VLM_OUT / "tennent_20230807_position.parquet",
+        "tif": RAW_TASKS / "00dee081-76ee-413a-8af2-e6be1c6ab8d0/2023-08-07-13-53-00_UMBRA-04/2023-08-07-13-53-00_UMBRA-04_GEC.tif",
+        "sidecar": SCRATCH / "tennent_20230807_vlm_summary.json",
+    },
+    "tennent_20230813": {
+        "parquet": VLM_OUT / "tennent_20230813_position.parquet",
+        "tif": RAW_TASKS / "645d903f-ced5-40d9-94ed-6e4e91977c97/2023-08-13-15-00-09_UMBRA-06/2023-08-13-15-00-09_UMBRA-06_GEC.tif",
+        "sidecar": SCRATCH / "tennent_20230813_vlm_summary.json",
+    },
+    "whitsun_20231206": {
+        "parquet": VLM_OUT / "whitsun_20231206_position.parquet",
+        "tif": RAW_TASKS / "1e1f051d-4c81-4640-997d-1a03e967ad6a/2023-12-06-02-06-24_UMBRA-04/2023-12-06-02-06-24_UMBRA-04_GEC.tif",
+        "sidecar": SCRATCH / "whitsun_20231206_vlm_summary.json",
+    },
+    "whitsun_20240320": {
+        "parquet": VLM_OUT / "whitsun_20240320_position.parquet",
+        "tif": RAW_TASKS / "92c2b446-415c-4d26-88bc-70fdb652e852/2024-03-20-02-09-55_UMBRA-05/2024-03-20-02-09-55_UMBRA-05_GEC.tif",
+        "sidecar": SCRATCH / "whitsun_20240320_vlm_summary.json",
+    },
+}
+
+
+AOI_HALF_KM = 1.0          # same as detection runs for AOI-cropped scenes
 GATE_M = 50.0
 SIG_GATE = 0.8
 CHIP_MIN = 128
 CHIP_MAX = 384
 
 GROUND_TRUTH_DIR = REPO_ROOT / "tests/fixtures/ground_truth"
-SHEET_MD = GROUND_TRUTH_DIR / "tennent_0702_0723.md"
-SHEET_CSV = GROUND_TRUTH_DIR / "tennent_0702_0723.csv"
-CHIP_SUBDIR = "chips/tennent_0702_0723"   # MD-relative path
-CHIP_DIR = GROUND_TRUTH_DIR / CHIP_SUBDIR
-
-# Sidecars stay in scratch — they're VLM-detection-run artifacts, not ground truth.
-SIDECAR_A = REPO_ROOT / "day0/scratch/tennent_20230702_vlm_summary.json"
-SIDECAR_B = REPO_ROOT / "day0/scratch/tennent_20230723_vlm_summary.json"
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +219,6 @@ def merge_labels(new_md: str, old_labels: dict[str, str]) -> tuple[str, int, int
         pair_id = hm.group(1)
         sect_start = hm.start()
         sect_end = headers[idx + 1].start() if idx + 1 < len(headers) else len(new_md)
-        # Append everything up to the section start unchanged.
         pieces.append(new_md[cursor:sect_start])
         section = new_md[sect_start:sect_end]
         section = _LABEL_LINE_RE.sub(lambda m: _replace(m, pair_id), section, count=1)
@@ -187,6 +226,42 @@ def merge_labels(new_md: str, old_labels: dict[str, str]) -> tuple[str, int, int
         cursor = sect_end
     pieces.append(new_md[cursor:])
     return "".join(pieces), n_preserved, n_blank
+
+
+# ---------------------------------------------------------------------------
+# Scene-name / pair-name helpers
+# ---------------------------------------------------------------------------
+
+
+def parse_scene_name(scene_name: str) -> tuple[str, str, str]:
+    """Split ``{case_study}_{YYYYMMDD}`` into ``(case_study, yyyymmdd, mmdd)``."""
+    parts = scene_name.split("_")
+    if len(parts) != 2 or len(parts[1]) != 8 or not parts[1].isdigit():
+        raise ValueError(
+            f"scene name {scene_name!r} does not match "
+            "'{case_study}_{YYYYMMDD}' convention"
+        )
+    case_study, yyyymmdd = parts
+    return case_study, yyyymmdd, yyyymmdd[4:]   # MMDD
+
+
+def pair_stem(scene_a: str, scene_b: str) -> str:
+    """Return ``{case_study}_{mmdd_a}_{mmdd_b}`` for a chronological scene pair.
+
+    Both scenes must share a case_study.  MMDD is kept (rather than
+    YYYYMMDD) for backward-compatibility with the existing
+    ``tennent_0702_0723`` sheet; collision risk is theoretical (same month-
+    day across different years would clash) and worth revisiting if a future
+    pair provokes it.
+    """
+    case_a, _, mmdd_a = parse_scene_name(scene_a)
+    case_b, _, mmdd_b = parse_scene_name(scene_b)
+    if case_a != case_b:
+        raise ValueError(
+            f"scene case studies differ ({case_a!r} vs {case_b!r}); "
+            "cross-case-study pairs are not supported"
+        )
+    return f"{case_a}_{mmdd_a}_{mmdd_b}"
 
 
 # ---------------------------------------------------------------------------
@@ -220,16 +295,40 @@ class PairRow:
     chip_rel_b: str
 
 
-def _load_aoi_crop(tif_path: Path, sidecar_json: Path) -> tuple[np.ndarray, dict]:
+def _load_scene_image(tif_path: Path, sidecar_json: Path) -> tuple[np.ndarray, dict]:
+    """Load the scene raster, cropping to the same AOI as detection when
+    applicable.
+
+    If the sidecar's ``target_latlon`` is set, the detection run was AOI-
+    cropped and the bbox_px on every observation is in that AOI-local pixel
+    frame — so we re-crop with the same parameters.  If ``target_latlon`` is
+    None (e.g., Whitsun full-scene runs), we return the full raster and a
+    minimal bounds dict; the observation's bbox_px is already in full-scene
+    coordinates and aligns directly with that raster.
+    """
     with sidecar_json.open() as f:
         meta = json.load(f)
-    target_lat, target_lon = meta["target_latlon"]
+    target_latlon = meta.get("target_latlon")
+
     img, transform, crs_wkt = read_geotiff(tif_path)
+    if target_latlon is None:
+        bounds = {
+            "mode": "full_scene",
+            "row_start": 0,
+            "row_end": img.shape[0],
+            "col_start": 0,
+            "col_end": img.shape[1],
+            "pixel_size_m": float(abs(transform.a)) or 0.0,
+        }
+        return img, bounds
+
+    target_lat, target_lon = target_latlon
     cropped, _aoi_transform, bounds = crop_to_aoi(
         img, transform, target_lat, target_lon, crs_wkt,
         box_half_km=AOI_HALF_KM,
     )
     del img
+    bounds["mode"] = "aoi"
     return cropped, bounds
 
 
@@ -310,12 +409,25 @@ def _extract_chip(
 # ---------------------------------------------------------------------------
 
 
-def _build_md(rows: list[PairRow], n_direct: int, n_sig: int) -> str:
+def _build_md(
+    rows: list[PairRow],
+    n_direct: int,
+    n_sig: int,
+    *,
+    scene_a_name: str,
+    scene_b_name: str,
+    pair_stem_str: str,
+) -> str:
+    _, date_a_full, _ = parse_scene_name(scene_a_name)
+    _, date_b_full, _ = parse_scene_name(scene_b_name)
+    iso_a = f"{date_a_full[:4]}-{date_a_full[4:6]}-{date_a_full[6:]}"
+    iso_b = f"{date_b_full[:4]}-{date_b_full[4:6]}-{date_b_full[6:]}"
+
     lines: list[str] = []
     lines.append("# SignatureMatcher V1 — hand-labeling sheet")
     lines.append("")
     lines.append(
-        "Ground-truth harness for the Tennent 2023-07-02 <-> 2023-07-23 "
+        f"Ground-truth harness for the {scene_a_name} <-> {scene_b_name} "
         f"scene pair, gate {GATE_M:.0f} m.  Each row is one candidate pair "
         "whose tangent-plane spatial distance is within the gate.  The "
         "`direct_accept` / `signature_accept` columns are the matcher verdicts "
@@ -339,8 +451,8 @@ def _build_md(rows: list[PairRow], n_direct: int, n_sig: int) -> str:
     )
     lines.append("")
     lines.append(
-        "Provenance: generated by `scripts/ground_truth_prepare.py`.  "
-        "Companion CSV: `tests/fixtures/ground_truth/tennent_0702_0723.csv`."
+        f"Provenance: generated by `scripts/ground_truth_prepare.py {scene_a_name} {scene_b_name}`.  "
+        f"Companion CSV: `tests/fixtures/ground_truth/{pair_stem_str}.csv`."
     )
     lines.append("")
     lines.append("---")
@@ -354,24 +466,24 @@ def _build_md(rows: list[PairRow], n_direct: int, n_sig: int) -> str:
         )
         lines.append("")
         lines.append(f"- **Direct:** {direct_tick}   |   **Signature (V1):** {sig_tick}")
-        lines.append(f"- **07-02 obs:** `{r.obs_a_id}`")
-        lines.append(f"- **07-23 obs:** `{r.obs_b_id}`")
-        lines.append(f"- **07-02 lat/lon:** ({r.lat_a:.6f}, {r.lon_a:.6f})")
-        lines.append(f"- **07-23 lat/lon:** ({r.lat_b:.6f}, {r.lon_b:.6f})")
+        lines.append(f"- **{iso_a} obs:** `{r.obs_a_id}`")
+        lines.append(f"- **{iso_b} obs:** `{r.obs_b_id}`")
+        lines.append(f"- **{iso_a} lat/lon:** ({r.lat_a:.6f}, {r.lon_a:.6f})")
+        lines.append(f"- **{iso_b} lat/lon:** ({r.lat_b:.6f}, {r.lon_b:.6f})")
         lines.append(f"- **Bbox A (w x h):** {r.wh_a[0]} x {r.wh_a[1]} px,  conf={r.conf_a}")
         lines.append(f"- **Bbox B (w x h):** {r.wh_b[0]} x {r.wh_b[1]} px,  conf={r.conf_b}")
         lines.append(f"- **Chip size:** {r.chip_px} x {r.chip_px} px")
         lines.append("")
         lines.append(
-            f"| 07-02 | 07-23 |\n|---|---|\n"
+            f"| {iso_a} | {iso_b} |\n|---|---|\n"
             f"| ![{r.pair_id} A]({r.chip_rel_a}) | ![{r.pair_id} B]({r.chip_rel_b}) |"
         )
         lines.append("")
-        lines.append("**detector_reasoning — 07-02**")
+        lines.append(f"**detector_reasoning — {iso_a}**")
         lines.append("")
         lines.append("> " + (r.reasoning_a or "(none)").replace("\n", "\n> "))
         lines.append("")
-        lines.append("**detector_reasoning — 07-23**")
+        lines.append(f"**detector_reasoning — {iso_b}**")
         lines.append("")
         lines.append("> " + (r.reasoning_b or "(none)").replace("\n", "\n> "))
         lines.append("")
@@ -390,11 +502,41 @@ def _build_md(rows: list[PairRow], n_direct: int, n_sig: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    sa = load_scene_from_parquet(SCENE_A_PARQUET, case_study="tennent")
-    sb = load_scene_from_parquet(SCENE_B_PARQUET, case_study="tennent")
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Build a hand-labeling sheet for a pair of canonical SAR scenes.",
+    )
+    p.add_argument("scene_a", choices=sorted(SCENES), help="Earlier scene (A).")
+    p.add_argument("scene_b", choices=sorted(SCENES), help="Later scene (B).")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
+    scene_a_name, scene_b_name = args.scene_a, args.scene_b
+    if scene_a_name == scene_b_name:
+        raise SystemExit("scene_a and scene_b must be different scenes")
+
+    stem = pair_stem(scene_a_name, scene_b_name)
+    sheet_md = GROUND_TRUTH_DIR / f"{stem}.md"
+    sheet_csv = GROUND_TRUTH_DIR / f"{stem}.csv"
+    chip_subdir = f"chips/{stem}"   # MD-relative path
+    chip_dir = GROUND_TRUTH_DIR / chip_subdir
+
+    cfg_a = SCENES[scene_a_name]
+    cfg_b = SCENES[scene_b_name]
+    case_study, _, _ = parse_scene_name(scene_a_name)
+
+    sa = load_scene_from_parquet(cfg_a["parquet"], case_study=case_study)
+    sb = load_scene_from_parquet(cfg_b["parquet"], case_study=case_study)
     print(f"Scene A: {sa.scene_id}  (|obs|={len(sa.observations)}, px={sa.pixel_size_m:.3f})")
     print(f"Scene B: {sb.scene_id}  (|obs|={len(sb.observations)}, px={sb.pixel_size_m:.3f})")
+
+    if sa.acquisition_time >= sb.acquisition_time:
+        raise SystemExit(
+            f"scene_a ({scene_a_name}) must be chronologically earlier than "
+            f"scene_b ({scene_b_name}); swap the args"
+        )
 
     obs_a = sa.observations
     obs_b = sb.observations
@@ -423,15 +565,17 @@ def main() -> None:
     print(f"  DirectSpatialMatcher accepts: {len(direct_pairs)}")
     print(f"  SignatureMatcher accepts:     {len(sig_pairs)}")
 
-    print("\nLoading scene A AOI crop...")
-    cropped_a, bounds_a = _load_aoi_crop(SCENE_A_TIF, SIDECAR_A)
-    print(f"  shape={cropped_a.shape}  dtype={cropped_a.dtype}  px={bounds_a['pixel_size_m']:.3f}")
+    print("\nLoading scene A raster...")
+    cropped_a, bounds_a = _load_scene_image(cfg_a["tif"], cfg_a["sidecar"])
+    print(f"  shape={cropped_a.shape}  dtype={cropped_a.dtype}  "
+          f"mode={bounds_a['mode']}  px={bounds_a['pixel_size_m']:.3f}")
 
-    print("Loading scene B AOI crop...")
-    cropped_b, bounds_b = _load_aoi_crop(SCENE_B_TIF, SIDECAR_B)
-    print(f"  shape={cropped_b.shape}  dtype={cropped_b.dtype}  px={bounds_b['pixel_size_m']:.3f}")
+    print("Loading scene B raster...")
+    cropped_b, bounds_b = _load_scene_image(cfg_b["tif"], cfg_b["sidecar"])
+    print(f"  shape={cropped_b.shape}  dtype={cropped_b.dtype}  "
+          f"mode={bounds_b['mode']}  px={bounds_b['pixel_size_m']:.3f}")
 
-    CHIP_DIR.mkdir(parents=True, exist_ok=True)
+    chip_dir.mkdir(parents=True, exist_ok=True)
     rows: list[PairRow] = []
     for idx, (i, j, d_m) in enumerate(pairs_sorted, start=1):
         a = obs_a[i]
@@ -450,8 +594,8 @@ def main() -> None:
         chip_px = _chip_size_for_pair(bbox_a, bbox_b)
 
         pair_id = f"pair_{idx:02d}"
-        chip_path_a = CHIP_DIR / f"{pair_id}_a.png"
-        chip_path_b = CHIP_DIR / f"{pair_id}_b.png"
+        chip_path_a = chip_dir / f"{pair_id}_a.png"
+        chip_path_b = chip_dir / f"{pair_id}_b.png"
         _extract_chip(cropped_a, bbox_a, chip_px, chip_path_a)
         _extract_chip(cropped_b, bbox_b, chip_px, chip_path_b)
 
@@ -472,13 +616,13 @@ def main() -> None:
             chip_px=chip_px,
             reasoning_a=a.detector_reasoning or "",
             reasoning_b=b.detector_reasoning or "",
-            chip_rel_a=f"{CHIP_SUBDIR}/{pair_id}_a.png",
-            chip_rel_b=f"{CHIP_SUBDIR}/{pair_id}_b.png",
+            chip_rel_a=f"{chip_subdir}/{pair_id}_a.png",
+            chip_rel_b=f"{chip_subdir}/{pair_id}_b.png",
         ))
 
     # CSV (no labels — labels live in the MD only).
-    SHEET_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with SHEET_CSV.open("w", newline="", encoding="utf-8") as f:
+    sheet_csv.parent.mkdir(parents=True, exist_ok=True)
+    with sheet_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow([
             "pair_id",
@@ -511,17 +655,20 @@ def main() -> None:
 
     n_direct = sum(1 for r in rows if r.direct_accept)
     n_sig = sum(1 for r in rows if r.signature_accept)
-    new_md = _build_md(rows, n_direct, n_sig)
+    new_md = _build_md(
+        rows, n_direct, n_sig,
+        scene_a_name=scene_a_name, scene_b_name=scene_b_name,
+        pair_stem_str=stem,
+    )
 
-    # Preserve any leading HTML comment header (provenance) and existing labels.
-    header = parse_existing_header(SHEET_MD)
-    existing = parse_existing_labels(SHEET_MD)
+    header = parse_existing_header(sheet_md)
+    existing = parse_existing_labels(sheet_md)
     merged_md, n_preserved, n_blank = merge_labels(new_md, existing)
-    SHEET_MD.write_text(header + merged_md, encoding="utf-8")
+    sheet_md.write_text(header + merged_md, encoding="utf-8")
 
-    print(f"\nWrote {SHEET_MD.relative_to(REPO_ROOT)} ({SHEET_MD.stat().st_size/1024:.1f} KB)")
-    print(f"Wrote {SHEET_CSV.relative_to(REPO_ROOT)} ({SHEET_CSV.stat().st_size/1024:.1f} KB)")
-    print(f"Wrote {len(rows)*2} chip PNGs to {CHIP_DIR.relative_to(REPO_ROOT)}")
+    print(f"\nWrote {sheet_md.relative_to(REPO_ROOT)} ({sheet_md.stat().st_size/1024:.1f} KB)")
+    print(f"Wrote {sheet_csv.relative_to(REPO_ROOT)} ({sheet_csv.stat().st_size/1024:.1f} KB)")
+    print(f"Wrote {len(rows)*2} chip PNGs to {chip_dir.relative_to(REPO_ROOT)}")
     print(f"Preserved {n_preserved} existing labels; {n_blank} pairs left blank.")
 
 

@@ -1,13 +1,19 @@
 """Ground-truth evaluation — score matcher verdicts against human labels.
 
-Reads labels directly from
-``tests/fixtures/ground_truth/tennent_0702_0723.md`` (the human working
-document — chips + reasoning + labels live in one place) and joins them to
-the matcher verdicts in
-``tests/fixtures/ground_truth/tennent_0702_0723.csv`` by ``pair_id``.
-Prints a per-matcher confusion matrix plus precision / recall / F1.
-Ambiguous rows are reported separately and excluded from the scored
-denominators.
+Reads labels from ``tests/fixtures/ground_truth/{pair_stem}.md`` (the human
+working document — chips + reasoning + labels live in one place) and joins
+them to the matcher verdicts in ``tests/fixtures/ground_truth/{pair_stem}.csv``
+by ``pair_id``.  Prints a per-matcher confusion matrix plus precision /
+recall / F1.  Ambiguous rows are reported separately and excluded from the
+scored denominators.
+
+Usage
+-----
+
+  uv run python scripts/ground_truth_evaluate.py <scene_a> <scene_b>
+
+where ``<scene_a>`` and ``<scene_b>`` are the same canonical scene names
+used by ``scripts/ground_truth_prepare.py`` (chronological order).
 
 Label format in the MD
 ----------------------
@@ -27,7 +33,8 @@ Conventions
 -----------
 
 * Human label ``same`` is treated as **ground-truth positive** — the two
-  observations refer to the same physical feature across the 21-day gap.
+  observations refer to the same physical feature across the acquisition
+  gap.
 * Human label ``different`` is treated as **ground-truth negative**.
 * Human label ``ambiguous`` is excluded from scoring (counted separately so
   the user can see how many pairs were too hard to call).
@@ -57,6 +64,7 @@ modify the CSV.  It is safe to run as often as the user iterates on labels.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 import sys
@@ -64,8 +72,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHEET_CSV = REPO_ROOT / "tests/fixtures/ground_truth/tennent_0702_0723.csv"
-SHEET_MD = REPO_ROOT / "tests/fixtures/ground_truth/tennent_0702_0723.md"
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from ground_truth_prepare import SCENES, pair_stem  # noqa: E402
+
+
+GROUND_TRUTH_DIR = REPO_ROOT / "tests/fixtures/ground_truth"
 
 VALID_LABELS = {"same", "different", "ambiguous"}
 
@@ -84,9 +96,6 @@ def _parse_labels_from_md(md_path: Path) -> dict[str, str]:
     """
     text = md_path.read_text(encoding="utf-8")
     out: dict[str, str] = {}
-    # Split on section headers; each chunk except the first starts with the
-    # header's newline-stripped body.  Simpler: find all headers with their
-    # offsets and slice between them.
     headers = list(_PAIR_HEADER_RE.finditer(text))
     for idx, m in enumerate(headers):
         pair_id = m.group(1)
@@ -129,17 +138,34 @@ def _summarize_matcher(name: str, counts: dict[str, int]) -> None:
     print(f"    positives in scored set: {n_pos}   negatives: {n_neg}")
 
 
-def main() -> None:
-    for p, name in ((SHEET_CSV, "CSV"), (SHEET_MD, "MD")):
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Score matcher verdicts against hand-labeled ground truth.",
+    )
+    p.add_argument("scene_a", choices=sorted(SCENES), help="Earlier scene (A).")
+    p.add_argument("scene_b", choices=sorted(SCENES), help="Later scene (B).")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
+    stem = pair_stem(args.scene_a, args.scene_b)
+    sheet_csv = GROUND_TRUTH_DIR / f"{stem}.csv"
+    sheet_md = GROUND_TRUTH_DIR / f"{stem}.md"
+
+    for p, name in ((sheet_csv, "CSV"), (sheet_md, "MD")):
         if not p.exists():
-            print(f"ERROR: {p} does not exist.  Run scripts/ground_truth_prepare.py first.")
+            print(
+                f"ERROR: {p} does not exist.  Run "
+                f"`scripts/ground_truth_prepare.py {args.scene_a} {args.scene_b}` first."
+            )
             sys.exit(1)
 
-    with SHEET_CSV.open(encoding="utf-8") as f:
+    with sheet_csv.open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
-    labels = _parse_labels_from_md(SHEET_MD)
+    labels = _parse_labels_from_md(sheet_md)
 
     # Join MD labels into the CSV rows by pair_id; CSV's own human_label column
     # is intentionally ignored.
@@ -157,8 +183,8 @@ def main() -> None:
     invalid = [r for r in rows if r["_label"] and r["_label"] not in VALID_LABELS]
     scored = [r for r in rows if r["_label"] in {"same", "different"}]
 
-    print(f"CSV:   {SHEET_CSV}")
-    print(f"MD:    {SHEET_MD}  (label source)")
+    print(f"CSV:   {sheet_csv}")
+    print(f"MD:    {sheet_md}  (label source)")
     print(f"  total rows:       {n_total}")
     print(f"  unfilled rows:    {len(unfilled)}")
     print(f"  ambiguous rows:   {len(ambiguous)}")
