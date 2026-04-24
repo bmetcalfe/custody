@@ -39,6 +39,8 @@ from custody.hypotheses import (
     rank_collection_candidates,
     update_state,
 )
+import json as _json
+
 from custody.hypotheses.decision_packet import (
     DecisionPacket,
     build_decision_packet,
@@ -46,6 +48,14 @@ from custody.hypotheses.decision_packet import (
     format_as_markdown,
     format_as_text,
     format_many_as_json,
+    packet_to_json_object,
+)
+from custody.hypotheses.mission_value import (
+    MissionValueReport,
+    attribute_mission_value,
+    format_mission_value_markdown,
+    format_mission_value_text,
+    mission_value_to_json_object,
 )
 from custody.hypotheses.scenarios import (
     AisCoverage,
@@ -264,7 +274,13 @@ def _build_whitsun_state() -> HypothesisState:
     return state
 
 
-def _packet_for_scenario(scenario_id: str) -> DecisionPacket:
+def _compute_scenario(scenario_id: str):
+    """Build the packet + the upstream health/recommendation.
+
+    Returns ``(packet, health, recommendation)``.  Upstream objects are
+    retained so ``--mission-value`` can call
+    :func:`attribute_mission_value` without rebuilding state.
+    """
     if scenario_id == SCENARIO_TENNENT:
         state = _build_tennent_state()
     elif scenario_id == SCENARIO_WHITSUN:
@@ -276,12 +292,13 @@ def _packet_for_scenario(scenario_id: str) -> DecisionPacket:
     # the packet deterministic.
     health = assess_custody_health(state)
     recommendation = rank_collection_candidates(state, health)
-    return build_decision_packet(
+    packet = build_decision_packet(
         scenario_id=scenario_id,
         state=state,
         health=health,
         recommendation=recommendation,
     )
+    return packet, health, recommendation
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +323,15 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         choices=("text", "json", "md"),
         default="text",
     )
+    parser.add_argument(
+        "--mission-value",
+        action="store_true",
+        dest="mission_value",
+        help=(
+            "Append a mission-value attribution proxy (not revenue, not a "
+            "financial model) to each scenario's output."
+        ),
+    )
     args = parser.parse_args(argv)
 
     sink = out if out is not None else sys.stdout
@@ -316,24 +342,42 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         else (SCENARIO_TENNENT, SCENARIO_WHITSUN)
     )
 
-    packets = tuple(_packet_for_scenario(s) for s in scenarios)
+    computed = tuple(_compute_scenario(s) for s in scenarios)
+    packets = tuple(c[0] for c in computed)
+    mission_reports: tuple[MissionValueReport | None, ...] = tuple(
+        attribute_mission_value(rec, health) if args.mission_value else None
+        for (_p, health, rec) in computed
+    )
 
     if args.format == "json":
         # --scenario both is a JSON array of packets (single valid document).
-        if len(packets) == 1:
-            sink.write(format_as_json(packets[0]))
+        # When --mission-value is on, each packet object carries a
+        # top-level "mission_value" key; base schema stays closed otherwise.
+        objs = []
+        for packet, report in zip(packets, mission_reports):
+            obj = packet_to_json_object(packet)
+            if report is not None:
+                obj["mission_value"] = mission_value_to_json_object(report)
+            objs.append(obj)
+        if len(objs) == 1:
+            sink.write(_json.dumps(objs[0], indent=2) + "\n")
         else:
-            sink.write(format_many_as_json(packets))
+            sink.write(_json.dumps(objs, indent=2) + "\n")
     elif args.format == "md":
-        for i, p in enumerate(packets):
+        for i, (p, report) in enumerate(zip(packets, mission_reports)):
             if i > 0:
                 sink.write("\n")
             sink.write(format_as_markdown(p))
-    else:  # text — byte-identical to Slice 6
-        for i, p in enumerate(packets):
+            if report is not None:
+                sink.write("\n")
+                sink.write(format_mission_value_markdown(report))
+    else:  # text — byte-identical to Slice 6 when --mission-value is off
+        for i, (p, report) in enumerate(zip(packets, mission_reports)):
             if i > 0:
                 sink.write("\n")
             sink.write(format_as_text(p))
+            if report is not None:
+                sink.write(format_mission_value_text(report))
 
     return 0
 

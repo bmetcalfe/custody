@@ -57,6 +57,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Custody-health scoring that distinguishes healthy, degraded, ambiguous, stale, and lost states
 - Collection-value ranking that recommends candidate collect types by expected hypothesis-disambiguation value
 - Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects, with text, JSON, and Markdown export formats (versioned JSON, `schema_version` "1")
+- Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs (deterministic, not a financial model)
 
 ---
 
@@ -112,6 +113,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `scenarios.py` — scenario-specific signal → evidence mappings (the catalog)
 - `custody_health.py` — classifies state into healthy / degraded / ambiguous / stale / lost with canonical ambiguity pairs
 - `collection_value.py` — ranks sensor-generic collect types by expected disambiguation value
+- `mission_value.py` — mission-value attribution proxy decomposing candidate collect value into named components
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):

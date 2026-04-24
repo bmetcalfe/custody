@@ -256,8 +256,13 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt is not None else None
 
 
-def _packet_to_json_object(packet: DecisionPacket) -> dict:
-    """Build the dict in insertion order so json.dumps preserves the schema."""
+def packet_to_json_object(packet: DecisionPacket) -> dict:
+    """Build the dict in insertion order so json.dumps preserves the schema.
+
+    Exposed publicly so callers that need to extend the JSON object with
+    optional keys (e.g. ``mission_value`` under ``--mission-value``) can
+    compose around the base schema without re-implementing the mapping.
+    """
     return {
         "schema_version": packet.schema_version,
         "scenario_id": packet.scenario_id,
@@ -295,7 +300,7 @@ def _packet_to_json_object(packet: DecisionPacket) -> dict:
 
 def format_as_json(packet: DecisionPacket) -> str:
     """Deterministic JSON with a trailing newline."""
-    return json.dumps(_packet_to_json_object(packet), indent=2) + "\n"
+    return json.dumps(packet_to_json_object(packet), indent=2) + "\n"
 
 
 def format_many_as_json(packets: tuple[DecisionPacket, ...]) -> str:
@@ -305,7 +310,7 @@ def format_many_as_json(packets: tuple[DecisionPacket, ...]) -> str:
     a single valid JSON document rather than two concatenated objects.
     """
     return json.dumps(
-        [_packet_to_json_object(p) for p in packets], indent=2
+        [packet_to_json_object(p) for p in packets], indent=2
     ) + "\n"
 
 

@@ -317,3 +317,105 @@ def test_invalid_format_value_exits_nonzero(packet_module) -> None:
             ["--scenario", "tennent", "--format", "csv"], out=buf,
         )
     assert excinfo.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# Slice 9: --mission-value flag
+# ---------------------------------------------------------------------------
+
+
+def test_mission_value_off_default_text_matches_baseline(packet_module) -> None:
+    """Without --mission-value, text output remains byte-identical to baseline."""
+    buf = io.StringIO()
+    rc = packet_module.main(["--scenario", "tennent"], out=buf)
+    assert rc == 0
+    expected = (FIXTURE_DIR / "tennent_text.txt").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_mission_value_off_default_json_matches_closed_schema(packet_module) -> None:
+    """Without --mission-value, JSON top-level keys match the closed schema."""
+    import json as _json
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--format", "json"], out=buf,
+    )
+    assert rc == 0
+    parsed = _json.loads(buf.getvalue())
+    assert "mission_value" not in parsed
+
+
+def test_mission_value_off_default_md_matches_baseline(packet_module) -> None:
+    """Without --mission-value, Markdown remains byte-identical to baseline."""
+    buf = io.StringIO()
+    packet_module.main(["--scenario", "tennent", "--format", "md"], out=buf)
+    expected = (FIXTURE_DIR / "tennent.md").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_mission_value_text_contains_attribution_section(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--mission-value"], out=buf,
+    )
+    assert rc == 0
+    out = buf.getvalue()
+    assert "Mission-value attribution proxy" in out
+    assert "Mission value proxy:" in out
+    assert "ambiguity_reduction" in out
+
+
+def test_mission_value_json_adds_top_level_key(packet_module) -> None:
+    import json as _json
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--format", "json", "--mission-value"],
+        out=buf,
+    )
+    assert rc == 0
+    parsed = _json.loads(buf.getvalue())
+    assert "mission_value" in parsed
+    assert parsed["mission_value"]["scenario_id"] == "tennent"
+    assert "ranked_assessments" in parsed["mission_value"]
+    # Components present for each assessment.
+    first = parsed["mission_value"]["ranked_assessments"][0]
+    component_names = {c["name"] for c in first["components"]}
+    assert "ambiguity_reduction" in component_names
+
+
+def test_mission_value_json_both_adds_key_per_packet(packet_module) -> None:
+    import json as _json
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "both", "--format", "json", "--mission-value"],
+        out=buf,
+    )
+    assert rc == 0
+    parsed = _json.loads(buf.getvalue())
+    assert isinstance(parsed, list) and len(parsed) == 2
+    for obj in parsed:
+        assert "mission_value" in obj
+
+
+def test_mission_value_markdown_appends_section(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--format", "md", "--mission-value"],
+        out=buf,
+    )
+    assert rc == 0
+    out = buf.getvalue()
+    assert "## Mission-value attribution proxy" in out
+
+
+def test_mission_value_output_has_no_revenue_claim(packet_module) -> None:
+    """Guard against accidental 'revenue' language in any format."""
+    for fmt in ("text", "md"):
+        buf = io.StringIO()
+        packet_module.main(
+            ["--scenario", "both", "--format", fmt, "--mission-value"],
+            out=buf,
+        )
+        out = buf.getvalue().lower()
+        assert "revenue" not in out, f"'revenue' leaked into --format {fmt}"
+        assert "actual revenue" not in out

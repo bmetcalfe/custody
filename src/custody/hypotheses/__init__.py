@@ -28,6 +28,7 @@ from custody.hypotheses.decision_packet import (
     format_as_json,
     format_as_markdown,
     format_as_text,
+    packet_to_json_object,
 )
 from custody.hypotheses.evidence import (
     from_mapping,
@@ -36,6 +37,15 @@ from custody.hypotheses.evidence import (
     from_scene,
 )
 from custody.hypotheses.explain import explain_top, format_state
+from custody.hypotheses.mission_value import (
+    MissionValueAssessment,
+    MissionValueComponent,
+    MissionValueReport,
+    attribute_mission_value,
+    format_mission_value_markdown,
+    format_mission_value_text,
+    mission_value_to_json_object,
+)
 from custody.hypotheses.registry import (
     SCENARIO_TENNENT,
     SCENARIO_WHITSUN,
@@ -61,15 +71,21 @@ __all__ = [
     "HypothesisCustodyHealth",
     "HypothesisEvidence",
     "HypothesisState",
+    "MissionValueAssessment",
+    "MissionValueComponent",
+    "MissionValueReport",
     "SCENARIO_TENNENT",
     "SCENARIO_WHITSUN",
     "SCHEMA_VERSION",
+    "attribute_mission_value",
     "assess_custody_health",
     "build_decision_packet",
     "explain_top",
     "format_as_json",
     "format_as_markdown",
     "format_as_text",
+    "format_mission_value_markdown",
+    "format_mission_value_text",
     "format_state",
     "from_mapping",
     "from_match",
@@ -77,6 +93,8 @@ __all__ = [
     "from_scene",
     "get_hypotheses",
     "get_hypothesis_ids",
+    "mission_value_to_json_object",
+    "packet_to_json_object",
     "rank_collection_candidates",
     "update_state",
 ]
