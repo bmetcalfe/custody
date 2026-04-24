@@ -4,6 +4,9 @@
 
 Custody models how imperfect SAR, AIS, scene-quality, and matcher evidence updates competing hypotheses over time, then surfaces custody health and remaining ambiguity so future collection can be prioritized by uncertainty reduction rather than raw detector confidence.
 
+Custody now demonstrates a full prototype decision loop:
+**evidence → hypothesis state → custody health → primary ambiguity → candidate collect ranking.**
+
 Two case studies drive the demo: Vietnamese land reclamation at [Tennent Reef](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) and [Chinese maritime militia activity](https://amti.csis.org/caught-on-camera-two-dozen-militia-boats-at-whitsun-reef-identified/) at Whitsun Reef. The architectural framing draws on the Space Development Agency's [Custody Layer capability vectors](https://www.sda.mil/custody/) — applied to the maritime domain, where open data enables public validation.
 
 See [ADR-0021](docs/decisions/0021-custody-as-uncertainty-to-tasking-engine.md) for the project's product thesis and the pivot rationale.
@@ -16,13 +19,37 @@ Modern GEOINT workflows operate with incomplete, noisy, and sometimes contradict
 
 ---
 
+## Try it
+
+The primary demo is the **decision packet CLI**, which composes belief, custody health, primary ambiguity, and candidate collect recommendations into one readable output:
+
+```bash
+python scripts/13_decision_packet.py --scenario tennent
+python scripts/13_decision_packet.py --scenario whitsun
+python scripts/13_decision_packet.py --scenario both
+```
+
+The per-scene hypothesis timeline is also runnable directly:
+
+```bash
+python scripts/12_hypothesis_timeline.py --scenario tennent
+python scripts/12_hypothesis_timeline.py --scenario whitsun
+python scripts/12_hypothesis_timeline.py --scenario both
+```
+
+Both CLIs are deterministic and produce human-readable output. The decision packet is the "run this first" path; the timeline shows the scene-by-scene reasoning that leads to the final packet.
+
+---
+
 ## Current capabilities
 
 - Scenario-specific hypothesis registries for Tennent Reef and Whitsun Reef
 - Thin evidence adapters over existing observation, scene, matcher, VLM, and GFW-style outputs
 - Deterministic hypothesis-state updates with auditable support/contradiction traces
-- Synthetic scenario timelines using real Tennent/Whitsun dates
+- Synthetic scenario timelines using real Tennent/Whitsun scene dates
 - Custody-health scoring that distinguishes healthy, degraded, ambiguous, stale, and lost states
+- Collection-value ranking that recommends candidate collect types by expected hypothesis-disambiguation value
+- Decision packet CLI that summarizes belief, custody health, primary ambiguity, and recommended candidate collects
 
 ---
 
@@ -33,20 +60,22 @@ Modern GEOINT workflows operate with incomplete, noisy, and sometimes contradict
 - Not a production tasking system
 - Not a replacement for existing mission-planning tools
 - VLM/SAR detection is treated as candidate evidence, not ground truth
+- Candidate collect recommendations are sensor-generic collect *types*, not tasking orders or platform-specific schedules
 
 See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping document.
 
 ---
 
-## Try the hypothesis timeline demo
+## Roadmap
 
-```bash
-python scripts/12_hypothesis_timeline.py --scenario tennent
-python scripts/12_hypothesis_timeline.py --scenario whitsun
-python scripts/12_hypothesis_timeline.py --scenario both
-```
+These items are explicitly future work, not part of the current demo:
 
-Each invocation prints a deterministic, human-readable trace of evidence updates, top-hypothesis scores, and per-scene reasoning across the real Umbra scene dates for the chosen case study.
+- Real-data wiring from processed SAR/AIS artifacts into the scenario generators
+- Sentinel-1 / Sentinel-2 evidence integration
+- Portfolio-level prioritization across multiple regions or targets
+- Live tasking integration
+- Platform-specific sensor access and scheduling
+- Real-time ingestion or production deployment
 
 ---
 
@@ -74,7 +103,13 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `evidence.py` — thin adapters converting existing source objects to evidence annotations
 - `update.py` — deterministic weighted belief update with explanation traces
 - `scenarios.py` — scenario-specific signal → evidence mappings (the catalog)
+- `custody_health.py` — classifies state into healthy / degraded / ambiguous / stale / lost with canonical ambiguity pairs
+- `collection_value.py` — ranks sensor-generic collect types by expected disambiguation value
 - `explain.py` — human-readable state rendering
+
+**CLIs** (`scripts/`):
+- `12_hypothesis_timeline.py` — per-scene belief, custody health, and reasoning trace
+- `13_decision_packet.py` — composed belief / health / ambiguity / candidate-collect packet
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
@@ -88,7 +123,7 @@ See [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_imple
 
 | SDA Custody Layer capability vector | Custody implementation |
 |---|---|
-| Automated processing and fusion of data from traditional space-based sensing payloads | Multi-modal evidence adaptation over SAR (Umbra + Sentinel-1), EO, AIS/GFW through a unified evidence contract |
+| Automated processing and fusion of data from traditional space-based sensing payloads | Multi-modal evidence adaptation over SAR, optical, and AIS/presence through a unified evidence contract |
 | Multi-phenomenology fusion architecture supporting agile incorporation of new algorithms | Pluggable evidence adapters, per-source decoupling, deterministic update layer |
 | Memory management and target hypothesis distribution across nodes | Frozen, serializable `HypothesisState` with auditable trace; node-to-node distribution flagged as a stretch goal |
 | Reduction in latency of processing, exploitation, and dissemination | Offline pipeline demonstrates architectural patterns; production latency is explicitly out of scope |
@@ -100,7 +135,7 @@ See [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_imple
 ```bash
 uv sync
 uv run pytest                                    # full suite
-uv run python scripts/12_hypothesis_timeline.py --scenario both
+uv run python scripts/13_decision_packet.py --scenario both
 ```
 
 Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
@@ -109,12 +144,14 @@ Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ## Honest limitations
 
-This is a solo applied-research project. Limitations are documented in more detail in [`docs/positioning.md`](docs/positioning.md) and relevant ADRs.
+This is a solo applied-research project. Limitations are documented in more detail in [`docs/positioning.md`](docs/positioning.md) and the relevant ADRs.
 
 - The belief update is weighted-additive with deterministic tie-break, not Bayesian. Scores are bounded heuristic values. Hypothesis priors, evidence weights, and thresholds are documented in `scenarios.py` and ADR-0021.
+- Custody-health classification and collection-value ranking are deterministic strategy-table lookups, not learned models. The tradeoff is legibility over adaptivity.
 - Detection (VLM, CFAR) is treated strictly as candidate evidence generation. It is not the product.
 - AIS absence is only treated as informative under documented coverage conditions; the Whitsun generator encodes a guardrail against "no AIS = dark vessel" overclaim.
-- The timeline demo runs on synthetic scenario narratives constructed from caller-supplied flags. End-to-end runs over real parquet fixtures are future work.
+- The timeline and decision-packet CLIs run on synthetic scenario narratives constructed from caller-supplied flags. Real-data wiring from processed SAR/AIS artifacts is on the roadmap.
+- Candidate collect recommendations name sensor-generic collect types (e.g. `repeat_sar`, `optical_context`, `ais_coverage_query`). Platform-specific scheduling and access are explicitly out of scope.
 - The demo does not identify specific flagged vessels and does not make legal or sovereignty claims.
 
 ---
