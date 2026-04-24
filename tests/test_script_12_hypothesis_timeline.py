@@ -121,6 +121,28 @@ def test_output_has_final_state_block_per_scenario(timeline_module) -> None:
     assert "=== Final state: whitsun ===" in out
 
 
+def test_output_has_health_line_per_scene(timeline_module) -> None:
+    """Slice 4: every scene reports a custody-health status."""
+    out_tennent = _run(timeline_module, "tennent")
+    assert out_tennent.count("Health:") >= 5
+    out_whitsun = _run(timeline_module, "whitsun")
+    assert out_whitsun.count("Health:") >= 3
+
+
+def test_whitsun_saturation_reports_ambiguous(timeline_module) -> None:
+    """Saturation at multiple hypotheses (the Whitsun narrative hits this)
+    must surface as AMBIGUOUS, not pretend there's a confident top."""
+    out = _run(timeline_module, "whitsun")
+    assert "AMBIGUOUS" in out
+
+
+def test_tennent_structure_vs_construction_reports_ambiguous(timeline_module) -> None:
+    """The Tennent narrative saturates both FIXED and CONSTRUCTION by the final
+    scene, which must surface as AMBIGUOUS somewhere in the timeline."""
+    out = _run(timeline_module, "tennent")
+    assert "AMBIGUOUS" in out
+
+
 def test_output_is_deterministic_across_consecutive_invocations(timeline_module) -> None:
     """Two back-to-back invocations must produce byte-identical output."""
     out1 = _run(timeline_module, "both")

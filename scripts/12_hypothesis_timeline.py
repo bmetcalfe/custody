@@ -31,6 +31,7 @@ from custody.fusion.temporal import Match
 from custody.hypotheses import (
     SCENARIO_TENNENT,
     SCENARIO_WHITSUN,
+    assess_custody_health,
     format_state,
     update_state,
 )
@@ -202,12 +203,19 @@ def _top_line(
 def _reason_line(
     state: HypothesisState,
     this_step_evidence: Sequence[HypothesisEvidence],
+    *,
+    prior_top: str | None,
 ) -> str:
     """Pick a short dominant-reason line for this scene step.
 
     Prefers the first this-step evidence item whose supports contains the
     current top hypothesis; falls back to the first this-step evidence
-    item; falls back to an em-dash when nothing fired this step.
+    item; falls back to "-" when nothing fired this step.
+
+    When new evidence fired for this scene but none of it supports the
+    carried-over top hypothesis, the line is prefixed with
+    ``(new evidence this scene; top unchanged from prior)`` so readers
+    understand why the reason appears to describe a losing hypothesis.
     """
     if not this_step_evidence:
         return "Reason:   -"
@@ -215,13 +223,31 @@ def _reason_line(
     for ev in this_step_evidence:
         if top is not None and top in ev.supports:
             return f"Reason:   {ev.reason}"
-    return f"Reason:   {this_step_evidence[0].reason}"
+
+    carryover = top is not None and prior_top == top
+    prefix = (
+        "(new evidence this scene; top unchanged from prior) "
+        if carryover else ""
+    )
+    return f"Reason:   {prefix}{this_step_evidence[0].reason}"
+
+
+def _health_line(state: HypothesisState) -> str:
+    """Render a per-scene Health line, ASCII only.
+
+    as_of defaults to state.timestamp inside assess_custody_health, which
+    keeps the synthetic timeline deterministic.
+    """
+    health = assess_custody_health(state)
+    driver = health.drivers[0] if health.drivers else ""
+    return f"Health:   {health.status.name} {health.score:.2f} - {driver}"
 
 
 def _run_tennent(out: TextIO) -> None:
     out.write("Scenario: tennent\n")
     prior_value = 1.0 / len(get_hypotheses(SCENARIO_TENNENT))
     state: HypothesisState | None = None
+    prior_top: str | None = None
     prev_obs_id: str | None = None
     last_acq: float | None = None
 
@@ -266,8 +292,10 @@ def _run_tennent(out: TextIO) -> None:
         out.write("\n")
         out.write(f"Scene:    {scene.scene_id}  ({iso_date})\n")
         out.write(_top_line(state, prior_value) + "\n")
-        out.write(_reason_line(state, step_evs) + "\n")
+        out.write(_reason_line(state, step_evs, prior_top=prior_top) + "\n")
+        out.write(_health_line(state) + "\n")
 
+        prior_top = state.top_hypothesis
         prev_obs_id = obs_id
         last_acq = step.acquisition_time
 
@@ -279,6 +307,7 @@ def _run_whitsun(out: TextIO) -> None:
     out.write("Scenario: whitsun\n")
     prior_value = 1.0 / len(get_hypotheses(SCENARIO_WHITSUN))
     state: HypothesisState | None = None
+    prior_top: str | None = None
 
     for step in _whitsun_narrative():
         obs_id = f"w-obs-{step.yyyymmdd}-{step.sensor_suffix}"
@@ -321,7 +350,10 @@ def _run_whitsun(out: TextIO) -> None:
         out.write("\n")
         out.write(f"Scene:    {scene.scene_id}  ({iso_date})\n")
         out.write(_top_line(state, prior_value) + "\n")
-        out.write(_reason_line(state, step_evs) + "\n")
+        out.write(_reason_line(state, step_evs, prior_top=prior_top) + "\n")
+        out.write(_health_line(state) + "\n")
+
+        prior_top = state.top_hypothesis
 
     out.write("\n=== Final state: whitsun ===\n")
     out.write(format_state(state) + "\n")

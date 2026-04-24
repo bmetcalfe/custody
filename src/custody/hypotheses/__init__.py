@@ -8,6 +8,11 @@ explanations?" while ``belief_assessment.FusionAssessment`` continues to
 answer "what do we believe about this entity right now?"
 """
 
+from custody.hypotheses.custody_health import (
+    CustodyHealthStatus,
+    HypothesisCustodyHealth,
+    assess_custody_health,
+)
 from custody.hypotheses.evidence import (
     from_mapping,
     from_match,
@@ -29,11 +34,14 @@ from custody.hypotheses.types import (
 from custody.hypotheses.update import update_state
 
 __all__ = [
+    "CustodyHealthStatus",
     "Hypothesis",
+    "HypothesisCustodyHealth",
     "HypothesisEvidence",
     "HypothesisState",
     "SCENARIO_TENNENT",
     "SCENARIO_WHITSUN",
+    "assess_custody_health",
     "explain_top",
     "format_state",
     "from_mapping",
