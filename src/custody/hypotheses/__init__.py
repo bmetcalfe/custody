@@ -8,6 +8,12 @@ explanations?" while ``belief_assessment.FusionAssessment`` continues to
 answer "what do we believe about this entity right now?"
 """
 
+from custody.hypotheses.evidence import (
+    from_mapping,
+    from_match,
+    from_observation,
+    from_scene,
+)
 from custody.hypotheses.explain import explain_top, format_state
 from custody.hypotheses.registry import (
     SCENARIO_TENNENT,
@@ -30,6 +36,10 @@ __all__ = [
     "SCENARIO_WHITSUN",
     "explain_top",
     "format_state",
+    "from_mapping",
+    "from_match",
+    "from_observation",
+    "from_scene",
     "get_hypotheses",
     "get_hypothesis_ids",
     "update_state",

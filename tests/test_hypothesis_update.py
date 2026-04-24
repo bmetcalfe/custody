@@ -339,3 +339,33 @@ def test_whitsun_scenario_produces_whitsun_scores_only() -> None:
 def test_unknown_scenario_raises_value_error() -> None:
     with pytest.raises(ValueError):
         update_state("atlantis", evidence=())
+
+
+def test_update_state_silently_ignores_unknown_hypothesis_id() -> None:
+    """Defensive boundary, not a green light to bypass validation.
+
+    ``update_state`` must silently drop evidence whose supports / contradicts
+    reference a hypothesis_id that is not in the scenario's registry (e.g.
+    a Whitsun hypothesis_id used on a Tennent update).  The adapter layer
+    (Slice 2) validates at construction time; this remains as a safety net
+    for directly-constructed HypothesisEvidence objects.
+    """
+    priors = update_state(SCENARIO_TENNENT, evidence=()).scores
+
+    alien = HypothesisEvidence(
+        evidence_id="alien-1",
+        source_ref=None,
+        source_kind="synthetic",
+        scenario_id=SCENARIO_TENNENT,
+        timestamp=None,
+        supports=(WHITSUN_VESSEL_CLUSTER_ACTIVITY,),  # not in Tennent registry
+        contradicts=(WHITSUN_VESSEL_CLUSTER_ACTIVITY,),
+        confidence=1.0,
+        weight=1.0,
+        reason="alien id on tennent state",
+    )
+    state = update_state(SCENARIO_TENNENT, evidence=(alien,))
+
+    assert state.scores == priors  # no movement
+    assert len(state.explanation) == 1
+    assert "no-op" in state.explanation[0]
