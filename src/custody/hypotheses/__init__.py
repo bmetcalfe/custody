@@ -8,6 +8,12 @@ explanations?" while ``belief_assessment.FusionAssessment`` continues to
 answer "what do we believe about this entity right now?"
 """
 
+from custody.hypotheses.collection_value import (
+    CollectionCandidate,
+    CollectionRecommendation,
+    CollectionValue,
+    rank_collection_candidates,
+)
 from custody.hypotheses.custody_health import (
     CustodyHealthStatus,
     HypothesisCustodyHealth,
@@ -34,6 +40,9 @@ from custody.hypotheses.types import (
 from custody.hypotheses.update import update_state
 
 __all__ = [
+    "CollectionCandidate",
+    "CollectionRecommendation",
+    "CollectionValue",
     "CustodyHealthStatus",
     "Hypothesis",
     "HypothesisCustodyHealth",
@@ -50,5 +59,6 @@ __all__ = [
     "from_scene",
     "get_hypotheses",
     "get_hypothesis_ids",
+    "rank_collection_candidates",
     "update_state",
 ]
