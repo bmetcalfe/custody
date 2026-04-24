@@ -61,6 +61,13 @@ from custody.hypotheses.optimizer import (
     format_optimizer_text,
     optimize_collection_plan,
 )
+from custody.hypotheses.policy_eval import (
+    PolicyDefinition,
+    PolicyEvaluation,
+    PolicyEvaluationReport,
+    evaluate_collection_policies,
+    format_policy_eval_text,
+)
 from custody.hypotheses.registry import (
     SCENARIO_TENNENT,
     SCENARIO_WHITSUN,
@@ -96,12 +103,16 @@ __all__ = [
     "PlanConstraint",
     "PlanItem",
     "PlanOptimizationReport",
+    "PolicyDefinition",
+    "PolicyEvaluation",
+    "PolicyEvaluationReport",
     "SCENARIO_TENNENT",
     "SCENARIO_WHITSUN",
     "SCHEMA_VERSION",
     "attribute_mission_value",
     "assess_custody_health",
     "build_decision_packet",
+    "evaluate_collection_policies",
     "explain_top",
     "format_as_json",
     "format_as_markdown",
@@ -110,6 +121,7 @@ __all__ = [
     "format_mission_value_markdown",
     "format_optimizer_text",
     "format_mission_value_text",
+    "format_policy_eval_text",
     "format_state",
     "from_mapping",
     "from_match",
