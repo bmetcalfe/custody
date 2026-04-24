@@ -27,3 +27,8 @@ Architectural and scoping decisions for Custody, recorded as ADRs (Architecture 
 - [0014 — OS-CFAR as second detector variant for heterogeneous-clutter scenes](0014-os-cfar-for-heterogeneous-clutter.md)
 - [0015 — Detection pivot to VLM candidate-generator + CFAR-refinement hybrid](0015-detection-pivot-to-vlm-cfar-hybrid.md)
 - [0016 — Project scope expansion to Story 2 applied research framing](0016-scope-expansion-to-story-2.md)
+- [0017 — Week 3 refocus from AIS+SAR fusion to Tennent temporal analysis](0017-week3-tennent-temporal-refocus.md)
+- [0018 — Heterogeneous-scene reconciliation — architecture for pooling detections across non-uniform SAR acquisitions](0018-heterogeneous-scene-reconciliation.md)
+- [0019 — Geometry-aware matching direction for heterogeneous SAR scene pairs](0019-geometry-aware-matcher-direction.md)
+- [0020 — V2 signature design — local intensity profile features for SignatureMatcher](0020-v2-signature-design-local-intensity.md)
+- [0021 — Custody as Uncertainty-to-Tasking Engine](0021-custody-as-uncertainty-to-tasking-engine.md)

@@ -13,6 +13,9 @@ Custody is a **20-24 week private applied-research project** on multi-sensor fus
 - Detection architecture changed to a VLM-candidate-generator + CFAR-refinement hybrid after evaluating five detection approaches (ADR-0015; investigation in `docs/investigations/detection-approaches.md`).
 - Full content update to the rest of this file deferred to tomorrow; treat ADR-0015 and ADR-0016 as authoritative for current framing until the rewrite lands.
 
+**Current direction (2026-04-23):**
+- Custody is now framed as an **uncertainty-to-tasking engine** (ADR-0021). Detection/matcher work continues as candidate-evidence generation; the new priority is the hypothesis layer above it (`src/custody/hypotheses/`, Week 1-2). V2 matcher (ADR-0019/0020) paused unless hypothesis ambiguity demands it. See also `docs/pivot_audit_uncertainty_to_tasking.md`.
+
 ## What's the scenario
 
 The demo presents two co-equal case studies. Neither is primary or supplementary.
