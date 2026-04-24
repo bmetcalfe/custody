@@ -1,0 +1,42 @@
+CUSTODY DECISION PACKET - WHITSUN
+=================================
+
+Current belief
+--------------
+Top 3 hypotheses:
+  1.00  ais_dark_or_poorly_observed_vessels
+  1.00  transient_anchorage_or_fishing_presence
+  1.00  vessel_cluster_activity
+
+Custody health
+--------------
+Status: AMBIGUOUS (score 0.35)
+Reason: AMBIGUOUS: 3 hypotheses saturated at >= 0.95
+Drivers:
+  - 3 hypotheses saturated at >= 0.95
+  - top-two margin 0.00 below ambiguity threshold 0.15
+
+Primary ambiguity
+-----------------
+ais_dark_or_poorly_observed_vessels  vs  transient_anchorage_or_fishing_presence
+
+Recommended candidate collects
+------------------------------
+Top 3 candidate collects:
+  0.75  ais_coverage_query      AIS coverage and message query
+        Reason: AIS coverage and message query distinguishes truly dark vessels from ordinary fishing traffic that simply was not captured
+  0.45  optical_context         Opportunistic optical context
+        Reason: daylight optical provides posture context but does not confirm AIS cooperativity
+  0.45  repeat_sar              Repeat SAR acquisition (same geometry)
+        Reason: persistence can help characterise the population but does not answer cooperativity
+
+Why these collects
+------------------
+ambiguity between ais_dark_or_poorly_observed_vessels and transient_anchorage_or_fishing_presence; ranked collects prioritise disambiguation value
+Leading candidate 'ais_coverage_query' addresses this ambiguity because AIS coverage and message query distinguishes truly dark vessels from ordinary fishing traffic that simply was not captured
+
+What not to do yet
+------------------
+- Additional VLM tuning has low expected value - current uncertainty is hypothesis-level, not detector-confidence-level.
+- AIS absence alone is not proof of dark vessel activity; only meaningful when coverage is known.
+- Sentinel-1/2 ingestion is roadmap, not part of this demo.

@@ -212,3 +212,108 @@ def test_script_does_not_import_detection_or_gfw() -> None:
             if any(mod_name.startswith(p) for p in forbidden):
                 offending.append(mod_name)
     assert not offending, f"decision-packet script imports forbidden modules: {offending}"
+
+
+# ---------------------------------------------------------------------------
+# Slice 8: --format branches
+# ---------------------------------------------------------------------------
+
+
+FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "decision_packet"
+
+
+def test_default_format_is_text_and_matches_baseline(packet_module) -> None:
+    """No --format flag defaults to text; output matches the Slice 6 snapshot."""
+    buf = io.StringIO()
+    rc = packet_module.main(["--scenario", "tennent"], out=buf)
+    assert rc == 0
+    expected = (FIXTURE_DIR / "tennent_text.txt").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_explicit_format_text_matches_tennent_baseline(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--format", "text"], out=buf,
+    )
+    assert rc == 0
+    expected = (FIXTURE_DIR / "tennent_text.txt").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_explicit_format_text_matches_whitsun_baseline(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "whitsun", "--format", "text"], out=buf,
+    )
+    assert rc == 0
+    expected = (FIXTURE_DIR / "whitsun_text.txt").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_format_json_is_parseable_and_has_closed_schema(packet_module) -> None:
+    import json as _json
+    buf = io.StringIO()
+    rc = packet_module.main(
+        ["--scenario", "tennent", "--format", "json"], out=buf,
+    )
+    assert rc == 0
+    parsed = _json.loads(buf.getvalue())
+    assert parsed["schema_version"] == "1"
+    assert parsed["scenario_id"] == "tennent"
+    # Top-level keys must match the documented closed schema.
+    assert set(parsed.keys()) == {
+        "schema_version", "scenario_id", "generated_at", "current_belief",
+        "custody_health", "ambiguity_pairs", "recommended_collects", "do_not_yet",
+    }
+
+
+def test_format_json_is_deterministic_across_invocations(packet_module) -> None:
+    buf1, buf2 = io.StringIO(), io.StringIO()
+    packet_module.main(["--scenario", "tennent", "--format", "json"], out=buf1)
+    packet_module.main(["--scenario", "tennent", "--format", "json"], out=buf2)
+    assert buf1.getvalue() == buf2.getvalue()
+
+
+def test_format_json_both_is_single_array_of_two(packet_module) -> None:
+    import json as _json
+    buf = io.StringIO()
+    rc = packet_module.main(["--scenario", "both", "--format", "json"], out=buf)
+    assert rc == 0
+    parsed = _json.loads(buf.getvalue())
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    assert parsed[0]["scenario_id"] == "tennent"
+    assert parsed[1]["scenario_id"] == "whitsun"
+
+
+def test_format_md_starts_with_expected_h1(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(["--scenario", "tennent", "--format", "md"], out=buf)
+    assert rc == 0
+    assert buf.getvalue().startswith("# Custody Decision Packet - Tennent Reef\n")
+
+
+def test_format_md_matches_tennent_fixture(packet_module) -> None:
+    buf = io.StringIO()
+    packet_module.main(["--scenario", "tennent", "--format", "md"], out=buf)
+    expected = (FIXTURE_DIR / "tennent.md").read_text(encoding="utf-8")
+    assert buf.getvalue() == expected
+
+
+def test_format_md_both_contains_both_h1(packet_module) -> None:
+    buf = io.StringIO()
+    rc = packet_module.main(["--scenario", "both", "--format", "md"], out=buf)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "# Custody Decision Packet - Tennent Reef" in out
+    assert "# Custody Decision Packet - Whitsun Reef" in out
+
+
+def test_invalid_format_value_exits_nonzero(packet_module) -> None:
+    buf = io.StringIO()
+    with pytest.raises(SystemExit) as excinfo:
+        packet_module.main(
+            ["--scenario", "tennent", "--format", "csv"], out=buf,
+        )
+    assert excinfo.value.code != 0

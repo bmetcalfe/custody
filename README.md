@@ -21,13 +21,20 @@ Modern GEOINT workflows operate with incomplete, noisy, and sometimes contradict
 
 ## Try it
 
-The primary demo is the **decision packet CLI**, which composes belief, custody health, primary ambiguity, and candidate collect recommendations into one readable output:
+The primary demo is the **decision packet CLI**, which composes belief, custody health, primary ambiguity, and candidate collect recommendations into a structured artifact. Three export formats:
 
 ```bash
+# Text (default, human-readable)
 python scripts/13_decision_packet.py --scenario tennent
-python scripts/13_decision_packet.py --scenario whitsun
-python scripts/13_decision_packet.py --scenario both
+
+# JSON (structured, consumable by downstream planners; schema_version "1")
+python scripts/13_decision_packet.py --scenario tennent --format json
+
+# Markdown (shareable / vault / interview prep)
+python scripts/13_decision_packet.py --scenario tennent --format md
 ```
+
+`--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
 
 The per-scene hypothesis timeline is also runnable directly:
 
@@ -49,7 +56,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Synthetic scenario timelines using real Tennent/Whitsun scene dates
 - Custody-health scoring that distinguishes healthy, degraded, ambiguous, stale, and lost states
 - Collection-value ranking that recommends candidate collect types by expected hypothesis-disambiguation value
-- Decision packet CLI that summarizes belief, custody health, primary ambiguity, and recommended candidate collects
+- Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects, with text, JSON, and Markdown export formats (versioned JSON, `schema_version` "1")
 
 ---
 

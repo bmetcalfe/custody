@@ -1,0 +1,41 @@
+CUSTODY DECISION PACKET - TENNENT
+=================================
+
+Current belief
+--------------
+Top 3 hypotheses:
+  1.00  construction_or_reclamation_activity
+  1.00  fixed_reclamation_or_structure
+  0.00  no_meaningful_activity
+
+Custody health
+--------------
+Status: AMBIGUOUS (score 0.35)
+Reason: AMBIGUOUS: 2 hypotheses saturated at >= 0.95
+Drivers:
+  - 2 hypotheses saturated at >= 0.95
+  - top-two margin 0.00 below ambiguity threshold 0.15
+
+Primary ambiguity
+-----------------
+construction_or_reclamation_activity  vs  fixed_reclamation_or_structure
+
+Recommended candidate collects
+------------------------------
+Top 3 candidate collects:
+  0.85  optical_context         Opportunistic optical context
+        Reason: daylight optical best separates visible construction / dredging signatures from a static structure
+  0.75  cross_geometry_sar      Cross-geometry SAR acquisition
+        Reason: geometry diversity reveals whether the returns change with look angle, consistent with active worksite vs completed structure
+  0.60  repeat_sar              Repeat SAR acquisition (same geometry)
+        Reason: same-geometry repeat tracks whether the footprint is evolving scene-to-scene
+
+Why these collects
+------------------
+ambiguity between construction_or_reclamation_activity and fixed_reclamation_or_structure; ranked collects prioritise disambiguation value
+Leading candidate 'optical_context' addresses this ambiguity because daylight optical best separates visible construction / dredging signatures from a static structure
+
+What not to do yet
+------------------
+- Additional VLM tuning has low expected value - current uncertainty is hypothesis-level, not detector-confidence-level.
+- Sentinel-1/2 ingestion is roadmap, not part of this demo.

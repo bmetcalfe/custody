@@ -1,21 +1,23 @@
-"""Custody decision-packet CLI (ADR-0021 Slice 6).
+"""Custody decision-packet CLI (ADR-0021 Slices 6 + 8).
 
 Composes the hypothesis layer (Slices 3-5) into one readable command:
 
     evidence -> hypothesis state -> custody health -> ambiguity ->
     candidate collect recommendation
 
-This script is presentation only.  It adds no new domain types, no new
-scoring rules, no new strategy tables, and no capability claims.  The
-synthetic scenario narratives are duplicated privately from
-``scripts/12_hypothesis_timeline.py`` so the two scripts stay
-independently runnable without cross-script imports.
+This script is a thin argparse wrapper around
+``custody.hypotheses.decision_packet``.  It owns only the synthetic
+scenario-fixture construction (the same path as
+``scripts/12_hypothesis_timeline.py``) and dispatch to text / json / md
+formatters.  The packet dataclass and rendering logic live in the
+library module so downstream consumers can import them directly.
 
 Run::
 
-    python scripts/13_decision_packet.py                     # both scenarios
+    python scripts/13_decision_packet.py                                   # both, text
     python scripts/13_decision_packet.py --scenario tennent
-    python scripts/13_decision_packet.py --scenario whitsun
+    python scripts/13_decision_packet.py --scenario whitsun --format json
+    python scripts/13_decision_packet.py --scenario both    --format md
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Sequence, TextIO
+from typing import Literal, TextIO
 
 import numpy as np
 
@@ -33,13 +35,17 @@ from custody.fusion.temporal import Match
 from custody.hypotheses import (
     SCENARIO_TENNENT,
     SCENARIO_WHITSUN,
-    CollectionRecommendation,
-    CustodyHealthStatus,
-    HypothesisCustodyHealth,
-    HypothesisState,
     assess_custody_health,
     rank_collection_candidates,
     update_state,
+)
+from custody.hypotheses.decision_packet import (
+    DecisionPacket,
+    build_decision_packet,
+    format_as_json,
+    format_as_markdown,
+    format_as_text,
+    format_many_as_json,
 )
 from custody.hypotheses.scenarios import (
     AisCoverage,
@@ -48,12 +54,11 @@ from custody.hypotheses.scenarios import (
     whitsun_evidence_from_match,
     whitsun_evidence_from_scene,
 )
-from custody.hypotheses.types import HypothesisEvidence
+from custody.hypotheses.types import HypothesisEvidence, HypothesisState
 
 
 # ---------------------------------------------------------------------------
-# Synthetic fixture builders (mirror scripts/12; kept private to this script
-# per Slice 6 dispatch guidance).
+# Synthetic fixture builders (mirror scripts/12; kept private to this script).
 # ---------------------------------------------------------------------------
 
 
@@ -179,8 +184,7 @@ def _whitsun_narrative() -> tuple[_WhitsunStep, ...]:
 
 
 # ---------------------------------------------------------------------------
-# State construction — replay the scenario narrative and return the final
-# state + evidence stream.  No new scoring; update_state is imported.
+# State construction
 # ---------------------------------------------------------------------------
 
 
@@ -260,110 +264,7 @@ def _build_whitsun_state() -> HypothesisState:
     return state
 
 
-# ---------------------------------------------------------------------------
-# Editorial helper — scenario-conditional 'what not to do yet' bullets.
-# ---------------------------------------------------------------------------
-
-
-_VLM_TUNING_CAUTION = (
-    "Additional VLM tuning has low expected value - current uncertainty is "
-    "hypothesis-level, not detector-confidence-level."
-)
-_WHITSUN_AIS_CAVEAT = (
-    "AIS absence alone is not proof of dark vessel activity; only meaningful "
-    "when coverage is known."
-)
-_SENTINEL_ROADMAP = (
-    "Sentinel-1/2 ingestion is roadmap, not part of this demo."
-)
-
-
-def _what_not_to_do(
-    scenario_id: str,
-    health: HypothesisCustodyHealth,
-    recommendations: CollectionRecommendation,
-) -> tuple[str, ...]:
-    """Scenario-conditional editorial.  Capped at 3 bullets per the dispatch."""
-    bullets: list[str] = []
-    if health.status is CustodyHealthStatus.AMBIGUOUS:
-        bullets.append(_VLM_TUNING_CAUTION)
-    if scenario_id == SCENARIO_WHITSUN:
-        bullets.append(_WHITSUN_AIS_CAVEAT)
-    bullets.append(_SENTINEL_ROADMAP)
-    return tuple(bullets[:3])
-
-
-# ---------------------------------------------------------------------------
-# Rendering
-# ---------------------------------------------------------------------------
-
-
-def _hr(title: str) -> str:
-    underline = "-" * max(len(title), 3)
-    return f"\n{title}\n{underline}\n"
-
-
-def _top_three_belief_lines(state: HypothesisState) -> list[str]:
-    """Sorted by score descending, ties broken by hypothesis_id ascending."""
-    items = sorted(state.scores.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
-    return [f"  {score:4.2f}  {hid}" for hid, score in items]
-
-
-def _render_packet(
-    out: TextIO,
-    *,
-    scenario_id: str,
-    state: HypothesisState,
-    health: HypothesisCustodyHealth,
-    recommendations: CollectionRecommendation,
-) -> None:
-    out.write(f"CUSTODY DECISION PACKET - {scenario_id.upper()}\n")
-    out.write("=" * (len("CUSTODY DECISION PACKET - ") + len(scenario_id)) + "\n")
-
-    out.write(_hr("Current belief"))
-    out.write("Top 3 hypotheses:\n")
-    for line in _top_three_belief_lines(state):
-        out.write(line + "\n")
-
-    out.write(_hr("Custody health"))
-    out.write(f"Status: {health.status.name} (score {health.score:.2f})\n")
-    out.write(f"Reason: {health.reason}\n")
-    if health.drivers:
-        out.write("Drivers:\n")
-        for d in health.drivers[:3]:
-            out.write(f"  - {d}\n")
-
-    out.write(_hr("Primary ambiguity"))
-    if recommendations.primary_ambiguity is not None:
-        a, b = recommendations.primary_ambiguity
-        out.write(f"{a}  vs  {b}\n")
-    else:
-        out.write("None surfaced by custody-health assessment\n")
-
-    out.write(_hr("Recommended candidate collects"))
-    out.write("Top 3 candidate collects:\n")
-    for v in recommendations.ranked_values[:3]:
-        out.write(f"  {v.score:4.2f}  {v.candidate.candidate_id:22s}  {v.candidate.label}\n")
-        out.write(f"        Reason: {v.reason}\n")
-        if v.caveats:
-            for c in v.caveats:
-                out.write(f"        Caveat: {c}\n")
-
-    out.write(_hr("Why these collects"))
-    out.write(recommendations.summary + "\n")
-    if recommendations.primary_ambiguity is not None and recommendations.ranked_values:
-        lead = recommendations.ranked_values[0]
-        out.write(
-            f"Leading candidate {lead.candidate.candidate_id!r} addresses this ambiguity "
-            f"because {lead.reason}\n"
-        )
-
-    out.write(_hr("What not to do yet"))
-    for bullet in _what_not_to_do(scenario_id, health, recommendations):
-        out.write(f"- {bullet}\n")
-
-
-def _run_scenario(out: TextIO, scenario_id: str) -> None:
+def _packet_for_scenario(scenario_id: str) -> DecisionPacket:
     if scenario_id == SCENARIO_TENNENT:
         state = _build_tennent_state()
     elif scenario_id == SCENARIO_WHITSUN:
@@ -374,13 +275,12 @@ def _run_scenario(out: TextIO, scenario_id: str) -> None:
     # as_of defaults to state.timestamp inside assess_custody_health, keeping
     # the packet deterministic.
     health = assess_custody_health(state)
-    recommendations = rank_collection_candidates(state, health)
-    _render_packet(
-        out,
+    recommendation = rank_collection_candidates(state, health)
+    return build_decision_packet(
         scenario_id=scenario_id,
         state=state,
         health=health,
-        recommendations=recommendations,
+        recommendation=recommendation,
     )
 
 
@@ -391,23 +291,49 @@ def _run_scenario(out: TextIO, scenario_id: str) -> None:
 
 def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Print a composed Custody decision packet for Tennent / Whitsun.",
+        description=(
+            "Print a composed Custody decision packet in text, JSON, or "
+            "Markdown for Tennent / Whitsun."
+        ),
     )
     parser.add_argument(
         "--scenario",
         choices=("tennent", "whitsun", "both"),
         default="both",
     )
+    parser.add_argument(
+        "--format",
+        choices=("text", "json", "md"),
+        default="text",
+    )
     args = parser.parse_args(argv)
 
     sink = out if out is not None else sys.stdout
 
-    if args.scenario in ("tennent", "both"):
-        _run_scenario(sink, SCENARIO_TENNENT)
-        if args.scenario == "both":
-            sink.write("\n")
-    if args.scenario in ("whitsun", "both"):
-        _run_scenario(sink, SCENARIO_WHITSUN)
+    scenarios: tuple[str, ...] = (
+        (SCENARIO_TENNENT,) if args.scenario == "tennent"
+        else (SCENARIO_WHITSUN,) if args.scenario == "whitsun"
+        else (SCENARIO_TENNENT, SCENARIO_WHITSUN)
+    )
+
+    packets = tuple(_packet_for_scenario(s) for s in scenarios)
+
+    if args.format == "json":
+        # --scenario both is a JSON array of packets (single valid document).
+        if len(packets) == 1:
+            sink.write(format_as_json(packets[0]))
+        else:
+            sink.write(format_many_as_json(packets))
+    elif args.format == "md":
+        for i, p in enumerate(packets):
+            if i > 0:
+                sink.write("\n")
+            sink.write(format_as_markdown(p))
+    else:  # text — byte-identical to Slice 6
+        for i, p in enumerate(packets):
+            if i > 0:
+                sink.write("\n")
+            sink.write(format_as_text(p))
 
     return 0
 

@@ -19,6 +19,16 @@ from custody.hypotheses.custody_health import (
     HypothesisCustodyHealth,
     assess_custody_health,
 )
+from custody.hypotheses.decision_packet import (
+    BeliefEntry,
+    CollectRecommendation,
+    DecisionPacket,
+    SCHEMA_VERSION,
+    build_decision_packet,
+    format_as_json,
+    format_as_markdown,
+    format_as_text,
+)
 from custody.hypotheses.evidence import (
     from_mapping,
     from_match,
@@ -40,18 +50,26 @@ from custody.hypotheses.types import (
 from custody.hypotheses.update import update_state
 
 __all__ = [
+    "BeliefEntry",
+    "CollectRecommendation",
     "CollectionCandidate",
     "CollectionRecommendation",
     "CollectionValue",
     "CustodyHealthStatus",
+    "DecisionPacket",
     "Hypothesis",
     "HypothesisCustodyHealth",
     "HypothesisEvidence",
     "HypothesisState",
     "SCENARIO_TENNENT",
     "SCENARIO_WHITSUN",
+    "SCHEMA_VERSION",
     "assess_custody_health",
+    "build_decision_packet",
     "explain_top",
+    "format_as_json",
+    "format_as_markdown",
+    "format_as_text",
     "format_state",
     "from_mapping",
     "from_match",
