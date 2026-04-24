@@ -1,5 +1,13 @@
 # Custody Multi-Sensor Fusion — Implementation Guide (v3)
 
+> **SUPERSEDED BY ADR-0021 (2026-04-23).**
+>
+> This guide documents the pre-pivot architecture and weekly plan that existed through Slice 3 of Week 2. The current system thesis is the uncertainty-to-tasking engine described in [`docs/decisions/0021-custody-as-uncertainty-to-tasking-engine.md`](decisions/0021-custody-as-uncertainty-to-tasking-engine.md) and [`docs/pivot_audit_uncertainty_to_tasking.md`](pivot_audit_uncertainty_to_tasking.md). Current shipped capabilities are documented in [`README.md`](../README.md).
+>
+> This guide is preserved as historical context. Its North Star, hero capability, and weekly plan no longer reflect the shipped system.
+
+---
+
 **Status:** Scenario locked. Data sources resolved. Positioning reframed around SDA capability vectors. Ready for Week 1.
 **Supersedes:** v2.
 **Scope:** Open-source reference implementation answering a publicly published community call. Architecture is real; scenario and data are curated.

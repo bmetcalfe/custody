@@ -114,3 +114,24 @@ Avoid overclaiming:
 Accurate stronger claim after Week 2:
 
 > The prototype ingests existing SAR/VLM/AIS/scene-quality outputs as evidence, maintains scenario-specific hypotheses, surfaces custody health, and recommends next collection actions based on expected uncertainty reduction.
+
+## Implementation status (as of 2026-04-26)
+
+The "New components required" table above was the Week 0 plan. Slices 1–6 of that plan have landed. Each slice is one focused commit on `main`:
+
+- **Slice 1** — hypothesis layer contract and scenario registries (types, registry, update, explain). Landed in `5c89f6c`.
+- **Slice 2** — source-object evidence adapters (`from_observation`, `from_scene`, `from_match`, `from_mapping`). Landed in `1bcdaa4`.
+- **Slice 3** — scenario evidence generators and per-scene timeline CLI (`scripts/12_hypothesis_timeline.py`). Landed in `4e48be2`.
+- **Slice 4** — custody-health assessment (`CustodyHealthStatus`, `HypothesisCustodyHealth`, `assess_custody_health`, cascade LOST > STALE > AMBIGUOUS > HEALTHY > DEGRADED, canonical `ambiguity_pairs`). Landed in `f81a7b6`.
+- **Slice 5** — collection-value ranking over hypothesis ambiguity (`rank_collection_candidates`, eight-pair strategy table, sensor-generic candidate types). Landed in `28aa188`.
+- **Slice 6** — decision-packet CLI composing belief, custody health, primary ambiguity, and candidate-collect recommendations (`scripts/13_decision_packet.py`). Landed in `083d04b`.
+
+The **Preserved**, **Recontextualized**, and **Paused** tables at the top of this document remain accurate; no component has moved between those categories. The V2 matcher (ADR-0019 / ADR-0020) stays paused unless hypothesis-layer ambiguity demands it.
+
+Not yet shipped, still on the roadmap per README:
+
+- Real-data wiring from processed SAR/AIS artifacts into the scenario generators
+- Sentinel-1 / Sentinel-2 evidence integration
+- Portfolio-level prioritization across multiple regions or targets
+- Live tasking integration, platform-specific sensor access/scheduling
+- Real-time ingestion or production deployment
