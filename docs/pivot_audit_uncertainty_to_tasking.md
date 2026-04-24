@@ -117,7 +117,7 @@ Accurate stronger claim after Week 2:
 
 ## Implementation status (as of 2026-04-24)
 
-The "New components required" table above was the Week 0 plan. Slices 1–10 of that plan have landed. Each slice is one focused commit on `main`:
+The "New components required" table above was the Week 0 plan. Slices 1–11 of that plan have landed. Each slice is one focused commit on `main`:
 
 - **Slice 1** — hypothesis layer contract and scenario registries (types, registry, update, explain). Landed in `5c89f6c`.
 - **Slice 2** — source-object evidence adapters (`from_observation`, `from_scene`, `from_match`, `from_mapping`). Landed in `1bcdaa4`.
@@ -128,7 +128,8 @@ The "New components required" table above was the Week 0 plan. Slices 1–10 of 
 - **Slice 7** — public-truth hardening: positioning.md rewritten around the new thesis; implementation guide banner-marked as historical; `pyproject.toml` description updated. Landed in `05f6959`.
 - **Slice 8** — decision-packet JSON and Markdown export (`DecisionPacket` dataclass, `build_decision_packet`, `format_as_text` / `format_as_json` / `format_as_markdown`, `--format` flag; closed JSON schema `"1"`, deterministic `generated_at` from `state.timestamp`). Landed in `4d3bbed`.
 - **Slice 9** — mission-value attribution proxy (`attribute_mission_value`, seven-component decomposition, opt-in `--mission-value` flag preserving Slice 8 byte-identical baselines). Landed in `b6e853f`.
-- **Slice 10** — counterfactual collect simulation (`simulate_counterfactual_collects`, three-outcome decomposition under AMBIGUOUS custody, deterministic heuristic outcome weights, `scripts/14_counterfactual_collects.py`). Pending commit hash on this slice.
+- **Slice 10** — counterfactual collect simulation (`simulate_counterfactual_collects`, three-outcome decomposition under AMBIGUOUS custody, deterministic heuristic outcome weights, `scripts/14_counterfactual_collects.py`). Landed in `ac1d523`.
+- **Slice 11** — constrained collection-plan optimizer (`optimize_collection_plan`, exhaustive + greedy baselines, `PlanConstraint` over budget / max-collects / required / excluded, `scripts/15_optimize_collect_plan.py`). Pending commit hash on this slice.
 
 The **Preserved**, **Recontextualized**, and **Paused** tables at the top of this document remain accurate; no component has moved between those categories. The V2 matcher (ADR-0019 / ADR-0020) stays paused unless hypothesis-layer ambiguity demands it.
 

@@ -21,6 +21,7 @@ Shipped, runnable today:
 - Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects
 - Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs; deterministic and not a financial model
 - Counterfactual collect simulation comparing candidate collect strategies by expected ambiguity resolution and custody-health-score impact, using deterministic heuristic outcome weights (not calibrated sensor probabilities, not live tasking)
+- Constrained collection-plan optimization over candidate collect types using deterministic exhaustive and greedy baselines under budget / max-collect / required / excluded constraints; planning utility is a deterministic proxy, not live tasking, not platform scheduling, not an RL policy
 
 ---
 

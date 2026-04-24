@@ -53,6 +53,14 @@ from custody.hypotheses.mission_value import (
     format_mission_value_text,
     mission_value_to_json_object,
 )
+from custody.hypotheses.optimizer import (
+    OptimizedPlan,
+    PlanConstraint,
+    PlanItem,
+    PlanOptimizationReport,
+    format_optimizer_text,
+    optimize_collection_plan,
+)
 from custody.hypotheses.registry import (
     SCENARIO_TENNENT,
     SCENARIO_WHITSUN,
@@ -84,6 +92,10 @@ __all__ = [
     "MissionValueAssessment",
     "MissionValueComponent",
     "MissionValueReport",
+    "OptimizedPlan",
+    "PlanConstraint",
+    "PlanItem",
+    "PlanOptimizationReport",
     "SCENARIO_TENNENT",
     "SCENARIO_WHITSUN",
     "SCHEMA_VERSION",
@@ -96,6 +108,7 @@ __all__ = [
     "format_as_text",
     "format_counterfactual_text",
     "format_mission_value_markdown",
+    "format_optimizer_text",
     "format_mission_value_text",
     "format_state",
     "from_mapping",
@@ -105,6 +118,7 @@ __all__ = [
     "get_hypotheses",
     "get_hypothesis_ids",
     "mission_value_to_json_object",
+    "optimize_collection_plan",
     "packet_to_json_object",
     "rank_collection_candidates",
     "simulate_counterfactual_collects",
