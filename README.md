@@ -32,9 +32,14 @@ python scripts/13_decision_packet.py --scenario tennent --format json
 
 # Markdown (shareable / vault / interview prep)
 python scripts/13_decision_packet.py --scenario tennent --format md
+
+# Append the mission-value attribution proxy (opt-in, off by default)
+python scripts/13_decision_packet.py --scenario tennent --mission-value
 ```
 
 `--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
+
+`--mission-value` appends a per-candidate attribution block decomposing each recommended collect into named components (ambiguity reduction, custody-health improvement, mission relevance, timeliness, cost / latency tradeoffs, false-positive risk). It is a **proxy model**, not revenue attribution and not a financial model: no dollar figures, no production cost accounting. Leaving the flag off keeps the default text / JSON / Markdown outputs byte-identical to their Slice 8 baselines.
 
 The per-scene hypothesis timeline is also runnable directly:
 

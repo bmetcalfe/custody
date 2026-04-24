@@ -19,6 +19,7 @@ Shipped, runnable today:
 - Custody-health scoring that distinguishes healthy, degraded, ambiguous, stale, and lost states
 - Collection-value ranking that recommends candidate collect *types* by expected hypothesis-disambiguation value
 - Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects
+- Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs; deterministic and not a financial model
 
 ---
 
