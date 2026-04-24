@@ -35,6 +35,9 @@ python scripts/13_decision_packet.py --scenario tennent --format md
 
 # Append the mission-value attribution proxy (opt-in, off by default)
 python scripts/13_decision_packet.py --scenario tennent --mission-value
+
+# Counterfactual collect simulation
+python scripts/14_counterfactual_collects.py --scenario tennent
 ```
 
 `--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
@@ -63,6 +66,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Collection-value ranking that recommends candidate collect types by expected hypothesis-disambiguation value
 - Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects, with text, JSON, and Markdown export formats (versioned JSON, `schema_version` "1")
 - Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs (deterministic, not a financial model)
+- Counterfactual collect simulation comparing candidate collect strategies by expected ambiguity resolution and custody-health impact using deterministic heuristic outcome weights (not calibrated probabilities)
 
 ---
 
@@ -119,11 +123,13 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `custody_health.py` — classifies state into healthy / degraded / ambiguous / stale / lost with canonical ambiguity pairs
 - `collection_value.py` — ranks sensor-generic collect types by expected disambiguation value
 - `mission_value.py` — mission-value attribution proxy decomposing candidate collect value into named components
+- `counterfactual.py` — deterministic counterfactual simulation of candidate collect outcomes
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):
 - `12_hypothesis_timeline.py` — per-scene belief, custody health, and reasoning trace
 - `13_decision_packet.py` — composed belief / health / ambiguity / candidate-collect packet
+- `14_counterfactual_collects.py` — counterfactual outcome comparison across candidate collects
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker

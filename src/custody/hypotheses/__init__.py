@@ -14,6 +14,13 @@ from custody.hypotheses.collection_value import (
     CollectionValue,
     rank_collection_candidates,
 )
+from custody.hypotheses.counterfactual import (
+    CounterfactualCollectAssessment,
+    CounterfactualOutcome,
+    CounterfactualReport,
+    format_counterfactual_text,
+    simulate_counterfactual_collects,
+)
 from custody.hypotheses.custody_health import (
     CustodyHealthStatus,
     HypothesisCustodyHealth,
@@ -65,6 +72,9 @@ __all__ = [
     "CollectionCandidate",
     "CollectionRecommendation",
     "CollectionValue",
+    "CounterfactualCollectAssessment",
+    "CounterfactualOutcome",
+    "CounterfactualReport",
     "CustodyHealthStatus",
     "DecisionPacket",
     "Hypothesis",
@@ -84,6 +94,7 @@ __all__ = [
     "format_as_json",
     "format_as_markdown",
     "format_as_text",
+    "format_counterfactual_text",
     "format_mission_value_markdown",
     "format_mission_value_text",
     "format_state",
@@ -96,5 +107,6 @@ __all__ = [
     "mission_value_to_json_object",
     "packet_to_json_object",
     "rank_collection_candidates",
+    "simulate_counterfactual_collects",
     "update_state",
 ]

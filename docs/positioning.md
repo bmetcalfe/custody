@@ -20,6 +20,7 @@ Shipped, runnable today:
 - Collection-value ranking that recommends candidate collect *types* by expected hypothesis-disambiguation value
 - Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects
 - Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs; deterministic and not a financial model
+- Counterfactual collect simulation comparing candidate collect strategies by expected ambiguity resolution and custody-health-score impact, using deterministic heuristic outcome weights (not calibrated sensor probabilities, not live tasking)
 
 ---
 
