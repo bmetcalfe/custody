@@ -62,7 +62,12 @@ python scripts/21_api_demo.py --endpoint decision-packet --scenario tennent --fo
 
 # Provenance manifest for a deterministic run (text, JSON, or Markdown)
 python scripts/22_provenance_manifest.py --output-kind decision-packet --scenario tennent --format json
+
+# Decision packet from artifact manifests (no detection or live ingestion)
+python scripts/23_packet_from_artifacts.py --scenario both
 ```
+
+The artifact bridge consumes existing artifact-style outputs (scene metadata, SAR/VLM summaries, matcher outputs, AIS/GFW presence summaries, quality flags, manual labels) committed as small JSON manifests under `tests/fixtures/artifacts/`. It does not run VLM, run the matcher, fetch Sentinel data, or pull from real data pipelines. Artifact evidence is candidate evidence, not ground truth. See [`docs/artifact_bridge.md`](docs/artifact_bridge.md).
 
 The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
 
@@ -107,6 +112,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Portfolio-level allocation that selects candidate collect types across scenario work items under shared budget, max-collect, and per-scenario constraints (decision-support output only — no execution authorization, no platform scheduling)
 - Local decision API/service layer exposing decision packets, collect ranking, optimized plans, policy evaluation, planner queues, and portfolio allocation as JSON-serializable responses (local prototype service contract — no deployment, no authentication, no live integration)
 - Run-provenance records attached to every API response (deterministic run ID, command, scenarios, input fixtures, git commit, default assumptions / caveats); standalone provenance-manifest CLI; documented prototype security posture and CI workflow (auditable artifacts only — no real-data lineage, no production controls)
+- Artifact-manifest bridge that converts existing SAR / VLM / AIS / matcher-style outputs into HypothesisEvidence and runs the decision packet stack without rerunning detection or live ingestion (small committed JSON manifests; explicit semantic and scenario signal mapping paths; artifacts are candidate evidence, not ground truth)
 
 ---
 

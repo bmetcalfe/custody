@@ -1,0 +1,74 @@
+[
+  {
+    "artifact_id": "whitsun-scene-20231206a",
+    "scenario_id": "whitsun",
+    "kind": "scene_signal",
+    "source_ref": "whitsun_20231206_umbra-04",
+    "timestamp": "2023-12-06T01:00:00+00:00",
+    "quality_flag": "yellow",
+    "confidence": null,
+    "payload": {
+      "vessel_count": 6,
+      "ais_coverage_flag": "sparse"
+    },
+    "notes": "cluster of vessels with sparse AIS coverage"
+  },
+  {
+    "artifact_id": "whitsun-match-cluster",
+    "scenario_id": "whitsun",
+    "kind": "matcher_persistence",
+    "source_ref": "matcher:w-obs-1206a->w-obs-1206b",
+    "timestamp": "2023-12-06T10:00:00+00:00",
+    "quality_flag": "yellow",
+    "confidence": null,
+    "payload": {
+      "matched_cluster": true,
+      "obs_a_id": "w-obs-1206a",
+      "obs_b_id": "w-obs-1206b",
+      "distance_m": 15.0
+    },
+    "notes": "cluster persists across same-day collections"
+  },
+  {
+    "artifact_id": "whitsun-ais-sparse",
+    "scenario_id": "whitsun",
+    "kind": "ais_presence_summary",
+    "source_ref": "gfw:whitsun-20231206",
+    "timestamp": "2023-12-06T01:00:00+00:00",
+    "quality_flag": null,
+    "confidence": 0.7,
+    "payload": {
+      "supports": ["ais_dark_or_poorly_observed_vessels"],
+      "contradicts": [],
+      "reason": "sparse AIS coverage with detected vessels suggests dark or poorly observed activity"
+    },
+    "notes": "explicit semantic AIS presence summary"
+  },
+  {
+    "artifact_id": "whitsun-scene-20240320",
+    "scenario_id": "whitsun",
+    "kind": "scene_signal",
+    "source_ref": "whitsun_20240320_umbra-05",
+    "timestamp": "2024-03-20T01:00:00+00:00",
+    "quality_flag": "green",
+    "confidence": null,
+    "payload": {
+      "vessel_count": 2,
+      "ais_coverage_flag": "solid"
+    },
+    "notes": "fewer vessels, solid AIS coverage"
+  },
+  {
+    "artifact_id": "whitsun-unknown-metadata",
+    "scenario_id": "whitsun",
+    "kind": "unknown",
+    "source_ref": "metadata:whitsun-misc",
+    "timestamp": null,
+    "quality_flag": null,
+    "confidence": null,
+    "payload": {
+      "description": "miscellaneous metadata with no semantic fields"
+    },
+    "notes": "should produce no evidence"
+  }
+]

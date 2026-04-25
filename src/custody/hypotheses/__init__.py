@@ -8,6 +8,21 @@ explanations?" while ``belief_assessment.FusionAssessment`` continues to
 answer "what do we believe about this entity right now?"
 """
 
+from custody.hypotheses.artifacts import (
+    ArtifactDecisionBundle,
+    ArtifactEvidenceBundle,
+    ArtifactKind,
+    ArtifactRecord,
+    artifact_record_from_mapping,
+    artifact_record_to_evidence,
+    artifact_records_to_evidence,
+    build_decision_from_artifacts,
+    bundle_to_dict,
+    bundle_to_json,
+    format_artifact_decision_markdown,
+    format_artifact_decision_text,
+    load_artifact_manifest,
+)
 from custody.hypotheses.collection_value import (
     CollectionCandidate,
     CollectionRecommendation,
@@ -134,6 +149,10 @@ from custody.hypotheses.types import (
 from custody.hypotheses.update import update_state
 
 __all__ = [
+    "ArtifactDecisionBundle",
+    "ArtifactEvidenceBundle",
+    "ArtifactKind",
+    "ArtifactRecord",
     "BeliefEntry",
     "CollectRecommendation",
     "CollectionCandidate",
@@ -178,15 +197,21 @@ __all__ = [
     "WorkflowMode",
     "WorkflowModel",
     "WorkflowStep",
+    "artifact_record_from_mapping",
+    "artifact_record_to_evidence",
+    "artifact_records_to_evidence",
     "attribute_mission_value",
     "allocate_portfolio",
     "append_review_record_jsonl",
     "assess_custody_health",
     "build_baseline_workflow",
     "build_custody_workflow",
+    "build_decision_from_artifacts",
     "build_decision_packet",
     "build_planner_queue",
     "build_portfolio_candidates",
+    "bundle_to_dict",
+    "bundle_to_json",
     "create_planner_review_record",
     "create_queue_item",
     "create_review_subject_from_optimized_plan",
@@ -195,6 +220,8 @@ __all__ = [
     "efficiency_report_to_json_object",
     "evaluate_collection_policies",
     "explain_top",
+    "format_artifact_decision_markdown",
+    "format_artifact_decision_text",
     "format_as_json",
     "format_as_markdown",
     "format_as_text",
@@ -219,6 +246,7 @@ __all__ = [
     "from_scene",
     "get_hypotheses",
     "get_hypothesis_ids",
+    "load_artifact_manifest",
     "load_review_ledger_jsonl",
     "mission_value_to_json_object",
     "optimize_collection_plan",

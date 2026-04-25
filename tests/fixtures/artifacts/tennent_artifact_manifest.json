@@ -1,0 +1,71 @@
+[
+  {
+    "artifact_id": "tennent-scene-20230702",
+    "scenario_id": "tennent",
+    "kind": "scene_signal",
+    "source_ref": "tennent_20230702_umbra-01",
+    "timestamp": "2023-07-02T14:00:55+00:00",
+    "quality_flag": "yellow",
+    "confidence": null,
+    "payload": {
+      "persistent_scatterer_detected": true,
+      "change_signal_strength": 0.0
+    },
+    "notes": "first observation, persistent bright scatter near reef footprint"
+  },
+  {
+    "artifact_id": "tennent-scene-20230723",
+    "scenario_id": "tennent",
+    "kind": "scene_signal",
+    "source_ref": "tennent_20230723_umbra-02",
+    "timestamp": "2023-07-23T14:00:00+00:00",
+    "quality_flag": "green",
+    "confidence": null,
+    "payload": {
+      "persistent_scatterer_detected": true,
+      "change_signal_strength": 0.30
+    },
+    "notes": "scene-to-scene change signal detected"
+  },
+  {
+    "artifact_id": "tennent-match-0702-0723",
+    "scenario_id": "tennent",
+    "kind": "matcher_persistence",
+    "source_ref": "matcher:t-obs-0702->t-obs-0723",
+    "timestamp": "2023-07-23T14:00:00+00:00",
+    "quality_flag": "green",
+    "confidence": null,
+    "payload": {
+      "displacement_m": 5.0,
+      "obs_a_id": "t-obs-0702",
+      "obs_b_id": "t-obs-0723"
+    },
+    "notes": "low displacement, consistent with fixed structure"
+  },
+  {
+    "artifact_id": "tennent-quality-20230807",
+    "scenario_id": "tennent",
+    "kind": "quality_flag",
+    "source_ref": "tennent_20230807_umbra-03",
+    "timestamp": "2023-08-07T14:00:00+00:00",
+    "quality_flag": "yellow",
+    "confidence": null,
+    "payload": {},
+    "notes": "quality flag only, no semantic fields"
+  },
+  {
+    "artifact_id": "tennent-label-reef",
+    "scenario_id": "tennent",
+    "kind": "manual_label",
+    "source_ref": "analyst:tennent-reef-label",
+    "timestamp": "2023-08-13T12:00:00+00:00",
+    "quality_flag": null,
+    "confidence": 0.8,
+    "payload": {
+      "supports": ["fixed_reclamation_or_structure"],
+      "contradicts": ["no_meaningful_activity"],
+      "reason": "analyst labels persistent structure consistent with reclamation"
+    },
+    "notes": "explicit semantic label from analyst"
+  }
+]
