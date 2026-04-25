@@ -39,9 +39,13 @@ scope** for the current prototype.
   layer call deterministic functions in-process. No network listener is
   started; `custody.api.app.create_app()` is a stub that raises
   `RuntimeError` until a deployable HTTP layer is added.
-- **Synthetic-only inputs.** All scripts run against the Tennent / Whitsun
-  narrative fixtures. There is no real-data ingestion path wired to the
-  hypothesis layer.
+- **Fixture-only inputs.** The core decision-loop CLIs run against the
+  deterministic Tennent / Whitsun narrative fixtures. The artifact
+  bridge, scene-availability bridge, and scheduler-lite consume small
+  committed JSON fixtures under `tests/fixtures/artifacts/`,
+  `tests/fixtures/availability/`, and `tests/fixtures/schedule/`. There
+  is no live external data ingestion, no real-time fetch path, and no
+  real-data lineage in any of these flows.
 - **Deterministic outputs.** Wall-clock time is excluded from every stable
   identifier (`request_id`, `run_id`, `packet_hash`, `review_id`,
   `item_id`). Re-running the same command on the same commit yields

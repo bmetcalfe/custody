@@ -1,148 +1,97 @@
 # Custody
 
-**Prototype uncertainty-to-tasking engine for maritime GEOINT scenarios.**
+**Custody is a prototype uncertainty-to-tasking / mission-planning decision engine for maritime GEOINT.**
 
-Custody models how imperfect SAR, AIS, scene-quality, and matcher evidence updates competing hypotheses over time, then surfaces custody health and remaining ambiguity so future collection can be prioritized by uncertainty reduction rather than raw detector confidence.
-
-Custody now demonstrates a full prototype decision loop:
-**evidence → hypothesis state → custody health → primary ambiguity → candidate collect ranking.**
+Custody models how imperfect SAR, AIS, scene-quality, and matcher evidence updates competing hypotheses over time, surfaces custody health and remaining ambiguity, ranks candidate collect *types* by expected uncertainty reduction, and runs that ranking through optimization, availability metadata, scheduling simulation, plan execution simulation, and a strategy comparison harness — closing a deterministic decision loop end to end.
 
 Two case studies drive the demo: Vietnamese land reclamation at [Tennent Reef](https://amti.csis.org/vietnam-ramps-up-spratly-island-dredging/) and [Chinese maritime militia activity](https://amti.csis.org/caught-on-camera-two-dozen-militia-boats-at-whitsun-reef-identified/) at Whitsun Reef. The architectural framing draws on the Space Development Agency's [Custody Layer capability vectors](https://www.sda.mil/custody/) — applied to the maritime domain, where open data enables public validation.
 
-See [ADR-0021](docs/decisions/0021-custody-as-uncertainty-to-tasking-engine.md) for the project's product thesis and the pivot rationale.
+See [ADR-0021](docs/decisions/0021-custody-as-uncertainty-to-tasking-engine.md) for the product thesis and the pivot rationale, and [`docs/positioning.md`](docs/positioning.md) for the honest-scoping document.
 
 ---
 
-## Why it matters
-
-Modern GEOINT workflows operate with incomplete, noisy, and sometimes contradictory evidence. The useful question is not only "what did the detector see?" but "what should we believe, how uncertain are we, and what collect would reduce that uncertainty?" Custody prototypes that reasoning layer.
-
----
-
-## Try it
-
-The primary demo is the **decision packet CLI**, which composes belief, custody health, primary ambiguity, and candidate collect recommendations into a structured artifact. Three export formats:
+## Run this first
 
 ```bash
-# Text (default, human-readable)
-python scripts/13_decision_packet.py --scenario tennent
-
-# JSON (structured, consumable by downstream planners; schema_version "1")
-python scripts/13_decision_packet.py --scenario tennent --format json
-
-# Markdown (shareable / vault / interview prep)
-python scripts/13_decision_packet.py --scenario tennent --format md
-
-# Append the mission-value attribution proxy (opt-in, off by default)
-python scripts/13_decision_packet.py --scenario tennent --mission-value
-
-# Counterfactual collect simulation
-python scripts/14_counterfactual_collects.py --scenario tennent
-
-# Optimized collection plan
-python scripts/15_optimize_collect_plan.py --scenario tennent --budget 1.0 --max-collects 2
-
-# Policy evaluation across heuristic strategies
-python scripts/16_evaluate_collect_policies.py --scenario both --budget 1.0 --max-collects 2
-
-# Human-in-the-loop review (review record only; no live tasking or sensor commands)
-python scripts/17_review_decision_packet.py --scenario tennent --action approve --reason "Best ambiguity reduction under budget"
-
-# Planner work queue (decision support only)
-python scripts/18_planner_queue.py --scenario both
-
-# Workflow efficiency proxy metrics (prototype proxies only)
-python scripts/19_efficiency_metrics.py --scenario both
-
-# Cross-scenario portfolio allocation (decision support only)
-python scripts/20_portfolio_allocation.py --scenario both --budget 1.5 --max-collects 3
-
-# Local decision API demo (JSON-serializable service responses; no HTTP server)
-python scripts/21_api_demo.py --endpoint decision-packet --scenario tennent --format json
-
-# Provenance manifest for a deterministic run (text, JSON, or Markdown)
-python scripts/22_provenance_manifest.py --output-kind decision-packet --scenario tennent --format json
-
-# Decision packet from artifact manifests (no detection or live ingestion)
-python scripts/23_packet_from_artifacts.py --scenario both
-
-# Scene availability metadata bridge (metadata-only, no imagery or execution)
-python scripts/24_scene_availability.py --scenario both
-
-# Availability-adjusted optimized plan (decision support only)
-python scripts/25_availability_optimized_plan.py --scenario both --budget 1.5 --max-collects 3
-
-# Collection-window scheduler-lite (simulation only, no live tasking)
-python scripts/26_schedule_collect_windows.py --scenario both --max-total-capacity 1.5 --max-overlapping-collects 2
-
-# Plan execution simulation feedback loop (synthetic returned evidence)
-python scripts/27_simulate_plan_execution.py --scenario both --outcome-policy mixed
-
-# Baseline planning-strategy comparison harness (deterministic proxy metrics)
+uv sync
+python scripts/13_decision_packet.py --scenario both
 python scripts/28_compare_planning_strategies.py --scenario both --outcome-policy favorable
 ```
 
-The artifact bridge consumes existing artifact-style outputs (scene metadata, SAR/VLM summaries, matcher outputs, AIS/GFW presence summaries, quality flags, manual labels) committed as small JSON manifests under `tests/fixtures/artifacts/`. It does not run VLM, run the matcher, fetch Sentinel data, or pull from real data pipelines. Artifact evidence is candidate evidence, not ground truth. See [`docs/artifact_bridge.md`](docs/artifact_bridge.md).
+The first command renders the composed decision packet (belief, custody health, primary ambiguity, candidate collect ranking) for both scenarios. The second command runs the full closed-loop pipeline through the deterministic strategy comparison harness.
 
-The scene-availability bridge adjusts candidate collect recommendations using provider-neutral SAR/optical/AIS availability metadata without downloading imagery or issuing execution authorizations. Feasibility scores are metadata-derived decision support, not executable plans. Uses committed lightweight metadata fixtures under `tests/fixtures/availability/` for demo. See [`docs/scene_availability_bridge.md`](docs/scene_availability_bridge.md).
+Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 
-The availability-adjusted optimizer composes the base optimized plan with the scene-availability bridge so plans account for whether candidate collect types are feasible in the current metadata window. Adjusted utility combines planning utility with metadata-derived feasibility; candidates whose availability is `unavailable` are excluded by default. This is decision support only — no executable plan, no platform scheduling, no live tasking.
+---
 
-Scheduler-lite extends the availability-adjusted plan with a simulation step: it places each recommended candidate collect type into provider-neutral collection windows under simple capacity, timing, and conflict constraints, and reports which (candidate, window) pairs would form a feasible plan. The scheduler does not address specific satellites or ground stations, does not model orbital access or weather, does not issue tasking commands, and does not claim platform access. Uses lightweight committed fixture windows under `tests/fixtures/schedule/`. See [`docs/scheduler_lite.md`](docs/scheduler_lite.md).
+## Explore modules
 
-Plan execution simulation closes the prototype decision loop. Given a scheduled plan and a deterministic outcome policy (`favorable`, `inconclusive`, `adverse`, or `mixed`), it generates synthetic returned evidence for each scheduled collect, feeds that evidence back through the belief-update engine, recomputes custody health, and produces an updated recommendation. Synthetic returned evidence only — no live tasking or sensor command is issued, no imagery is downloaded or processed, and the outcome policy is deterministic, not a calibrated probability. See [`docs/execution_simulation.md`](docs/execution_simulation.md).
+Every CLI is deterministic, runs against committed JSON fixtures, supports `--scenario {tennent,whitsun,both}`, and (where relevant) `--format {text,json,md}`.
 
-The baseline strategy comparison harness evaluates six planning strategies (manual baseline proxy → collection-value only → mission-value optimized → availability-adjusted → scheduler-lite → execution feedback) against deterministic proxy metrics (planning utility, mission-value proxy, ambiguity resolution, custody-health delta, schedule feasibility, traceability artifact count, review burden). It ranks strategies by a fixed-weight composite score and reports per-scenario and aggregate winners. Prototype proxy metrics only — no measured production performance, no real planner adoption, no operational reporting, no trained RL agent. See [`docs/planning_strategy_comparison.md`](docs/planning_strategy_comparison.md).
+| Capability                                  | Script                                          | What it demonstrates                                                                  |
+| ------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Per-scene hypothesis timeline               | `scripts/12_hypothesis_timeline.py`             | Scene-by-scene belief, custody health, and reasoning trace                            |
+| Decision packet                             | `scripts/13_decision_packet.py`                 | Composed belief / health / ambiguity / candidate collect packet (text / JSON / MD)    |
+| Counterfactual collect simulation           | `scripts/14_counterfactual_collects.py`         | Per-candidate ambiguity-resolution and health-delta proxies                           |
+| Constrained plan optimization               | `scripts/15_optimize_collect_plan.py`           | Exhaustive + greedy collection-plan baselines under budget / max-collect              |
+| Heuristic policy evaluation                 | `scripts/16_evaluate_collect_policies.py`       | Six named deterministic strategies compared under shared constraints                  |
+| Human-in-the-loop review ledger             | `scripts/17_review_decision_packet.py`          | Append-only JSONL approval / rejection / deferral / override records                  |
+| Planner work queue                          | `scripts/18_planner_queue.py`                   | Cross-scenario priority queue with custody-health and review status                   |
+| Workflow efficiency proxy metrics           | `scripts/19_efficiency_metrics.py`              | Baseline-vs-Custody manual-step / artifact / planner-attention proxies                |
+| Portfolio allocation                        | `scripts/20_portfolio_allocation.py`            | Cross-scenario optimization under shared budget and per-scenario constraints          |
+| Local decision API demo                     | `scripts/21_api_demo.py`                        | JSON-serializable service responses (no HTTP server, no auth)                         |
+| Provenance manifest                         | `scripts/22_provenance_manifest.py`             | Deterministic run record (run-id, command, scenarios, git commit, caveats)            |
+| Decision packet from artifact manifests     | `scripts/23_packet_from_artifacts.py`           | Artifact bridge: existing outputs → `HypothesisEvidence` → decision packet            |
+| Scene-availability metadata bridge          | `scripts/24_scene_availability.py`              | Provider-neutral SAR / optical / AIS metadata → feasibility-adjusted recommendation   |
+| Availability-adjusted optimized plan        | `scripts/25_availability_optimized_plan.py`     | Optimizer composed with feasibility multiplier                                        |
+| Collection-window scheduler-lite            | `scripts/26_schedule_collect_windows.py`        | Schedule-feasibility simulation under capacity / timing / overlap constraints         |
+| Plan execution simulation feedback loop     | `scripts/27_simulate_plan_execution.py`         | Synthetic returned evidence → updated belief → next recommendation                    |
+| Baseline strategy comparison harness        | `scripts/28_compare_planning_strategies.py`     | Six-strategy deterministic ranking on prototype proxy metrics                         |
 
-The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
-
-Every API response carries a `provenance` block (run ID, command, scenarios, input fixtures, git commit, default assumptions, default caveats). The same record can be emitted as a standalone manifest via `scripts/22_provenance_manifest.py` in text / JSON / Markdown. See [`docs/security.md`](docs/security.md) and [`docs/devsecops.md`](docs/devsecops.md) for the full prototype security and dev-workflow posture.
-
-The portfolio plan is decision support only. It does not issue execution authorizations or platform-specific schedules. Portfolio score and mission value are prototype proxies, not financial estimates.
-
-The efficiency report compares a baseline / manual triage workflow against the Custody-assisted decision-support workflow. Metrics are prototype proxies only; they do not claim measured workflow timing, real planner adoption, or any monetary value. See [`docs/mps_complexity_map.md`](docs/mps_complexity_map.md) for the workflow model the metrics are built on.
-
-`--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
-
-`--mission-value` appends a per-candidate attribution block decomposing each recommended collect into named components (ambiguity reduction, custody-health improvement, mission relevance, timeliness, cost / latency tradeoffs, false-positive risk). It is a **proxy model**, not revenue attribution and not a financial model: no dollar figures, no production cost accounting. Leaving the flag off keeps the default text / JSON / Markdown outputs byte-identical to their Slice 8 baselines.
-
-The per-scene hypothesis timeline is also runnable directly:
-
-```bash
-python scripts/12_hypothesis_timeline.py --scenario tennent
-python scripts/12_hypothesis_timeline.py --scenario whitsun
-python scripts/12_hypothesis_timeline.py --scenario both
-```
-
-Both CLIs are deterministic and produce human-readable output. The decision packet is the "run this first" path; the timeline shows the scene-by-scene reasoning that leads to the final packet.
+The decision packet is the "run this first" path; the timeline shows the scene-by-scene reasoning that leads to the final packet; the strategy comparison harness ranks the full stack against simpler baselines.
 
 ---
 
 ## Current capabilities
 
-- Scenario-specific hypothesis registries for Tennent Reef and Whitsun Reef
+Grouped, not exhaustive — see [`docs/positioning.md`](docs/positioning.md) for full per-capability disclaimers.
+
+**Evidence and belief**
+- Scenario-specific hypothesis registries for Tennent and Whitsun
 - Thin evidence adapters over existing observation, scene, matcher, VLM, and GFW-style outputs
-- Deterministic hypothesis-state updates with auditable support/contradiction traces
-- Synthetic scenario timelines using real Tennent/Whitsun scene dates
-- Custody-health scoring that distinguishes healthy, degraded, ambiguous, stale, and lost states
-- Collection-value ranking that recommends candidate collect types by expected hypothesis-disambiguation value
-- Decision packet CLI composing belief, custody health, primary ambiguity, and candidate collects, with text, JSON, and Markdown export formats (versioned JSON, `schema_version` "1")
-- Mission-value attribution proxy decomposing candidate collect value into ambiguity reduction, custody-health improvement, mission relevance, timeliness, and cost / latency tradeoffs (deterministic, not a financial model)
-- Counterfactual collect simulation comparing candidate collect strategies by expected ambiguity resolution and custody-health impact using deterministic heuristic outcome weights (not calibrated probabilities)
-- Constrained collection-plan optimization selecting candidate collect types under budget and max-collect constraints using deterministic exhaustive and greedy baselines
-- Heuristic collection-policy evaluation comparing value-optimized, ambiguity-first, low-cost-first, SAR-first, optical-first, and AIS-context-first strategies under shared constraints
-- Human-in-the-loop review ledger for approving, rejecting, deferring, or overriding candidate collection recommendations with auditable review records (review-only — no live tasking or sensor commands)
-- Planner work queue that ranks scenario decision packets by custody health, ambiguity, mission-value proxy, planning utility, and human review status
-- Workflow complexity and efficiency proxy metrics comparing a baseline / manual triage workflow with the Custody-assisted decision-support flow (prototype proxies only — no production timing or operational performance claim)
-- Portfolio-level allocation that selects candidate collect types across scenario work items under shared budget, max-collect, and per-scenario constraints (decision-support output only — no execution authorization, no platform scheduling)
-- Local decision API/service layer exposing decision packets, collect ranking, optimized plans, policy evaluation, planner queues, and portfolio allocation as JSON-serializable responses (local prototype service contract — no deployment, no authentication, no live integration)
-- Run-provenance records attached to every API response (deterministic run ID, command, scenarios, input fixtures, git commit, default assumptions / caveats); standalone provenance-manifest CLI; documented prototype security posture and CI workflow (auditable artifacts only — no real-data lineage, no production controls)
-- Artifact-manifest bridge that converts existing SAR / VLM / AIS / matcher-style outputs into HypothesisEvidence and runs the decision packet stack without rerunning detection or live ingestion (small committed JSON manifests; explicit semantic and scenario signal mapping paths; artifacts are candidate evidence, not ground truth)
-- Scene-availability metadata bridge that adjusts candidate collect recommendations using provider-neutral SAR / optical / AIS collection availability metadata without downloading imagery or issuing execution authorizations (deterministic feasibility rules over committed JSON catalogs; feasibility scores are metadata-derived, not executable plans)
-- Availability-adjusted collection-plan optimization that composes the constrained optimizer with the scene-availability bridge so plans account for metadata-derived feasibility of candidate collect types; adjusted utility = planning utility * feasibility; exhaustive + greedy baselines under budget / max-collect / min-feasibility / required / excluded constraints; decision support only — no executable plan, no platform scheduling
-- Collection-window scheduler-lite that simulates placing availability-adjusted candidate collect types into provider-neutral collection windows under simple capacity, timing, and conflict constraints; deterministic exhaustive search over windows; schedule feasibility simulation only — no orbital scheduling, no platform access, no live tasking, no sensor-control instructions
-- Plan execution simulation feedback loop that applies synthetic returned evidence from scheduled candidate collects to update hypothesis state, custody health, ambiguity, and next recommendations under deterministic outcome policies (favorable / inconclusive / adverse / mixed); closed-loop decision-support simulation only — synthetic returned evidence only, no live tasking or sensor command is issued, no imagery downloaded or processed
-- Baseline planning-strategy comparison harness that evaluates manual baseline proxy, collection-value-only, mission-value optimized, availability-adjusted, scheduler-lite, and execution-feedback strategies using deterministic prototype metrics (planning utility, mission-value proxy, ambiguity resolution, custody-health delta, schedule feasibility, traceability, review burden); per-scenario and cross-scenario aggregate ranking; future RL-ready evaluation substrate but not a trained agent — proxy metrics only, no measured production performance, no real planner adoption, no operational outcome claim
+- Deterministic weighted belief update with auditable support / contradiction traces
+- Custody-health scoring distinguishing healthy / degraded / ambiguous / stale / lost states
+
+**Decision packet and explainability**
+- Decision packet composing belief, custody health, primary ambiguity, candidate collects (versioned JSON, `schema_version` "1")
+- Human-readable text, structured JSON, and Markdown export formats
+- `do-not-yet` actions surfaced when custody is too uncertain to act on
+
+**Mission value, counterfactuals, optimization**
+- Mission-value attribution proxy decomposing collect value into named components
+- Counterfactual collect simulation comparing candidate strategies under heuristic outcome weights
+- Constrained collection-plan optimization (exhaustive + greedy) under budget / max-collect / required / excluded
+- Heuristic policy evaluation across six named deterministic strategies under shared constraints
+
+**Human-in-the-loop and planner workflow**
+- Review ledger producing approve / reject / defer / override records with deterministic packet + review hashes
+- Planner work queue ranking scenarios by custody health, ambiguity, mission-value proxy, planning utility, and review status
+- Workflow complexity map and efficiency proxy metrics comparing baseline / manual triage with the Custody-assisted flow
+
+**Portfolio, API, and provenance**
+- Cross-scenario portfolio allocation under shared budget, max-collects, and per-scenario constraints
+- Local decision API service contract (JSON-serializable; no HTTP server, no auth) with seven endpoints
+- Run-provenance records attached to every API response and emitted as standalone manifests
+
+**Artifact and availability metadata bridges**
+- Artifact-manifest bridge converting existing SAR / VLM / AIS / matcher-style outputs into `HypothesisEvidence`
+- Scene-availability metadata bridge adjusting candidate recommendations using provider-neutral SAR / optical / AIS metadata
+- Availability-adjusted optimization composing the constrained optimizer with metadata feasibility
+
+**Scheduling, execution simulation, and strategy comparison**
+- Collection-window scheduler-lite placing candidates into provider-neutral windows under simple constraints
+- Plan execution simulation feedback loop producing synthetic returned evidence and a post-collect recommendation
+- Baseline planning-strategy comparison harness ranking six strategies on deterministic prototype proxy metrics
 
 ---
 
@@ -150,10 +99,12 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 
 - Not a standalone SAR ship detector
 - Not a claim that AIS absence always means dark activity
-- Not a production tasking system
+- Not a production tasking system or live MPS integration
 - Not a replacement for existing mission-planning tools
 - VLM/SAR detection is treated as candidate evidence, not ground truth
 - Candidate collect recommendations are sensor-generic collect *types*, not tasking orders or platform-specific schedules
+- Mission-value, planning-utility, schedule-score, and comparison-score numbers are deterministic proxies, not measured KPIs and not financial estimates
+- Plan execution simulation uses synthetic returned evidence under a deterministic outcome policy, not real sensor returns
 
 See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping document.
 
@@ -163,12 +114,14 @@ See [`docs/positioning.md`](docs/positioning.md) for the full honest-scoping doc
 
 These items are explicitly future work, not part of the current demo:
 
-- Real-data wiring from processed SAR/AIS artifacts into the scenario generators
+- Scaling portfolio allocation beyond two demo scenarios
+- Real-data wiring from processed SAR / AIS artifacts, beyond fixture manifests
+- Provider / catalog metadata integration beyond committed fixtures
 - Sentinel-1 / Sentinel-2 evidence integration
-- Portfolio-level prioritization across multiple regions or targets
-- Live tasking integration
 - Platform-specific sensor access and scheduling
+- Live tasking integration
 - Real-time ingestion or production deployment
+- Trained RL policy on top of the strategy-comparison harness, only if its evaluation results justify it
 
 ---
 
@@ -180,7 +133,7 @@ These items are explicitly future work, not part of the current demo:
 
 **Case Study B — Whitsun Reef, vessel flotilla.** Three Umbra SAR scenes across four months (December 2023 – March 2024) at 9.98°N / 114.63°E. The site of the [March 2021 Chinese maritime militia swarm](https://amti.csis.org/caught-on-camera-two-dozen-militia-boats-at-whitsun-reef-identified/) of approximately 220 vessels. Our scenes show multiple AIS-dark vessel clusters, reasoned about as competing hypotheses (cluster activity vs transient anchorage vs detector clutter).
 
-The pipeline is scenario-agnostic; the scenario-specific interpretation lives in `src/custody/hypotheses/scenarios.py`. The demo does not identify specific flagged vessels and does not make legal or sovereignty claims.
+The pipeline is scenario-agnostic; scenario-specific interpretation lives in `src/custody/hypotheses/scenarios.py`. The demo does not identify specific flagged vessels and does not make legal or sovereignty claims.
 
 See [`docs/scenario.md`](docs/scenario.md) for the locked AOI, full Umbra scene inventories, and case-by-case narrative.
 
@@ -190,37 +143,42 @@ See [`docs/scenario.md`](docs/scenario.md) for the locked AOI, full Umbra scene 
 
 The hypothesis layer sits on top of preserved lower-level components.
 
-**Hypothesis layer** (`src/custody/hypotheses/`) — the product layer:
-- `types.py` — `HypothesisEvidence`, `Hypothesis`, `HypothesisState` dataclasses
+**Hypothesis and planning-decision layer** (`src/custody/hypotheses/`):
+
+- `types.py` — `HypothesisEvidence`, `Hypothesis`, `HypothesisState`
 - `registry.py` — scenario-specific hypothesis sets for Tennent and Whitsun
-- `evidence.py` — thin adapters converting existing source objects to evidence annotations
+- `evidence.py` — source-object → evidence adapters
 - `update.py` — deterministic weighted belief update with explanation traces
-- `scenarios.py` — scenario-specific signal → evidence mappings (the catalog)
-- `custody_health.py` — classifies state into healthy / degraded / ambiguous / stale / lost with canonical ambiguity pairs
-- `collection_value.py` — ranks sensor-generic collect types by expected disambiguation value
-- `mission_value.py` — mission-value attribution proxy decomposing candidate collect value into named components
-- `counterfactual.py` — deterministic counterfactual simulation of candidate collect outcomes
-- `optimizer.py` — constrained collection-plan optimization over candidate collect types
-- `policy_eval.py` — heuristic policy evaluation comparing collection strategies under shared constraints
-- `planner_review.py` — human-in-the-loop review ledger for operator approval, rejection, deferral, or override of recommendations
-- `planner_queue.py` — ranked planner work queue for scenario-level decision support
-- `efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline and Custody-assisted workflows
-- `portfolio.py` — cross-scenario portfolio allocation under shared budget / max-collects / per-scenario constraints
+- `scenarios.py` — scenario-specific signal → evidence catalog
+- `custody_health.py` — health classification and canonical ambiguity pairs
+- `collection_value.py` — sensor-generic candidate collect ranker
+- `mission_value.py` — mission-value attribution proxy
+- `counterfactual.py` — deterministic counterfactual collect simulation
+- `optimizer.py` — constrained collection-plan optimization
+- `policy_eval.py` — heuristic policy comparison
+- `planner_review.py` — human-in-the-loop review ledger
+- `planner_queue.py` — planner work queue
+- `efficiency_metrics.py` — workflow efficiency proxy metrics
+- `portfolio.py` — cross-scenario portfolio allocation
+- `decision_packet.py` — composed decision packet (text / JSON / MD)
 - `explain.py` — human-readable state rendering
+- `artifacts.py` — artifact-manifest evidence bridge (Slice 19)
+- `scene_availability.py` — provider-neutral availability metadata bridge (Slice 20)
+- `availability_optimizer.py` — availability-adjusted constrained optimization (Slice 21)
+- `scheduler.py` — collection-window scheduler-lite (Slice 22)
+- `execution_sim.py` — plan execution simulation feedback loop (Slice 23)
+- `baseline_comparison.py` — strategy comparison harness (Slice 24)
+
+Provenance lives at `src/custody/provenance.py` (Slice 18) — frozen `ProvenanceRecord`, deterministic `stable_run_id`, best-effort git-commit capture, and text / JSON / Markdown manifest formatters. The local decision API contract lives at `src/custody/api/` (Slice 17): schemas, service functions, and a deliberate FastAPI stub.
 
 **CLIs** (`scripts/`):
-- `12_hypothesis_timeline.py` — per-scene belief, custody health, and reasoning trace
-- `13_decision_packet.py` — composed belief / health / ambiguity / candidate-collect packet
-- `14_counterfactual_collects.py` — counterfactual outcome comparison across candidate collects
-- `15_optimize_collect_plan.py` — constrained plan optimization with exhaustive and greedy baselines
-- `16_evaluate_collect_policies.py` — heuristic policy evaluation and strategy comparison
-- `17_review_decision_packet.py` — human-in-the-loop review of decision packets and optimized plans
-- `18_planner_queue.py` — planner work queue ranking scenarios by urgency and review status
-- `19_efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline / manual triage with the Custody-assisted flow
-- `20_portfolio_allocation.py` — cross-scenario portfolio allocation under shared budget and max-collect constraints
-- `21_api_demo.py` — local decision API demo over `custody.api.service` (no HTTP server)
+
+- `12_hypothesis_timeline.py` through `28_compare_planning_strategies.py` — see the Explore modules table above
+
+Earlier numbered scripts (`00`–`11`) cover detector / ingestion / SAR / VLM workflows that are preserved as inputs but are not part of the active decision-layer demo.
 
 **Supporting components** — preserved as inputs, not the product:
+
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
 - `detection/` — SAR and VLM candidate detection (candidate evidence, not ground truth)
 - `ingest/` — GFW presence ingestion as position-only AIS evidence
@@ -239,28 +197,17 @@ See [`docs/custody_fusion_implementation_guide_v3.md`](docs/custody_fusion_imple
 
 ---
 
-## Quickstart
-
-```bash
-uv sync
-uv run pytest                                    # full suite
-uv run python scripts/13_decision_packet.py --scenario both
-```
-
-Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
-
----
-
 ## Honest limitations
 
 This is a solo applied-research project. Limitations are documented in more detail in [`docs/positioning.md`](docs/positioning.md) and the relevant ADRs.
 
 - The belief update is weighted-additive with deterministic tie-break, not Bayesian. Scores are bounded heuristic values. Hypothesis priors, evidence weights, and thresholds are documented in `scenarios.py` and ADR-0021.
-- Custody-health classification and collection-value ranking are deterministic strategy-table lookups, not learned models. The tradeoff is legibility over adaptivity.
+- Custody-health classification, collection-value ranking, mission-value attribution, counterfactual outcome weights, scheduler-lite scoring, and the strategy-comparison composite score are all deterministic strategy-table lookups, not learned models. The tradeoff is legibility over adaptivity.
 - Detection (VLM, CFAR) is treated strictly as candidate evidence generation. It is not the product.
 - AIS absence is only treated as informative under documented coverage conditions; the Whitsun generator encodes a guardrail against "no AIS = dark vessel" overclaim.
-- The timeline and decision-packet CLIs run on synthetic scenario narratives constructed from caller-supplied flags. Real-data wiring from processed SAR/AIS artifacts is on the roadmap.
+- The core demo runs on deterministic synthetic narratives (`12_hypothesis_timeline.py`, `13_decision_packet.py`) and on committed artifact / availability / window fixtures (`23`–`28`). Both bridges are fixture / manifest based — no live external data fetch, real-time ingestion, imagery processing, or platform tasking is performed.
 - Candidate collect recommendations name sensor-generic collect types (e.g. `repeat_sar`, `optical_context`, `ais_coverage_query`). Platform-specific scheduling and access are explicitly out of scope.
+- Plan execution simulation uses synthetic returned evidence under a deterministic outcome policy, not real sensor returns.
 - The demo does not identify specific flagged vessels and does not make legal or sovereignty claims.
 
 ---
@@ -269,6 +216,8 @@ This is a solo applied-research project. Limitations are documented in more deta
 
 - [`docs/positioning.md`](docs/positioning.md) — public-facing "why this exists"
 - [`docs/scenario.md`](docs/scenario.md) — AOI, windows, Umbra scene inventories
+- [`docs/pivot_audit_uncertainty_to_tasking.md`](docs/pivot_audit_uncertainty_to_tasking.md) — slice-by-slice implementation status and the Week 0 audit history
+- [`docs/security.md`](docs/security.md) and [`docs/devsecops.md`](docs/devsecops.md) — prototype security posture and local development workflow
 - [`docs/decisions/`](docs/decisions/) — numbered architecture decision records; ADR-0021 locks the uncertainty-to-tasking pivot
 - [SDA Custody Layer](https://www.sda.mil/custody/) — architectural reference
 - [CSIS Asia Maritime Transparency Initiative](https://amti.csis.org/) — methodology grounding for both case studies

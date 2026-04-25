@@ -1,17 +1,34 @@
+# Python caches
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.nbc
+*.nbi
+
+# Virtualenvs and environment
 .venv/
 venv/
 .env*
 !.env.example
+
+# Editor / OS
 .DS_Store
 .claude/
+
+# Tooling caches
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build / packaging
 *.egg-info/
 dist/
 build/
 .coverage
 htmlcov/
+
+# Archives / scratch outputs
 *.zip
 *.log
 pyproject.toml.save

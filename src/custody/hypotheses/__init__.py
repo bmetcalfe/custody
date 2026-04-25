@@ -1,11 +1,24 @@
-"""Hypothesis layer — uncertainty-to-tasking engine (ADR-0021).
+"""Hypothesis and planning-decision layer for ADR-0021.
 
-Slice 1 exposes the contract types, scenario registry, deterministic
-belief update, and human-readable explain helpers.  This layer sits
-alongside (not inside) the seven-layer entity reasoning stack: it answers
-"what do we believe is happening in this scenario across competing
-explanations?" while ``belief_assessment.FusionAssessment`` continues to
-answer "what do we believe about this entity right now?"
+This package exposes the full uncertainty-to-tasking decision stack:
+
+- evidence annotations and source-object adapters
+- deterministic belief update over scenario-specific hypothesis registries
+- custody-health assessment with canonical ambiguity pairs
+- collection-value ranking over sensor-generic candidate types
+- mission-value attribution proxy and counterfactual collect simulation
+- constrained optimization, heuristic policy evaluation, and
+  human-in-the-loop review ledger
+- planner queueing and cross-scenario portfolio allocation
+- artifact-manifest and scene-availability metadata bridges
+- availability-adjusted optimization, scheduler-lite, plan execution
+  simulation, and baseline planning-strategy comparison
+
+The package is deterministic, runs against committed JSON fixtures, and
+does not import detector, matcher-runtime, GFW-runtime, or external SDK
+modules.  See ``docs/positioning.md`` and ``docs/pivot_audit_uncertainty_to_tasking.md``
+for the public-facing scope and ``docs/decisions/0021-custody-as-uncertainty-to-tasking-engine.md``
+for the architectural rationale.
 """
 
 from custody.hypotheses.artifacts import (

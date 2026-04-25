@@ -1,7 +1,7 @@
 [project]
 name = "custody"
 version = "0.1.0"
-description = "Prototype uncertainty-to-tasking engine for maritime GEOINT: hypothesis state, custody health, collection-value ranking, and auditable belief traces."
+description = "Prototype maritime GEOINT mission-planning decision engine: uncertainty-to-tasking, candidate collect planning, and auditable decision traces."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [

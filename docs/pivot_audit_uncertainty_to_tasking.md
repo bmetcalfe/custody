@@ -62,7 +62,9 @@ The missing product layer is a hypothesis layer above those components. That lay
 | Additional VLM prompt/model tuning | Detector improvement loop | Pause as primary work | Resume only if a specific hypothesis needs a better evidence extraction pass |
 | Full Sentinel ingestion | New data source integration | Pause as dependency | Resume after collection-value engine proves Sentinel is high-value for a scenario |
 
-## New components required
+## Original Week 0 plan / historical
+
+The "New components required" table below was the Week 0 plan. It is kept here as historical context for how the pivot was scoped, not as a current to-do list. See **Implementation status** below for the actual delivery against this plan and the slices that came after it.
 
 | New file | Purpose | Notes |
 |---|---|---|
@@ -115,9 +117,23 @@ Accurate stronger claim after Week 2:
 
 > The prototype ingests existing SAR/VLM/AIS/scene-quality outputs as evidence, maintains scenario-specific hypotheses, surfaces custody health, and recommends next collection actions based on expected uncertainty reduction.
 
-## Implementation status (as of 2026-04-24)
+## Current shipped decision stack
 
-The "New components required" table above was the Week 0 plan. Slices 1–17 of that plan have landed. Each slice is one focused commit on `main`:
+The full pipeline now runs end to end on committed fixtures:
+
+```
+evidence / artifacts -> hypothesis state -> custody health -> collection value
+        -> mission value -> counterfactuals -> optimizer -> policy eval
+        -> HITL review -> planner queue -> portfolio
+        -> API + provenance -> availability metadata -> availability-adjusted optimizer
+        -> scheduler-lite -> execution simulation -> strategy comparison
+```
+
+Each stage in this chain corresponds to one or more landed slices documented below.
+
+## Implementation status (as of 2026-04-25)
+
+Slices 1–24 of the Week 0 plan (and the post-plan slices that extended it) have landed. Each slice is one focused commit on `main`:
 
 - **Slice 1** — hypothesis layer contract and scenario registries (types, registry, update, explain). Landed in `5c89f6c`.
 - **Slice 2** — source-object evidence adapters (`from_observation`, `from_scene`, `from_match`, `from_mapping`). Landed in `1bcdaa4`.
@@ -142,14 +158,16 @@ The "New components required" table above was the Week 0 plan. Slices 1–17 of 
 - **Slice 21** — availability-adjusted collection optimization (`AvailabilityOptimizerConstraint`, `AvailabilityAdjustedPlanItem`, `AvailabilityOptimizedPlan`, `AvailabilityOptimizationReport`, exhaustive + greedy baselines with metadata-adjusted utility, `scripts/25_availability_optimized_plan.py`). Landed in `7bb5f5f`.
 - **Slice 22** — collection-window scheduler-lite (`CollectionWindow`, `ScheduleConstraint`, `ScheduledCollect`, `SchedulePlan`, `ScheduleReport`, deterministic exhaustive search over (candidate, window) pairs under capacity / timing / overlap / resource-type / exclusion constraints, committed window fixtures under `tests/fixtures/schedule/`, `scripts/26_schedule_collect_windows.py`). Landed in `be69a72`.
 - **Slice 23** — plan execution simulation feedback loop (`ExecutionOutcomePolicy`, `SimulatedCollectResult`, `ExecutionSimulationReport`, deterministic outcome policies: favorable / inconclusive / adverse / mixed, synthetic returned-evidence generation, belief-state update + custody-health recomputation + recommendation refresh, `scripts/27_simulate_plan_execution.py`). Landed in `896abeb`.
-- **Slice 24** — baseline planning-strategy comparison harness (`PlanningStrategyId`, `StrategyEvaluation`, `StrategyComparisonReport`, `CrossScenarioComparisonReport`, six-strategy deterministic ranking with composite score over planning utility / mission-value proxy / ambiguity resolution / health delta / schedule feasibility / traceability / review burden, per-scenario + cross-scenario aggregate, `scripts/28_compare_planning_strategies.py`). Pending commit hash on this slice.
+- **Slice 24** — baseline planning-strategy comparison harness (`PlanningStrategyId`, `StrategyEvaluation`, `StrategyComparisonReport`, `CrossScenarioComparisonReport`, six-strategy deterministic ranking with composite score over planning utility / mission-value proxy / ambiguity resolution / health delta / schedule feasibility / traceability / review burden, per-scenario + cross-scenario aggregate, `scripts/28_compare_planning_strategies.py`). Landed in `ff1d28c`.
 
 The **Preserved**, **Recontextualized**, and **Paused** tables at the top of this document remain accurate; no component has moved between those categories. The V2 matcher (ADR-0019 / ADR-0020) stays paused unless hypothesis-layer ambiguity demands it.
 
 Not yet shipped, still on the roadmap per README:
 
-- Real-data wiring from processed SAR/AIS artifacts into the scenario generators
+- Scaling portfolio allocation beyond two demo scenarios
+- Real-data wiring from processed SAR / AIS artifacts, beyond fixture manifests
+- Provider / catalog metadata integration beyond committed fixtures
 - Sentinel-1 / Sentinel-2 evidence integration
-- Portfolio-level prioritization across multiple regions or targets
-- Live tasking integration, platform-specific sensor access/scheduling
+- Live tasking integration, platform-specific sensor access / scheduling
 - Real-time ingestion or production deployment
+- Trained RL policy on top of the strategy-comparison harness, only if its evaluation results justify it
