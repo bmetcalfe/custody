@@ -127,3 +127,7 @@ The roadmap items in [README.md](../README.md) list real-data integration ahead 
 - A runtime caching layer so artifact manifests can be regenerated cheaply from a stable upstream artifact store.
 
 None of these are in scope today. The current bridge is intentionally limited to small committed JSON manifests so that the decision layer's behaviour stays auditable and reproducible.
+
+## Related: scene-availability bridge (Slice 20)
+
+The artifact bridge (Slice 19) converts existing outputs into `HypothesisEvidence` - it updates hypothesis state. The scene-availability bridge (Slice 20) uses provider-neutral collection metadata to assess whether candidate collect types are feasible - it adjusts recommendation scores without changing hypothesis state. See [`docs/scene_availability_bridge.md`](scene_availability_bridge.md).
