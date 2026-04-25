@@ -25,6 +25,7 @@ Shipped, runnable today:
 - Heuristic collection-policy evaluation comparing six named deterministic strategies (value-optimized, ambiguity-first, low-cost-first, SAR-first, optical-first, AIS-context-first) under one shared constraint; the harness is an RL-ready evaluation substrate, not a learned or trained policy
 - Human-in-the-loop review ledger producing auditable approve / reject / defer / override records with deterministic review and packet hashes; semi-autonomous planning control layer, review-only — no live tasking or sensor commands are issued
 - Planner-facing work queue ranking scenarios by custody health, ambiguity, mission-value proxy, planning utility, and human review status; decision-support system, not live tasking and not sensor commands
+- Workflow complexity map and efficiency proxy metrics comparing a baseline / manual triage workflow against the Custody-assisted decision-support flow (manual-step count, audit-artifact count, ambiguity focus, planner attention, traceability, candidate-strategy comparison count); prototype proxies only — no production timing measurement, no monetary value, no organisational performance claim
 
 ---
 

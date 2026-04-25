@@ -50,7 +50,12 @@ python scripts/17_review_decision_packet.py --scenario tennent --action approve 
 
 # Planner work queue (decision support only)
 python scripts/18_planner_queue.py --scenario both
+
+# Workflow efficiency proxy metrics (prototype proxies only)
+python scripts/19_efficiency_metrics.py --scenario both
 ```
+
+The efficiency report compares a baseline / manual triage workflow against the Custody-assisted decision-support workflow. Metrics are prototype proxies only; they do not claim measured workflow timing, real planner adoption, or any monetary value. See [`docs/mps_complexity_map.md`](docs/mps_complexity_map.md) for the workflow model the metrics are built on.
 
 `--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
 
@@ -83,6 +88,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Heuristic collection-policy evaluation comparing value-optimized, ambiguity-first, low-cost-first, SAR-first, optical-first, and AIS-context-first strategies under shared constraints
 - Human-in-the-loop review ledger for approving, rejecting, deferring, or overriding candidate collection recommendations with auditable review records (review-only — no live tasking or sensor commands)
 - Planner work queue that ranks scenario decision packets by custody health, ambiguity, mission-value proxy, planning utility, and human review status
+- Workflow complexity and efficiency proxy metrics comparing a baseline / manual triage workflow with the Custody-assisted decision-support flow (prototype proxies only — no production timing or operational performance claim)
 
 ---
 
@@ -144,6 +150,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `policy_eval.py` — heuristic policy evaluation comparing collection strategies under shared constraints
 - `planner_review.py` — human-in-the-loop review ledger for operator approval, rejection, deferral, or override of recommendations
 - `planner_queue.py` — ranked planner work queue for scenario-level decision support
+- `efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline and Custody-assisted workflows
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):
@@ -154,6 +161,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `16_evaluate_collect_policies.py` — heuristic policy evaluation and strategy comparison
 - `17_review_decision_packet.py` — human-in-the-loop review of decision packets and optimized plans
 - `18_planner_queue.py` — planner work queue ranking scenarios by urgency and review status
+- `19_efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline / manual triage with the Custody-assisted flow
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
