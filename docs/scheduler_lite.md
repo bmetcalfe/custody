@@ -98,3 +98,7 @@ Real orbital scheduling needs ephemerides, access geometry, ground-station conta
 - Round-trip lineage: provenance manifests for scheduled artifacts, not just decision packets.
 
 None of these are in scope today. Scheduler-lite is intentionally a small, deterministic, stdlib-only simulator over committed JSON fixtures.
+
+## Downstream feedback (Slice 23)
+
+The plan execution simulator ([Slice 23](execution_simulation.md), `src/custody/hypotheses/execution_sim.py`) consumes the `SchedulePlan` produced by scheduler-lite, generates synthetic returned evidence under a deterministic outcome policy, feeds that evidence back through the belief-update engine, and reports the resulting custody-health change and updated recommendation. That closes the prototype decision loop end-to-end.
