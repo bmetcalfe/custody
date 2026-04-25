@@ -44,6 +44,9 @@ python scripts/15_optimize_collect_plan.py --scenario tennent --budget 1.0 --max
 
 # Policy evaluation across heuristic strategies
 python scripts/16_evaluate_collect_policies.py --scenario both --budget 1.0 --max-collects 2
+
+# Human-in-the-loop review (review record only; no live tasking or sensor commands)
+python scripts/17_review_decision_packet.py --scenario tennent --action approve --reason "Best ambiguity reduction under budget"
 ```
 
 `--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
@@ -75,6 +78,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Counterfactual collect simulation comparing candidate collect strategies by expected ambiguity resolution and custody-health impact using deterministic heuristic outcome weights (not calibrated probabilities)
 - Constrained collection-plan optimization selecting candidate collect types under budget and max-collect constraints using deterministic exhaustive and greedy baselines
 - Heuristic collection-policy evaluation comparing value-optimized, ambiguity-first, low-cost-first, SAR-first, optical-first, and AIS-context-first strategies under shared constraints
+- Human-in-the-loop review ledger for approving, rejecting, deferring, or overriding candidate collection recommendations with auditable review records (review-only — no live tasking or sensor commands)
 
 ---
 
@@ -134,6 +138,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `counterfactual.py` — deterministic counterfactual simulation of candidate collect outcomes
 - `optimizer.py` — constrained collection-plan optimization over candidate collect types
 - `policy_eval.py` — heuristic policy evaluation comparing collection strategies under shared constraints
+- `planner_review.py` — human-in-the-loop review ledger for operator approval, rejection, deferral, or override of recommendations
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):
@@ -142,6 +147,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `14_counterfactual_collects.py` — counterfactual outcome comparison across candidate collects
 - `15_optimize_collect_plan.py` — constrained plan optimization with exhaustive and greedy baselines
 - `16_evaluate_collect_policies.py` — heuristic policy evaluation and strategy comparison
+- `17_review_decision_packet.py` — human-in-the-loop review of decision packets and optimized plans
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
