@@ -77,6 +77,9 @@ python scripts/26_schedule_collect_windows.py --scenario both --max-total-capaci
 
 # Plan execution simulation feedback loop (synthetic returned evidence)
 python scripts/27_simulate_plan_execution.py --scenario both --outcome-policy mixed
+
+# Baseline planning-strategy comparison harness (deterministic proxy metrics)
+python scripts/28_compare_planning_strategies.py --scenario both --outcome-policy favorable
 ```
 
 The artifact bridge consumes existing artifact-style outputs (scene metadata, SAR/VLM summaries, matcher outputs, AIS/GFW presence summaries, quality flags, manual labels) committed as small JSON manifests under `tests/fixtures/artifacts/`. It does not run VLM, run the matcher, fetch Sentinel data, or pull from real data pipelines. Artifact evidence is candidate evidence, not ground truth. See [`docs/artifact_bridge.md`](docs/artifact_bridge.md).
@@ -88,6 +91,8 @@ The availability-adjusted optimizer composes the base optimized plan with the sc
 Scheduler-lite extends the availability-adjusted plan with a simulation step: it places each recommended candidate collect type into provider-neutral collection windows under simple capacity, timing, and conflict constraints, and reports which (candidate, window) pairs would form a feasible plan. The scheduler does not address specific satellites or ground stations, does not model orbital access or weather, does not issue tasking commands, and does not claim platform access. Uses lightweight committed fixture windows under `tests/fixtures/schedule/`. See [`docs/scheduler_lite.md`](docs/scheduler_lite.md).
 
 Plan execution simulation closes the prototype decision loop. Given a scheduled plan and a deterministic outcome policy (`favorable`, `inconclusive`, `adverse`, or `mixed`), it generates synthetic returned evidence for each scheduled collect, feeds that evidence back through the belief-update engine, recomputes custody health, and produces an updated recommendation. Synthetic returned evidence only — no live tasking or sensor command is issued, no imagery is downloaded or processed, and the outcome policy is deterministic, not a calibrated probability. See [`docs/execution_simulation.md`](docs/execution_simulation.md).
+
+The baseline strategy comparison harness evaluates six planning strategies (manual baseline proxy → collection-value only → mission-value optimized → availability-adjusted → scheduler-lite → execution feedback) against deterministic proxy metrics (planning utility, mission-value proxy, ambiguity resolution, custody-health delta, schedule feasibility, traceability artifact count, review burden). It ranks strategies by a fixed-weight composite score and reports per-scenario and aggregate winners. Prototype proxy metrics only — no measured production performance, no real planner adoption, no operational reporting, no trained RL agent. See [`docs/planning_strategy_comparison.md`](docs/planning_strategy_comparison.md).
 
 The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
 
@@ -137,6 +142,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Availability-adjusted collection-plan optimization that composes the constrained optimizer with the scene-availability bridge so plans account for metadata-derived feasibility of candidate collect types; adjusted utility = planning utility * feasibility; exhaustive + greedy baselines under budget / max-collect / min-feasibility / required / excluded constraints; decision support only — no executable plan, no platform scheduling
 - Collection-window scheduler-lite that simulates placing availability-adjusted candidate collect types into provider-neutral collection windows under simple capacity, timing, and conflict constraints; deterministic exhaustive search over windows; schedule feasibility simulation only — no orbital scheduling, no platform access, no live tasking, no sensor-control instructions
 - Plan execution simulation feedback loop that applies synthetic returned evidence from scheduled candidate collects to update hypothesis state, custody health, ambiguity, and next recommendations under deterministic outcome policies (favorable / inconclusive / adverse / mixed); closed-loop decision-support simulation only — synthetic returned evidence only, no live tasking or sensor command is issued, no imagery downloaded or processed
+- Baseline planning-strategy comparison harness that evaluates manual baseline proxy, collection-value-only, mission-value optimized, availability-adjusted, scheduler-lite, and execution-feedback strategies using deterministic prototype metrics (planning utility, mission-value proxy, ambiguity resolution, custody-health delta, schedule feasibility, traceability, review burden); per-scenario and cross-scenario aggregate ranking; future RL-ready evaluation substrate but not a trained agent — proxy metrics only, no measured production performance, no real planner adoption, no operational outcome claim
 
 ---
 
