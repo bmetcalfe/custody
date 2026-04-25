@@ -314,6 +314,67 @@ def test_source_file_no_forbidden_language() -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Provenance integration (Slice 18)
+# ---------------------------------------------------------------------------
+
+
+def test_health_check_response_includes_provenance() -> None:
+    r = health_check(generated_at=T_GEN)
+    assert "provenance" in r
+    prov = r["provenance"]
+    assert prov["output_kind"] == "health-check"
+    assert "run_id" in prov
+    assert "git_commit" in prov
+
+
+def test_decision_packet_response_includes_provenance() -> None:
+    r = build_decision_packet_response(
+        DecisionPacketRequest(scenario_id="tennent"), generated_at=T_GEN,
+    )
+    prov = r["provenance"]
+    assert prov["output_kind"] == "decision-packet"
+    assert prov["scenario_ids"] == ["tennent"]
+
+
+def test_collect_ranking_response_includes_provenance() -> None:
+    r = build_collect_ranking_response(
+        CollectRankingRequest(scenario_id="whitsun"), generated_at=T_GEN,
+    )
+    assert r["provenance"]["output_kind"] == "collect-ranking"
+    assert r["provenance"]["scenario_ids"] == ["whitsun"]
+
+
+def test_optimize_plan_response_includes_provenance() -> None:
+    r = build_optimize_plan_response(
+        OptimizePlanRequest(scenario_id="tennent"), generated_at=T_GEN,
+    )
+    assert r["provenance"]["output_kind"] == "optimize-plan"
+
+
+def test_policy_evaluation_response_includes_provenance() -> None:
+    r = build_policy_evaluation_response(
+        PolicyEvaluationRequest(scenario_id="tennent"), generated_at=T_GEN,
+    )
+    assert r["provenance"]["output_kind"] == "policy-evaluation"
+
+
+def test_planner_queue_response_includes_provenance() -> None:
+    r = build_planner_queue_response(
+        PlannerQueueRequest(), generated_at=T_GEN,
+    )
+    prov = r["provenance"]
+    assert prov["output_kind"] == "planner-queue"
+    assert set(prov["scenario_ids"]) == {"tennent", "whitsun"}
+
+
+def test_portfolio_allocation_response_includes_provenance() -> None:
+    r = build_portfolio_allocation_response(
+        PortfolioAllocationRequest(), generated_at=T_GEN,
+    )
+    assert r["provenance"]["output_kind"] == "portfolio-allocation"
+
+
 def test_module_does_not_import_detection_or_gfw() -> None:
     import custody.api.service as mod
     tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))

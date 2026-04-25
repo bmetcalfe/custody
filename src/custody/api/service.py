@@ -40,6 +40,10 @@ from custody.api.schemas import (
     validate_scenario_id,
     validate_scenario_ids,
 )
+from custody.provenance import (
+    build_provenance_record,
+    record_to_dict,
+)
 from custody.fusion.observations import PositionObservation
 from custody.fusion.scenes import Scene
 from custody.fusion.temporal import Match
@@ -304,6 +308,8 @@ def _wrap(
     request_dict: dict,
     payload: dict,
     generated_at: datetime | None,
+    output_kind: str,
+    scenario_ids: tuple[str, ...] = (),
 ) -> dict:
     resp = ApiResponse(
         request_id=_make_request_id(endpoint, request_dict),
@@ -313,7 +319,19 @@ def _wrap(
         payload=payload,
         caveats=_DEFAULT_CAVEATS,
     )
-    return response_to_dict(resp)
+    out = response_to_dict(resp)
+    prov_args = tuple(
+        f"{k}={v}" for k, v in sorted(request_dict.items())
+    )
+    record = build_provenance_record(
+        output_kind=output_kind,
+        command=f"custody.api.service{endpoint}",
+        args=prov_args,
+        scenario_ids=scenario_ids,
+        generated_at=generated_at,
+    )
+    out["provenance"] = record_to_dict(record)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +354,14 @@ def health_check(*, generated_at: datetime | None = None) -> dict:
         payload=payload,
         caveats=_DEFAULT_CAVEATS,
     )
-    return response_to_dict(resp)
+    out = response_to_dict(resp)
+    record = build_provenance_record(
+        output_kind="health-check",
+        command="custody.api.service/health",
+        generated_at=generated_at,
+    )
+    out["provenance"] = record_to_dict(record)
+    return out
 
 
 def build_decision_packet_response(
@@ -367,6 +392,8 @@ def build_decision_packet_response(
         },
         payload=payload,
         generated_at=generated_at,
+        output_kind="decision-packet",
+        scenario_ids=(request.scenario_id,),
     )
 
 
@@ -412,6 +439,8 @@ def build_collect_ranking_response(
         },
         payload=payload,
         generated_at=generated_at,
+        output_kind="collect-ranking",
+        scenario_ids=(request.scenario_id,),
     )
 
 
@@ -477,6 +506,8 @@ def build_optimize_plan_response(
         },
         payload=payload,
         generated_at=generated_at,
+        output_kind="optimize-plan",
+        scenario_ids=(request.scenario_id,),
     )
 
 
@@ -534,6 +565,8 @@ def build_policy_evaluation_response(
         },
         payload=payload,
         generated_at=generated_at,
+        output_kind="policy-evaluation",
+        scenario_ids=(request.scenario_id,),
     )
 
 
@@ -591,6 +624,8 @@ def build_planner_queue_response(
         request_dict={"scenario_ids": list(request.scenario_ids)},
         payload=payload,
         generated_at=generated_at,
+        output_kind="planner-queue",
+        scenario_ids=tuple(request.scenario_ids),
     )
 
 
@@ -654,4 +689,6 @@ def build_portfolio_allocation_response(
         },
         payload=payload,
         generated_at=generated_at,
+        output_kind="portfolio-allocation",
+        scenario_ids=tuple(request.scenario_ids),
     )

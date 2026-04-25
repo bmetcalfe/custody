@@ -59,9 +59,14 @@ python scripts/20_portfolio_allocation.py --scenario both --budget 1.5 --max-col
 
 # Local decision API demo (JSON-serializable service responses; no HTTP server)
 python scripts/21_api_demo.py --endpoint decision-packet --scenario tennent --format json
+
+# Provenance manifest for a deterministic run (text, JSON, or Markdown)
+python scripts/22_provenance_manifest.py --output-kind decision-packet --scenario tennent --format json
 ```
 
 The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
+
+Every API response carries a `provenance` block (run ID, command, scenarios, input fixtures, git commit, default assumptions, default caveats). The same record can be emitted as a standalone manifest via `scripts/22_provenance_manifest.py` in text / JSON / Markdown. See [`docs/security.md`](docs/security.md) and [`docs/devsecops.md`](docs/devsecops.md) for the full prototype security and dev-workflow posture.
 
 The portfolio plan is decision support only. It does not issue execution authorizations or platform-specific schedules. Portfolio score and mission value are prototype proxies, not financial estimates.
 
@@ -101,6 +106,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Workflow complexity and efficiency proxy metrics comparing a baseline / manual triage workflow with the Custody-assisted decision-support flow (prototype proxies only — no production timing or operational performance claim)
 - Portfolio-level allocation that selects candidate collect types across scenario work items under shared budget, max-collect, and per-scenario constraints (decision-support output only — no execution authorization, no platform scheduling)
 - Local decision API/service layer exposing decision packets, collect ranking, optimized plans, policy evaluation, planner queues, and portfolio allocation as JSON-serializable responses (local prototype service contract — no deployment, no authentication, no live integration)
+- Run-provenance records attached to every API response (deterministic run ID, command, scenarios, input fixtures, git commit, default assumptions / caveats); standalone provenance-manifest CLI; documented prototype security posture and CI workflow (auditable artifacts only — no real-data lineage, no production controls)
 
 ---
 
