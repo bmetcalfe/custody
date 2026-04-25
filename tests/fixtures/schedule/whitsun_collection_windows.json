@@ -1,0 +1,74 @@
+[
+  {
+    "window_id": "whitsun-window-ais-001",
+    "scenario_id": "whitsun",
+    "candidate_id": "ais_coverage_query",
+    "start_time": "2024-03-25T01:00:00+00:00",
+    "end_time": "2024-03-25T02:00:00+00:00",
+    "capacity_cost": 0.20,
+    "resource_type": "ais",
+    "quality_score": 0.80,
+    "latency_hours": 2.0,
+    "notes": "low-latency AIS coverage probe"
+  },
+  {
+    "window_id": "whitsun-window-repeat-sar-002",
+    "scenario_id": "whitsun",
+    "candidate_id": "repeat_sar",
+    "start_time": "2024-03-25T03:00:00+00:00",
+    "end_time": "2024-03-25T04:00:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "sar",
+    "quality_score": 0.75,
+    "latency_hours": 10.0,
+    "notes": "repeat SAR pass over reef"
+  },
+  {
+    "window_id": "whitsun-window-optical-003",
+    "scenario_id": "whitsun",
+    "candidate_id": "optical_context",
+    "start_time": "2024-03-25T03:30:00+00:00",
+    "end_time": "2024-03-25T04:30:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "optical",
+    "quality_score": 0.85,
+    "latency_hours": 6.0,
+    "notes": "optical context window; overlaps with SAR repeat"
+  },
+  {
+    "window_id": "whitsun-window-cross-geom-004",
+    "scenario_id": "whitsun",
+    "candidate_id": "cross_geometry_sar",
+    "start_time": "2024-03-25T05:00:00+00:00",
+    "end_time": "2024-03-25T06:00:00+00:00",
+    "capacity_cost": 0.45,
+    "resource_type": "sar",
+    "quality_score": 0.80,
+    "latency_hours": 8.0,
+    "notes": "cross-geometry SAR pass"
+  },
+  {
+    "window_id": "whitsun-window-repeat-sar-low-005",
+    "scenario_id": "whitsun",
+    "candidate_id": "repeat_sar",
+    "start_time": "2024-03-25T08:00:00+00:00",
+    "end_time": "2024-03-25T09:00:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "sar",
+    "quality_score": 0.35,
+    "latency_hours": 72.0,
+    "notes": "low-quality, high-latency repeat SAR fallback"
+  },
+  {
+    "window_id": "whitsun-window-ais-006",
+    "scenario_id": "whitsun",
+    "candidate_id": "ais_coverage_query",
+    "start_time": "2024-03-25T10:00:00+00:00",
+    "end_time": "2024-03-25T11:00:00+00:00",
+    "capacity_cost": 0.15,
+    "resource_type": "ais",
+    "quality_score": 0.50,
+    "latency_hours": 24.0,
+    "notes": "AIS fallback with weaker coverage"
+  }
+]

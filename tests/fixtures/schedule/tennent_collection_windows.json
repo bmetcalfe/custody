@@ -1,0 +1,86 @@
+[
+  {
+    "window_id": "tennent-window-optical-001",
+    "scenario_id": "tennent",
+    "candidate_id": "optical_context",
+    "start_time": "2023-08-14T14:00:00+00:00",
+    "end_time": "2023-08-14T15:00:00+00:00",
+    "capacity_cost": 0.30,
+    "resource_type": "optical",
+    "quality_score": 0.85,
+    "latency_hours": 4.0,
+    "notes": "low-latency optical pass with strong quality"
+  },
+  {
+    "window_id": "tennent-window-optical-002",
+    "scenario_id": "tennent",
+    "candidate_id": "optical_context",
+    "start_time": "2023-08-14T16:00:00+00:00",
+    "end_time": "2023-08-14T17:00:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "optical",
+    "quality_score": 0.55,
+    "latency_hours": 96.0,
+    "notes": "high-latency optical fallback"
+  },
+  {
+    "window_id": "tennent-window-cross-geom-003",
+    "scenario_id": "tennent",
+    "candidate_id": "cross_geometry_sar",
+    "start_time": "2023-08-14T18:00:00+00:00",
+    "end_time": "2023-08-14T19:00:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "sar",
+    "quality_score": 0.80,
+    "latency_hours": 8.0,
+    "notes": "cross-geometry SAR pass"
+  },
+  {
+    "window_id": "tennent-window-repeat-sar-004",
+    "scenario_id": "tennent",
+    "candidate_id": "repeat_sar",
+    "start_time": "2023-08-14T18:30:00+00:00",
+    "end_time": "2023-08-14T19:30:00+00:00",
+    "capacity_cost": 0.40,
+    "resource_type": "sar",
+    "quality_score": 0.75,
+    "latency_hours": 12.0,
+    "notes": "repeat SAR; overlaps with cross-geom window"
+  },
+  {
+    "window_id": "tennent-window-higher-res-005",
+    "scenario_id": "tennent",
+    "candidate_id": "higher_resolution_sar",
+    "start_time": "2023-08-14T20:00:00+00:00",
+    "end_time": "2023-08-14T21:00:00+00:00",
+    "capacity_cost": 0.50,
+    "resource_type": "sar",
+    "quality_score": 0.70,
+    "latency_hours": 6.0,
+    "notes": "higher-resolution SAR window"
+  },
+  {
+    "window_id": "tennent-window-repeat-sar-low-006",
+    "scenario_id": "tennent",
+    "candidate_id": "repeat_sar",
+    "start_time": "2023-08-14T22:00:00+00:00",
+    "end_time": "2023-08-14T23:00:00+00:00",
+    "capacity_cost": 0.50,
+    "resource_type": "sar",
+    "quality_score": 0.30,
+    "latency_hours": 72.0,
+    "notes": "low-quality, high-latency repeat SAR fallback"
+  },
+  {
+    "window_id": "tennent-window-ais-007",
+    "scenario_id": "tennent",
+    "candidate_id": "ais_coverage_query",
+    "start_time": "2023-08-14T13:00:00+00:00",
+    "end_time": "2023-08-14T14:00:00+00:00",
+    "capacity_cost": 0.20,
+    "resource_type": "ais",
+    "quality_score": 0.60,
+    "latency_hours": 2.0,
+    "notes": "AIS coverage probe"
+  }
+]
