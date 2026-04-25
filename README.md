@@ -47,6 +47,9 @@ python scripts/16_evaluate_collect_policies.py --scenario both --budget 1.0 --ma
 
 # Human-in-the-loop review (review record only; no live tasking or sensor commands)
 python scripts/17_review_decision_packet.py --scenario tennent --action approve --reason "Best ambiguity reduction under budget"
+
+# Planner work queue (decision support only)
+python scripts/18_planner_queue.py --scenario both
 ```
 
 `--scenario` accepts `tennent`, `whitsun`, or `both`; `--scenario both --format json` emits a single JSON array of two packets. The JSON schema is versioned (`schema_version: "1"`), closed for that version, and the output is fully deterministic (`generated_at` is pinned to the evidence timestamp, not wall-clock).
@@ -79,6 +82,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Constrained collection-plan optimization selecting candidate collect types under budget and max-collect constraints using deterministic exhaustive and greedy baselines
 - Heuristic collection-policy evaluation comparing value-optimized, ambiguity-first, low-cost-first, SAR-first, optical-first, and AIS-context-first strategies under shared constraints
 - Human-in-the-loop review ledger for approving, rejecting, deferring, or overriding candidate collection recommendations with auditable review records (review-only — no live tasking or sensor commands)
+- Planner work queue that ranks scenario decision packets by custody health, ambiguity, mission-value proxy, planning utility, and human review status
 
 ---
 
@@ -139,6 +143,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `optimizer.py` — constrained collection-plan optimization over candidate collect types
 - `policy_eval.py` — heuristic policy evaluation comparing collection strategies under shared constraints
 - `planner_review.py` — human-in-the-loop review ledger for operator approval, rejection, deferral, or override of recommendations
+- `planner_queue.py` — ranked planner work queue for scenario-level decision support
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):
@@ -148,6 +153,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `15_optimize_collect_plan.py` — constrained plan optimization with exhaustive and greedy baselines
 - `16_evaluate_collect_policies.py` — heuristic policy evaluation and strategy comparison
 - `17_review_decision_packet.py` — human-in-the-loop review of decision packets and optimized plans
+- `18_planner_queue.py` — planner work queue ranking scenarios by urgency and review status
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
