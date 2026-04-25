@@ -53,7 +53,12 @@ python scripts/18_planner_queue.py --scenario both
 
 # Workflow efficiency proxy metrics (prototype proxies only)
 python scripts/19_efficiency_metrics.py --scenario both
+
+# Cross-scenario portfolio allocation (decision support only)
+python scripts/20_portfolio_allocation.py --scenario both --budget 1.5 --max-collects 3
 ```
+
+The portfolio plan is decision support only. It does not issue execution authorizations or platform-specific schedules. Portfolio score and mission value are prototype proxies, not financial estimates.
 
 The efficiency report compares a baseline / manual triage workflow against the Custody-assisted decision-support workflow. Metrics are prototype proxies only; they do not claim measured workflow timing, real planner adoption, or any monetary value. See [`docs/mps_complexity_map.md`](docs/mps_complexity_map.md) for the workflow model the metrics are built on.
 
@@ -89,6 +94,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Human-in-the-loop review ledger for approving, rejecting, deferring, or overriding candidate collection recommendations with auditable review records (review-only — no live tasking or sensor commands)
 - Planner work queue that ranks scenario decision packets by custody health, ambiguity, mission-value proxy, planning utility, and human review status
 - Workflow complexity and efficiency proxy metrics comparing a baseline / manual triage workflow with the Custody-assisted decision-support flow (prototype proxies only — no production timing or operational performance claim)
+- Portfolio-level allocation that selects candidate collect types across scenario work items under shared budget, max-collect, and per-scenario constraints (decision-support output only — no execution authorization, no platform scheduling)
 
 ---
 
@@ -151,6 +157,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `planner_review.py` — human-in-the-loop review ledger for operator approval, rejection, deferral, or override of recommendations
 - `planner_queue.py` — ranked planner work queue for scenario-level decision support
 - `efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline and Custody-assisted workflows
+- `portfolio.py` — cross-scenario portfolio allocation under shared budget / max-collects / per-scenario constraints
 - `explain.py` — human-readable state rendering
 
 **CLIs** (`scripts/`):
@@ -162,6 +169,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `17_review_decision_packet.py` — human-in-the-loop review of decision packets and optimized plans
 - `18_planner_queue.py` — planner work queue ranking scenarios by urgency and review status
 - `19_efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline / manual triage with the Custody-assisted flow
+- `20_portfolio_allocation.py` — cross-scenario portfolio allocation under shared budget and max-collect constraints
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker

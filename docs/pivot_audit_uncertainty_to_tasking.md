@@ -117,7 +117,7 @@ Accurate stronger claim after Week 2:
 
 ## Implementation status (as of 2026-04-24)
 
-The "New components required" table above was the Week 0 plan. Slices 1–15 of that plan have landed. Each slice is one focused commit on `main`:
+The "New components required" table above was the Week 0 plan. Slices 1–16 of that plan have landed. Each slice is one focused commit on `main`:
 
 - **Slice 1** — hypothesis layer contract and scenario registries (types, registry, update, explain). Landed in `5c89f6c`.
 - **Slice 2** — source-object evidence adapters (`from_observation`, `from_scene`, `from_match`, `from_mapping`). Landed in `1bcdaa4`.
@@ -133,7 +133,8 @@ The "New components required" table above was the Week 0 plan. Slices 1–15 of 
 - **Slice 12** — heuristic collection-policy evaluator (`evaluate_collection_policies`, six named deterministic policies, RL-ready evaluation substrate, `scripts/16_evaluate_collect_policies.py`). Landed in `f386b58`.
 - **Slice 13** — human-in-the-loop review ledger (`ReviewAction`, `PlannerReviewRecord`, deterministic `review_id` / `packet_hash`, JSONL append, `scripts/17_review_decision_packet.py`). Landed in `934a619`.
 - **Slice 14** — planner work queue (`PlannerQueueStatus`, `PlannerQueueItem`, `PlannerQueue`, priority formula combining custody health / planning utility / ambiguity resolution / mission-value proxy / review modifier, JSONL ledger ingestion, `scripts/18_planner_queue.py`). Landed in `114ec11`.
-- **Slice 15** — workflow efficiency proxy metrics (`WorkflowMode`, `EfficiencyReport`, seven deterministic proxy metrics comparing baseline / manual workflow vs Custody-assisted workflow, `scripts/19_efficiency_metrics.py`, `docs/mps_complexity_map.md`). Pending commit hash on this slice.
+- **Slice 15** — workflow efficiency proxy metrics (`WorkflowMode`, `EfficiencyReport`, seven deterministic proxy metrics comparing baseline / manual workflow vs Custody-assisted workflow, `scripts/19_efficiency_metrics.py`, `docs/mps_complexity_map.md`). Landed in `d15c00f`.
+- **Slice 16** — portfolio-level collection allocation (`PortfolioConstraint`, `PortfolioCandidate`, `PortfolioAllocationReport`, exhaustive + greedy cross-scenario optimization under budget / max-collect / per-scenario constraints, `scripts/20_portfolio_allocation.py`). Pending commit hash on this slice.
 
 The **Preserved**, **Recontextualized**, and **Paused** tables at the top of this document remain accurate; no component has moved between those categories. The V2 matcher (ADR-0019 / ADR-0020) stays paused unless hypothesis-layer ambiguity demands it.
 

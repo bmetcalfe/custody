@@ -26,6 +26,7 @@ Shipped, runnable today:
 - Human-in-the-loop review ledger producing auditable approve / reject / defer / override records with deterministic review and packet hashes; semi-autonomous planning control layer, review-only — no live tasking or sensor commands are issued
 - Planner-facing work queue ranking scenarios by custody health, ambiguity, mission-value proxy, planning utility, and human review status; decision-support system, not live tasking and not sensor commands
 - Workflow complexity map and efficiency proxy metrics comparing a baseline / manual triage workflow against the Custody-assisted decision-support flow (manual-step count, audit-artifact count, ambiguity focus, planner attention, traceability, candidate-strategy comparison count); prototype proxies only — no production timing measurement, no monetary value, no organisational performance claim
+- Cross-scenario portfolio allocation that selects candidate collect types across scenario work items under shared budget, max-collects, and per-scenario constraints; deterministic exhaustive + greedy baselines; planning utility and mission value remain prototype proxies, not financial estimates; decision-support output only — no execution authorization or platform schedule is issued
 
 ---
 
