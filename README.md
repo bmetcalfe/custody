@@ -56,7 +56,12 @@ python scripts/19_efficiency_metrics.py --scenario both
 
 # Cross-scenario portfolio allocation (decision support only)
 python scripts/20_portfolio_allocation.py --scenario both --budget 1.5 --max-collects 3
+
+# Local decision API demo (JSON-serializable service responses; no HTTP server)
+python scripts/21_api_demo.py --endpoint decision-packet --scenario tennent --format json
 ```
+
+The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
 
 The portfolio plan is decision support only. It does not issue execution authorizations or platform-specific schedules. Portfolio score and mission value are prototype proxies, not financial estimates.
 
@@ -95,6 +100,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Planner work queue that ranks scenario decision packets by custody health, ambiguity, mission-value proxy, planning utility, and human review status
 - Workflow complexity and efficiency proxy metrics comparing a baseline / manual triage workflow with the Custody-assisted decision-support flow (prototype proxies only — no production timing or operational performance claim)
 - Portfolio-level allocation that selects candidate collect types across scenario work items under shared budget, max-collect, and per-scenario constraints (decision-support output only — no execution authorization, no platform scheduling)
+- Local decision API/service layer exposing decision packets, collect ranking, optimized plans, policy evaluation, planner queues, and portfolio allocation as JSON-serializable responses (local prototype service contract — no deployment, no authentication, no live integration)
 
 ---
 
@@ -170,6 +176,7 @@ The hypothesis layer sits on top of preserved lower-level components.
 - `18_planner_queue.py` — planner work queue ranking scenarios by urgency and review status
 - `19_efficiency_metrics.py` — workflow efficiency proxy metrics comparing baseline / manual triage with the Custody-assisted flow
 - `20_portfolio_allocation.py` — cross-scenario portfolio allocation under shared budget and max-collect constraints
+- `21_api_demo.py` — local decision API demo over `custody.api.service` (no HTTP server)
 
 **Supporting components** — preserved as inputs, not the product:
 - `fusion/` — polymorphic `Observation` types, AEQD tangent-plane geometry, H3 + DuckDB spatial index, Hungarian + EKF tracker
