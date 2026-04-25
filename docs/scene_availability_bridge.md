@@ -98,3 +98,7 @@ The roadmap items in [`README.md`](../README.md) cover what would have to happen
 - Temporal availability windows (next-pass scheduling, latency budgeting) so the adjusted ranking can prefer near-term metadata.
 
 None of those are in scope today. The bridge is intentionally a small, deterministic, stdlib-only adjustment layer over the existing decision pipeline.
+
+## Optimizer integration (Slice 21)
+
+The availability-adjusted optimizer ([Slice 21](decisions/0021-custody-as-uncertainty-to-tasking-engine.md), `src/custody/hypotheses/availability_optimizer.py`) composes the base optimized plan (Slice 11) with feasibility assessments from this bridge. Candidates with `UNAVAILABLE` status are excluded by default; partial and feasible candidates have their planning utility scaled by feasibility score. Both exhaustive and greedy baselines are produced; for small candidate pools (<= 10) the recommended plan uses the exhaustive strategy. The CLI is `scripts/25_availability_optimized_plan.py`.

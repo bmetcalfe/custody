@@ -68,11 +68,16 @@ python scripts/23_packet_from_artifacts.py --scenario both
 
 # Scene availability metadata bridge (metadata-only, no imagery or execution)
 python scripts/24_scene_availability.py --scenario both
+
+# Availability-adjusted optimized plan (decision support only)
+python scripts/25_availability_optimized_plan.py --scenario both --budget 1.5 --max-collects 3
 ```
 
 The artifact bridge consumes existing artifact-style outputs (scene metadata, SAR/VLM summaries, matcher outputs, AIS/GFW presence summaries, quality flags, manual labels) committed as small JSON manifests under `tests/fixtures/artifacts/`. It does not run VLM, run the matcher, fetch Sentinel data, or pull from real data pipelines. Artifact evidence is candidate evidence, not ground truth. See [`docs/artifact_bridge.md`](docs/artifact_bridge.md).
 
 The scene-availability bridge adjusts candidate collect recommendations using provider-neutral SAR/optical/AIS availability metadata without downloading imagery or issuing execution authorizations. Feasibility scores are metadata-derived decision support, not executable plans. Uses committed lightweight metadata fixtures under `tests/fixtures/availability/` for demo. See [`docs/scene_availability_bridge.md`](docs/scene_availability_bridge.md).
+
+The availability-adjusted optimizer composes the base optimized plan with the scene-availability bridge so plans account for whether candidate collect types are feasible in the current metadata window. Adjusted utility combines planning utility with metadata-derived feasibility; candidates whose availability is `unavailable` are excluded by default. This is decision support only — no executable plan, no platform scheduling, no live tasking.
 
 The decision API is a local prototype service contract. It does not implement deployment, authentication, or downstream integration — service responses are JSON-serializable for tool composition only.
 
@@ -119,6 +124,7 @@ Both CLIs are deterministic and produce human-readable output. The decision pack
 - Run-provenance records attached to every API response (deterministic run ID, command, scenarios, input fixtures, git commit, default assumptions / caveats); standalone provenance-manifest CLI; documented prototype security posture and CI workflow (auditable artifacts only — no real-data lineage, no production controls)
 - Artifact-manifest bridge that converts existing SAR / VLM / AIS / matcher-style outputs into HypothesisEvidence and runs the decision packet stack without rerunning detection or live ingestion (small committed JSON manifests; explicit semantic and scenario signal mapping paths; artifacts are candidate evidence, not ground truth)
 - Scene-availability metadata bridge that adjusts candidate collect recommendations using provider-neutral SAR / optical / AIS collection availability metadata without downloading imagery or issuing execution authorizations (deterministic feasibility rules over committed JSON catalogs; feasibility scores are metadata-derived, not executable plans)
+- Availability-adjusted collection-plan optimization that composes the constrained optimizer with the scene-availability bridge so plans account for metadata-derived feasibility of candidate collect types; adjusted utility = planning utility * feasibility; exhaustive + greedy baselines under budget / max-collect / min-feasibility / required / excluded constraints; decision support only — no executable plan, no platform scheduling
 
 ---
 
