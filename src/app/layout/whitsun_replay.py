@@ -34,6 +34,7 @@ from custody.demo import load_whitsun_decision_trace
 WHITSUN_REPLAY_ROOT = "whitsun-replay-root"
 WHITSUN_SELECTED_EVENT_STORE = "whitsun-replay-selected-event"
 WHITSUN_TIMELINE_RADIO = "whitsun-replay-timeline-radio"
+WHITSUN_TIMELINE_STEP_COUNTER = "whitsun-replay-step-counter"
 
 WHITSUN_HEADER = "whitsun-replay-header"
 WHITSUN_EVENT_SUMMARY = "whitsun-replay-event-summary"
@@ -46,6 +47,11 @@ WHITSUN_OUTCOME = "whitsun-replay-outcome"
 WHITSUN_COUNTERFACTUALS = "whitsun-replay-counterfactuals"
 WHITSUN_FOLLOWUP = "whitsun-replay-followup"
 WHITSUN_CONTEXT_MAP = "whitsun-replay-context-map"
+
+# Sidebar swap targets — driven by the main Tabs value.
+WHITSUN_SIDEBAR_OVERVIEW = "custody-main-sidebar-overview"
+WHITSUN_SIDEBAR_REPLAY = "custody-main-sidebar-whitsun"
+CUSTODY_MAIN_TABS = "custody-main-tabs"
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +127,52 @@ def _panel(title: str, body, panel_id: str | None = None) -> dbc.Card:
 # ---------------------------------------------------------------------------
 
 
+def build_whitsun_sidebar_block() -> html.Div:
+    """Replacement sidebar shown when the Whitsun replay tab is active.
+
+    Compact read-only block.  No controls; the existing scenario /
+    timeline / entity controls do not affect the Whitsun replay and
+    therefore are hidden by a tab-switch callback.
+    """
+    return html.Div(
+        [
+            html.H5(
+                "Whitsun replay",
+                style={"color": _TEXT, "marginBottom": "4px"},
+            ),
+            html.Div(
+                "read-only fixture",
+                style={"color": _MUTED, "fontSize": "0.78rem"},
+            ),
+            html.Hr(style={"borderColor": _PANEL_BORDER, "margin": "10px 0"}),
+            html.Ul(
+                [
+                    html.Li("progressive mission replay"),
+                    html.Li("no live tasking"),
+                    html.Li("no live inference"),
+                ],
+                style={
+                    "color": _MUTED,
+                    "fontSize": "0.75rem",
+                    "paddingLeft": "18px",
+                    "lineHeight": "1.4",
+                },
+            ),
+            html.Div(
+                "Use the timeline on the right to step through the "
+                "14-event scenario.",
+                style={
+                    "color": _MUTED,
+                    "fontSize": "0.72rem",
+                    "marginTop": "10px",
+                    "fontStyle": "italic",
+                },
+            ),
+        ],
+        style={"padding": "16px"},
+    )
+
+
 def build_whitsun_replay_layout() -> html.Div:
     """Return the complete Whitsun replay panel tree."""
     trace = load_whitsun_decision_trace()
@@ -134,22 +186,62 @@ def build_whitsun_replay_layout() -> html.Div:
             {
                 "label": html.Span(
                     f"{idx + 1:02d}. {label}",
-                    style={
-                        "color": _TEXT,
-                        "fontSize": "0.78rem",
-                        "marginLeft": "4px",
-                    },
+                    style={"fontSize": "0.78rem"},
                 ),
                 "value": event_id,
             }
             for idx, (event_id, label) in enumerate(pairs)
         ],
         value=initial_event_id,
-        labelStyle={
-            "display": "block",
-            "padding": "2px 0",
-            "color": _TEXT,
+        labelClassName="whitsun-timeline-row",
+    )
+
+    timeline_subhead = html.Div(
+        "Click an event to step through. Panels reveal "
+        "progressively as the scenario unfolds.",
+        style={
+            "color": _MUTED,
+            "fontSize": "0.72rem",
+            "fontStyle": "italic",
+            "marginBottom": "8px",
         },
+    )
+
+    timeline_header = html.Div(
+        [
+            html.Span("Event timeline (14 steps)"),
+            html.Span(
+                "Step — / 14",
+                id=WHITSUN_TIMELINE_STEP_COUNTER,
+                style={
+                    "color": _ACCENT,
+                    "fontSize": "0.78rem",
+                    "fontWeight": "600",
+                    "marginLeft": "auto",
+                },
+            ),
+        ],
+        style={"display": "flex", "alignItems": "center"},
+    )
+
+    context_map_body = html.Div(
+        [
+            html.Div(
+                "Map visualization is planned for the next slice. "
+                "Below: AOI, revealed tracks, and latest custody "
+                "snapshot.",
+                style={
+                    "color": _MUTED,
+                    "fontSize": "0.72rem",
+                    "fontStyle": "italic",
+                    "marginBottom": "6px",
+                },
+            ),
+            html.Div(
+                id=WHITSUN_CONTEXT_MAP,
+                style={"color": _MUTED, "fontSize": "0.75rem"},
+            ),
+        ],
     )
 
     header = html.Div(
@@ -182,18 +274,12 @@ def build_whitsun_replay_layout() -> html.Div:
                         [
                             header,
                             _panel(
-                                "Event timeline (14 steps)",
-                                timeline,
+                                timeline_header,
+                                html.Div([timeline_subhead, timeline]),
                             ),
                             _panel(
-                                "Context map",
-                                html.Div(
-                                    id=WHITSUN_CONTEXT_MAP,
-                                    style={
-                                        "color": _MUTED,
-                                        "fontSize": "0.75rem",
-                                    },
-                                ),
+                                "Context (map placeholder)",
+                                context_map_body,
                             ),
                         ],
                         width=4,
@@ -218,8 +304,7 @@ def build_whitsun_replay_layout() -> html.Div:
                                 html.Div(id=WHITSUN_SCORE_BREAKDOWN),
                             ),
                             _panel(
-                                "Policy rationale (heuristic advisory; "
-                                "RL-ready slot, not a trained RL decision)",
+                                "Policy rationale",
                                 html.Div(id=WHITSUN_POLICY_RATIONALE),
                             ),
                             _panel(

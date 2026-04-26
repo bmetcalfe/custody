@@ -41,6 +41,7 @@ from custody.demo import load_whitsun_decision_trace
 from custody.demo.decision_trace import DecisionTrace
 
 from layout.whitsun_replay import (
+    CUSTODY_MAIN_TABS,
     WHITSUN_CONTEXT_MAP,
     WHITSUN_COUNTERFACTUALS,
     WHITSUN_EVENT_SUMMARY,
@@ -53,7 +54,10 @@ from layout.whitsun_replay import (
     WHITSUN_POLICY_RATIONALE,
     WHITSUN_SCORE_BREAKDOWN,
     WHITSUN_SELECTED_EVENT_STORE,
+    WHITSUN_SIDEBAR_OVERVIEW,
+    WHITSUN_SIDEBAR_REPLAY,
     WHITSUN_TIMELINE_RADIO,
+    WHITSUN_TIMELINE_STEP_COUNTER,
     data_mode_badge,
     source_badge,
 )
@@ -782,11 +786,15 @@ def register(app: Dash) -> None:
         Output(WHITSUN_OUTCOME, "children"),
         Output(WHITSUN_COUNTERFACTUALS, "children"),
         Output(WHITSUN_FOLLOWUP, "children"),
+        Output(WHITSUN_TIMELINE_STEP_COUNTER, "children"),
         Input(WHITSUN_SELECTED_EVENT_STORE, "data"),
     )
     def _refresh_all_panels(event_id):
         event = _TRACE.get_event(event_id) if event_id else {}
         ord_ = _ord_for(event)
+        step_counter = (
+            f"Step {ord_:02d} / 14" if ord_ > 0 else "Step — / 14"
+        )
         return (
             _render_header(event or {}),
             _render_event_summary(event or {}),
@@ -799,4 +807,15 @@ def register(app: Dash) -> None:
             _render_outcome(_TRACE, ord_),
             _render_counterfactuals(_TRACE, ord_),
             _render_followup(_TRACE, ord_),
+            step_counter,
         )
+
+    @app.callback(
+        Output(WHITSUN_SIDEBAR_OVERVIEW, "style"),
+        Output(WHITSUN_SIDEBAR_REPLAY, "style"),
+        Input(CUSTODY_MAIN_TABS, "value"),
+    )
+    def _toggle_sidebar(tab_value):
+        if tab_value == "tab-whitsun-replay":
+            return {"display": "none"}, {"display": "block"}
+        return {"display": "block"}, {"display": "none"}

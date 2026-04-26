@@ -23,7 +23,12 @@ from adapter import scenario_names
 from layout.sidebar import build_sidebar
 from layout.overview import build_overview_layout
 from layout.entity_detail import build_entity_detail_layout
-from layout.whitsun_replay import build_whitsun_replay_layout
+from layout.whitsun_replay import (
+    WHITSUN_SIDEBAR_OVERVIEW,
+    WHITSUN_SIDEBAR_REPLAY,
+    build_whitsun_replay_layout,
+    build_whitsun_sidebar_block,
+)
 from callbacks import (
     navigation, portfolio, map_layers, entity_detail, whitsun_replay,
 )
@@ -52,8 +57,18 @@ app.layout = html.Div(
         dbc.Row(
             [
                 dbc.Col(
-                    build_sidebar(_scenarios, _default),
-                    width=3,
+                    html.Div([
+                        html.Div(
+                            build_sidebar(_scenarios, _default),
+                            id=WHITSUN_SIDEBAR_OVERVIEW,
+                        ),
+                        html.Div(
+                            build_whitsun_sidebar_block(),
+                            id=WHITSUN_SIDEBAR_REPLAY,
+                            style={"display": "none"},
+                        ),
+                    ]),
+                    width=2,
                     style={"borderRight": "1px solid #2d2d2d", "minHeight": "100vh"},
                 ),
                 dbc.Col(
@@ -82,7 +97,7 @@ app.layout = html.Div(
                             "background": "#1a1a1a",
                         },
                     ),
-                    width=9,
+                    width=10,
                 ),
             ],
             className="g-0",

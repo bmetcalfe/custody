@@ -313,6 +313,6 @@ class TestCallbackCount:
         # Phase 2: +1 map + 2 entity detail = 3
         # Phase 3: +1 timestep display + 1 step buttons = 2
         # Whitsun replay: +1 selected-event sync + 1 fan-out
-        #   refresh-all-panels = 2
-        # Total: 13
-        assert len(app.callback_map) == 13
+        #   refresh-all-panels + 1 sidebar-toggle = 3
+        # Total: 14
+        assert len(app.callback_map) == 14

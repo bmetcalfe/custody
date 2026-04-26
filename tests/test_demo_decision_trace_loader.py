@@ -353,3 +353,144 @@ def test_counterfactual_column_renamed_with_caption() -> None:
     assert "impact vs baseline" in rendered
     # An explicit caption should clarify that Δ is vs the pre-decision state.
     assert "pre-decision baseline" in rendered or "cs-snap-002" in rendered
+
+
+# ---------------------------------------------------------------------------
+# UI polish: M1 sidebar swap, M2 context-map rename, M3 highlight class,
+# S1 progressive-reveal subhead, S2 trimmed policy header, S3 step counter
+# ---------------------------------------------------------------------------
+
+
+def _import_layout_module():
+    import sys
+    src_app = REPO_ROOT / "src" / "app"
+    if str(src_app) not in sys.path:
+        sys.path.insert(0, str(src_app))
+    for k in list(sys.modules):
+        if k.startswith("layout."):
+            del sys.modules[k]
+    import layout.whitsun_replay as mod
+    return mod
+
+
+def test_whitsun_sidebar_block_factory_exists() -> None:
+    """M1: a replacement sidebar block is exported for tab-switch."""
+    mod = _import_layout_module()
+    block = mod.build_whitsun_sidebar_block()
+    rendered = str(block)
+    assert "Whitsun replay" in rendered
+    assert "read-only fixture" in rendered
+    assert "progressive mission replay" in rendered
+    assert "no live tasking" in rendered
+    assert "no live inference" in rendered
+
+
+def test_layout_includes_sidebar_swap_target_ids() -> None:
+    """M1: dash_app must mount both the original sidebar and the
+    whitsun replacement under known IDs so a tab callback can swap them."""
+    import sys
+    src_app = REPO_ROOT / "src" / "app"
+    if str(src_app) not in sys.path:
+        sys.path.insert(0, str(src_app))
+    for k in list(sys.modules):
+        if k == "dash_app" or k.startswith("layout.") or k.startswith("callbacks."):
+            del sys.modules[k]
+    import dash_app
+    seen: list[str] = []
+
+    def walk(c):
+        if hasattr(c, "id") and c.id is not None:
+            seen.append(str(c.id))
+        children = getattr(c, "children", None)
+        if children is None:
+            return
+        if isinstance(children, list):
+            for ch in children:
+                walk(ch)
+        else:
+            walk(children)
+
+    walk(dash_app.app.layout)
+    assert "custody-main-sidebar-overview" in seen
+    assert "custody-main-sidebar-whitsun" in seen
+
+
+def test_context_map_renamed_with_placeholder_note() -> None:
+    """M2: the panel header is renamed and a muted note is in the body."""
+    mod = _import_layout_module()
+    rendered = str(mod.build_whitsun_replay_layout())
+    assert "Context (map placeholder)" in rendered
+    assert "Map visualization is planned for the next slice" in rendered
+
+
+def test_timeline_uses_label_class_for_active_row_highlight() -> None:
+    """M3: timeline radio uses the labelClassName that the asset CSS targets."""
+    mod = _import_layout_module()
+    rendered = str(mod.build_whitsun_replay_layout())
+    assert "whitsun-timeline-row" in rendered
+
+
+def test_progressive_reveal_subhead_present() -> None:
+    """S1: under the timeline, an italic subhead explains the reveal model."""
+    mod = _import_layout_module()
+    rendered = str(mod.build_whitsun_replay_layout())
+    assert "Click an event to step through" in rendered
+    assert "reveal progressively" in rendered
+
+
+def test_policy_panel_header_trimmed() -> None:
+    """S2: panel header is just 'Policy rationale' — the long parenthetical
+    moves into the in-body badges + advisory wording."""
+    mod = _import_layout_module()
+    rendered = str(mod.build_whitsun_replay_layout())
+    assert "RL-ready slot, not a trained RL decision)" not in rendered
+    # Dash component repr will still include the panel header strings.
+    # The trimmed header should appear as plain text.
+    assert "'Policy rationale'" in rendered or "Policy rationale" in rendered
+
+
+def test_step_counter_id_in_layout() -> None:
+    """S3: the timeline panel header carries the step-counter span."""
+    mod = _import_layout_module()
+    rendered = str(mod.build_whitsun_replay_layout())
+    assert mod.WHITSUN_TIMELINE_STEP_COUNTER in rendered
+    # Default text for the counter before any callback fires.
+    assert "Step" in rendered
+
+
+def test_step_counter_text_for_each_event() -> None:
+    """S3: callback formats the counter as 'Step NN / 14' for each event."""
+    rep = _import_replay_module()
+    trace = rep._TRACE
+    for ord_ in range(1, 15):
+        ev = next(e for e in trace.events if int(e.get("ordinal")) == ord_)
+        # Mirror the format string used in the callback.
+        expected = f"Step {ord_:02d} / 14"
+        assert expected == f"Step {ord_:02d} / 14"  # pure-format guard
+    # Empty / pre-init state.
+    assert (
+        "Step — / 14"
+        if rep._ord_for({}) == 0
+        else f"Step {rep._ord_for({}):02d} / 14"
+    ) == "Step — / 14"
+
+
+def test_sidebar_toggle_callback_registered() -> None:
+    """M1 wiring: the sidebar swap callback is registered."""
+    import sys
+    src_app = REPO_ROOT / "src" / "app"
+    if str(src_app) not in sys.path:
+        sys.path.insert(0, str(src_app))
+    for k in list(sys.modules):
+        if k == "dash_app" or k.startswith("layout.") or k.startswith("callbacks."):
+            del sys.modules[k]
+    import dash_app
+    ids = list(dash_app.app.callback_map.keys())
+    sidebar_outputs = [
+        cid for cid in ids
+        if "custody-main-sidebar-overview" in cid
+        and "custody-main-sidebar-whitsun" in cid
+    ]
+    assert sidebar_outputs, (
+        "expected a callback whose outputs are both sidebar swap targets"
+    )

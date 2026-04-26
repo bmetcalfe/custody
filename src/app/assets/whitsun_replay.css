@@ -1,0 +1,36 @@
+/* Whitsun replay tab — timeline row styling.
+ *
+ * `dcc.RadioItems(labelClassName="whitsun-timeline-row")` puts the
+ * class on every <label>; the :has(input:checked) selector picks the
+ * label whose radio is currently selected and applies the active
+ * style.  No JS / callback needed for the visual highlight.
+ *
+ * :has() requires Chrome 105+ / Firefox 121+ / Safari 15.4+ — fine
+ * for the screen-share / demo environment.  The fallback is silent
+ * (rows still clickable, just without the highlight).
+ */
+
+.whitsun-timeline-row {
+    display: block;
+    padding: 4px 6px 4px 9px;
+    margin: 1px 0;
+    border-left: 3px solid transparent;
+    color: #e5e7eb;
+    cursor: pointer;
+    transition: background 80ms ease, border-color 80ms ease;
+}
+
+.whitsun-timeline-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.whitsun-timeline-row:has(input:checked) {
+    background: rgba(94, 234, 212, 0.10);
+    border-left-color: #5eead4;
+}
+
+.whitsun-timeline-row:has(input:checked),
+.whitsun-timeline-row:has(input:checked) span {
+    color: #5eead4 !important;
+    font-weight: 600;
+}
