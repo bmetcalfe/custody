@@ -129,7 +129,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.30,
         "usable_for_detection": True,
         "usable_for_context": True,
-        "caveats": ["low cloud Sentinel-2; lower confidence than Umbra"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "low cloud Sentinel-2; useful for tasking cues, not definitive",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
@@ -153,7 +156,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.45,
         "usable_for_detection": True,
         "usable_for_context": True,
-        "caveats": ["public SAR context; lower confidence than Umbra"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "public Sentinel-1 GRD; useful for change candidates, not definitive",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-1 GRD raster; footprint-only"
         ),
@@ -177,7 +183,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.10,
         "usable_for_detection": False,
         "usable_for_context": True,
-        "caveats": ["high cloud cover; usable_for_detection is false"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "high cloud cover; usable_for_detection is false",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
@@ -245,7 +254,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.45,
         "usable_for_detection": True,
         "usable_for_context": True,
-        "caveats": ["public SAR context"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "public Sentinel-1 GRD; useful for change candidates, not definitive",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-1 GRD raster; footprint-only"
         ),
@@ -269,7 +281,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.30,
         "usable_for_detection": True,
         "usable_for_context": True,
-        "caveats": ["low cloud Sentinel-2"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "low cloud Sentinel-2; useful for tasking cues, not definitive",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
@@ -293,7 +308,10 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "confidence_weight": 0.10,
         "usable_for_detection": False,
         "usable_for_context": True,
-        "caveats": ["high cloud cover; usable_for_detection is false"],
+        "caveats": [
+            "weak-signal cueing layer; not high-confidence proof",
+            "high cloud cover; usable_for_detection is false",
+        ],
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),

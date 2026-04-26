@@ -18,7 +18,9 @@ Both AOIs:
 - Use the same normalized [`ObservationArtifact`](../src/custody/ingest/sentinel.py) model (frozen dataclass with `data_mode`, `confidence_weight`, `usable_for_detection`, `usable_for_context`, and explicit caveats).
 - Source from the same CDSE STAC v1 endpoint when `--live` is passed.
 - Default to offline operation against committed fixtures.
-- Treat Sentinel observations as **public lower-confidence context, not high-confidence proof on their own** — Umbra remains the high-confidence tasked source for both scenarios.
+- Frame Sentinel observations as **weak-signal cueing layers** — useful for change candidates and tasking cues, never as standalone proof. Umbra (when tasked) remains the high-confidence confirmation layer for both scenarios.
+
+Vocabulary the UI and docs use for Sentinel: *weak signal · cueing layer · change candidate · tasking cue · low-confidence context*. Vocabulary explicitly avoided: *confirmed detection · reacquired target · definitive change · "Sentinel proves X"*.
 
 ## Tennent role: fixed-site monitoring / construction context
 

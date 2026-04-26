@@ -129,7 +129,10 @@ def test_layout_includes_interpretation_panel() -> None:
     mod = _import_layout_module()
     rendered = str(mod.build_tennent_monitoring_layout())
     assert "Site-monitoring interpretation" in rendered
-    assert "public temporal context" in rendered
+    # Sentinel weak-signal framing (see test_sentinel_framing.py for the
+    # full disclaimer text).
+    assert "weak-signal cueing" in rendered or "weak-signal cue" in rendered
+    assert "low-confidence temporal context" in rendered
     assert "context-only" in rendered or "context only" in rendered
     assert (
         "different mission archetype" in rendered

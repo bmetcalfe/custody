@@ -361,6 +361,66 @@ def _render_event_summary(event: Mapping[str, Any]) -> html.Div:
     )
 
 
+def _weak_signal_cue_note(
+    trace: DecisionTrace, current_ord: int,
+) -> html.Div | None:
+    """Surface the operational-hierarchy reminder when Sentinel cueing
+    arrives after an Umbra collect.
+
+    Sentinel-1 / Sentinel-2 are weak-signal cueing layers, not
+    confirmation evidence.  When the operator is looking at a step
+    where Sentinel is the most-recently-revealed observation, the
+    panel prints a short italic note that:
+      - frames Sentinel as a weak signal / possible change cue
+      - recommends higher-resolution tasking if mission priority warrants
+      - reminds that Umbra remains the high-confidence confirmation layer
+    """
+    if current_ord < 4:
+        return None
+    saw_umbra_before_sentinel = False
+    last_sentinel_label: str | None = None
+    for ev in sorted(trace.events, key=lambda e: int(e.get("ordinal", 0))):
+        ord_ = int(ev.get("ordinal", 0))
+        if ord_ > current_ord:
+            break
+        oid = (ev.get("refs") or {}).get("observation_id")
+        if not oid:
+            continue
+        obs = trace.get_observation(oid) or {}
+        src = obs.get("source")
+        if src == "umbra-sar":
+            saw_umbra_before_sentinel = True
+        elif src in ("sentinel-1", "sentinel-2") and saw_umbra_before_sentinel:
+            last_sentinel_label = (
+                "Sentinel-2" if src == "sentinel-2" else "Sentinel-1"
+            )
+    if last_sentinel_label is None:
+        return None
+    return html.Div(
+        [
+            dbc.Badge(
+                "WEAK-SIGNAL CUE",
+                color="warning", className="me-2",
+            ),
+            html.Span(
+                f"{last_sentinel_label} provides a possible change cue. "
+                "Recommend higher-resolution tasking if mission priority "
+                "warrants. Umbra remains the high-confidence confirmation "
+                "layer.",
+                style={
+                    "color": _MUTED, "fontSize": "0.78rem",
+                    "fontStyle": "italic",
+                },
+            ),
+        ],
+        style={
+            "padding": "6px 8px", "marginBottom": "6px",
+            "border": "1px solid #2d2d2d", "borderRadius": "4px",
+            "backgroundColor": "rgba(251, 191, 36, 0.06)",
+        },
+    )
+
+
 def _render_observations(
     trace: DecisionTrace, current_ord: int,
 ) -> html.Div:
@@ -368,6 +428,10 @@ def _render_observations(
     if current_ord < REVEAL_ORDINALS["observations"]:
         return _na()
     rows: list[html.Div] = []
+
+    cue_note = _weak_signal_cue_note(trace, current_ord)
+    if cue_note is not None:
+        rows.append(cue_note)
 
     obs_seen: set[str] = set()
     art_seen: set[str] = set()

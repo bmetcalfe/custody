@@ -457,14 +457,45 @@ def _build_observations_panel() -> dbc.Card:
 def _build_interpretation_panel() -> dbc.Card:
     body = html.Div(
         [
+            html.Div(
+                [
+                    dbc.Badge(
+                        "WEAK-SIGNAL CUE",
+                        color="warning", className="me-2",
+                    ),
+                    html.Span(
+                        "Sentinel-1 / Sentinel-2 are weak-signal cueing "
+                        "layers in this view, not high-confidence proof. "
+                        "Use them as change candidates / tasking cues. "
+                        "Umbra (when tasked) remains the high-confidence "
+                        "confirmation layer.",
+                        style={
+                            "color": _MUTED,
+                            "fontSize": "0.78rem",
+                            "fontStyle": "italic",
+                        },
+                    ),
+                ],
+                style={
+                    "padding": "6px 8px",
+                    "marginBottom": "8px",
+                    "border": "1px solid #2d2d2d",
+                    "borderRadius": "4px",
+                    "backgroundColor": "rgba(251, 191, 36, 0.06)",
+                },
+            ),
             _ul(
                 [
-                    "Sentinel-1 and Sentinel-2 provide public temporal "
-                    "context around the Tennent AOI between any tasked "
-                    "high-confidence collects (Umbra-style).",
+                    "Sentinel-1 and Sentinel-2 provide low-confidence "
+                    "temporal context around the Tennent AOI between "
+                    "tasked high-confidence collects (Umbra-style).  "
+                    "They are useful for cueing higher-resolution "
+                    "tasking; they do not stand on their own as proof "
+                    "of change.",
                     "Cloudy Sentinel-2 (cloud_coverage > 25%) is "
-                    "context-only: usable_for_detection is false, but "
-                    "usable_for_context is true.",
+                    "context-only: usable_for_detection is false, "
+                    "usable_for_context is true.  Treat any cloudy "
+                    "Sentinel-2 signal as a tasking cue at best.",
                     "This tab demonstrates that the same normalized "
                     "ObservationArtifact schema works for a different "
                     "mission archetype than the Whitsun maritime "

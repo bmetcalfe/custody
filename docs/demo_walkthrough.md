@@ -93,16 +93,19 @@ Total target runtime: **8–10 minutes** of dashboard time.
 
 > "Step three adds VLM-derived evidence artifacts and three vessel detections off the same Umbra tile. The evidence carries an explicit caveat — VLM output is candidate evidence, not ground truth — and that string is in the panel, verbatim."
 
-**Click:** `04. Sentinel-2 context observation available`. Then `05. Sentinel-1 context observation available`.
+**Click:** `04. Sentinel-2 weak-signal cue available`. Then `05. Sentinel-1 weak-signal cue available`.
 
 **Say:**
 
-> "Steps four and five bring in the Sentinel layer. Sentinel-2 first, then Sentinel-1. Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero. They never get treated as equivalent to Umbra. The dashboard surfaces the source class in a badge for every record. That's a discipline thing — Sentinel is public lower-confidence context, not a substitute for tasked SAR."
+> "Steps four and five bring in the Sentinel layer. Sentinel-2 first, then Sentinel-1. Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero. They never get treated as equivalent to Umbra. The dashboard surfaces the source class in a badge for every record. That's a discipline thing — Sentinel is a weak-signal cueing layer here, useful for change candidates and tasking cues, not a substitute for tasked SAR.
+>
+> Notice the WEAK-SIGNAL CUE callout that just appeared at the top of the observations panel. The UI says it explicitly: *Sentinel-N provides a possible change cue. Recommend higher-resolution tasking if mission priority warrants. Umbra remains the high-confidence confirmation layer.* That callout is on screen so anyone watching can read the operational hierarchy directly, without me needing to disclaim it from the script."
 
 **Do not oversell:**
 
 - Don't claim the system pulled Sentinel data live. It didn't — the records cross-reference the committed `whitsun_sentinel_observations.fixture.json`.
 - Don't claim the confidence weights are calibrated. They're demo heuristics.
+- **Don't say "Sentinel confirms", "Sentinel proves", "definitive change", "Sentinel reacquired the target".** Sentinel here is a weak-signal cueing layer, not confirmation evidence. Umbra is the confirmation layer.
 
 ### Events 06–07 — Tracks and custody risk — 45 seconds
 
@@ -217,7 +220,7 @@ Total target runtime: **8–10 minutes** of dashboard time.
 
 **Say:**
 
-> "Three Sentinel observations in the table. One Sentinel-1 GRD, one low-cloud Sentinel-2 at twelve-percent cloud, one cloudy Sentinel-2 at eighty-five-percent cloud. Look at the `for detection` column on the cloudy row: `no`. The eighty-five-percent record is `usable_for_context: true` but `usable_for_detection: false`. Same observation schema, same confidence-weight buckets — the cloudy row gets point-one-zero, the low-cloud row gets point-three-zero. The panel renders that disciplined behaviour for a different mission archetype than Whitsun."
+> "Three Sentinel observations in the table. One Sentinel-1 GRD, one low-cloud Sentinel-2 at twelve-percent cloud, one cloudy Sentinel-2 at eighty-five-percent cloud. Look at the `for detection` column on the cloudy row: `no`. The eighty-five-percent record is `usable_for_context: true` but `usable_for_detection: false`. Same observation schema, same confidence-weight buckets — the cloudy row gets point-one-zero, the low-cloud row gets point-three-zero. Same Sentinel framing as Whitsun: these are weak-signal cueing layers — useful for change candidates and tasking cues, not standalone proof. Umbra, when tasked, remains the high-confidence confirmation layer. The Site-monitoring interpretation panel below carries that callout verbatim."
 
 ### Not yet implemented — 25 seconds
 

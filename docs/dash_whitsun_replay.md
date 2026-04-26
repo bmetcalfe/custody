@@ -15,6 +15,7 @@ It is intentionally:
 - **Read-only.** No control inputs other than the timeline event selector. No tasking, no human-action mutation, no Sentinel live refresh, no decision-layer runtime is exercised.
 - **Visually disciplined.** Source class (Umbra / Sentinel-1 / Sentinel-2 / simulated) and `data_mode` (fixture / simulated) are always badged. Confidence weights are surfaced explicitly. Policy rationale is labelled "heuristic advisory / RL-ready slot, not a trained RL decision".
 - **Progressively revealed.** Panels show only what has been revealed by the selected event's ordinal. Event 01 hides post-decision panels; observations appear at event 02; tasking options appear at event 08; scores at event 09; selected recommendation + policy rationale + score breakdown at event 10; human approval at event 11; outcome at event 13; counterfactuals + follow-up recommendation at event 14. Panels with nothing yet to show render a small "not available at this step" placeholder rather than future-state spoilers.
+- **Honest Sentinel framing.** When Sentinel-1 / Sentinel-2 context arrives after the Umbra collect (events 04+), the observations panel surfaces a "WEAK-SIGNAL CUE" callout: *"Sentinel-N provides a possible change cue. Recommend higher-resolution tasking if mission priority warrants. Umbra remains the high-confidence confirmation layer."* The UI frames Sentinel only as a weak-signal cueing layer; Umbra remains the confirmation layer.
 
 ## How to run
 

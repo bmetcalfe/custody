@@ -14,9 +14,9 @@
     "primary_evidence_source": "umbra-sar",
     "context_evidence_sources": ["sentinel-1", "sentinel-2"],
     "operational_hierarchy": {
-      "umbra-sar": "high-confidence tasked evidence",
-      "sentinel-1": "lower-confidence public SAR context",
-      "sentinel-2": "optical / multispectral context, cloud dependent",
+      "umbra-sar": "high-confidence confirmation layer; tasked evidence",
+      "sentinel-1": "weak-signal cueing layer; public SAR context, useful for tasking cues",
+      "sentinel-2": "weak-signal cueing layer; optical / multispectral context, cloud-dependent",
       "simulated": "demo scaffolding (planner / RL / counterfactual)"
     },
     "caveats": [
@@ -69,10 +69,10 @@
     {
       "event_id": "ev-04",
       "ordinal": 4,
-      "label": "Sentinel-2 context observation available",
+      "label": "Sentinel-2 weak-signal cue available",
       "timestamp": "2023-12-12T03:00:00+00:00",
       "kind": "context_observation_available",
-      "summary": "Sentinel-2 L2A (8% cloud) covers AOI; usable for context and detection at lower confidence than Umbra.",
+      "summary": "Sentinel-2 L2A (8% cloud) covers the AOI as a weak-signal cueing layer. Useful as a change candidate / tasking cue, not as definitive proof.",
       "data_mode": "fixture",
       "refs": {
         "observation_id": "fixture-s2-l2a-whitsun-20231212-low-cloud",
@@ -82,10 +82,10 @@
     {
       "event_id": "ev-05",
       "ordinal": 5,
-      "label": "Sentinel-1 context observation available",
+      "label": "Sentinel-1 weak-signal cue available",
       "timestamp": "2023-12-10T22:00:00+00:00",
       "kind": "context_observation_available",
-      "summary": "Sentinel-1 GRD ascending pass covers AOI; public SAR context, lower confidence than Umbra.",
+      "summary": "Sentinel-1 GRD ascending pass covers the AOI as a weak-signal cueing layer. Useful as a change candidate / tasking cue, not as definitive proof.",
       "data_mode": "fixture",
       "refs": {
         "observation_id": "fixture-s1-grd-whitsun-20231210",
@@ -263,7 +263,10 @@
       "confidence_weight": 0.45,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["public SAR context, lower confidence than Umbra"]
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "public Sentinel-1 GRD; useful for tasking cues, not definitive"
+      ]
     },
     {
       "observation_id": "fixture-s2-l2a-whitsun-20231212-low-cloud",
@@ -274,7 +277,10 @@
       "confidence_weight": 0.30,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["optical context; cloud_coverage 8% is below 25% threshold"]
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "optical context; cloud_coverage 8% below 25% threshold; useful as a change candidate"
+      ]
     },
     {
       "observation_id": "fixture-s2-l2a-whitsun-20231215-cloudy",
@@ -286,6 +292,7 @@
       "usable_for_detection": false,
       "usable_for_context": true,
       "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
         "high cloud cover 72% > 25% threshold",
         "usable for context only, not for detection"
       ]
