@@ -196,10 +196,12 @@ def test_sidebar_callback_outputs_cover_all_three_sidebars() -> None:
 
 
 def test_sidebar_callback_unchanged_count() -> None:
-    """Adding the Tennent tab extends the existing callback's outputs;
-    it does not add a new callback.  Total stays at 14."""
+    """Adding the Tennent tab extends the existing tab-swap callback's
+    outputs; it does not add a new tab-swap callback.  The collapse
+    toggle adds two callbacks (toggle store + apply collapse), so the
+    total is 16."""
     dash_app = _import_dash_app()
-    assert len(dash_app.app.callback_map) == 14
+    assert len(dash_app.app.callback_map) == 16
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,13 @@ from layout.whitsun_replay import (
 )
 from callbacks import (
     navigation, portfolio, map_layers, entity_detail, whitsun_replay,
+    sidebar_collapse,
+)
+from callbacks.sidebar_collapse import (
+    MAIN_CONTENT_COL,
+    SIDEBAR_COL,
+    SIDEBAR_COLLAPSED_STORE,
+    SIDEBAR_TOGGLE_BUTTON,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,6 +67,7 @@ _default = _scenarios[0]  # multi_day_72h
 app.layout = html.Div(
     [
         *state.build_stores(),
+        dcc.Store(id=SIDEBAR_COLLAPSED_STORE, data=False),
         dbc.Row(
             [
                 dbc.Col(
@@ -79,40 +87,57 @@ app.layout = html.Div(
                             style={"display": "none"},
                         ),
                     ]),
+                    id=SIDEBAR_COL,
                     width=2,
                     style={"borderRight": "1px solid #2d2d2d", "minHeight": "100vh"},
                 ),
                 dbc.Col(
-                    dcc.Tabs(
-                        id="custody-main-tabs",
-                        value="tab-custody-overview",
-                        children=[
-                            dcc.Tab(
-                                label="Custody overview",
-                                value="tab-custody-overview",
-                                children=html.Div([
-                                    build_overview_layout(),
-                                    html.Hr(style={"borderColor": "#2d2d2d", "margin": "8px 0"}),
-                                    build_entity_detail_layout(),
-                                ]),
+                    [
+                        html.Div(
+                            dbc.Button(
+                                "Hide panel",
+                                id=SIDEBAR_TOGGLE_BUTTON,
+                                size="sm",
+                                color="secondary",
+                                outline=True,
                             ),
-                            dcc.Tab(
-                                label="Whitsun replay (fixture)",
-                                value="tab-whitsun-replay",
-                                children=build_whitsun_replay_layout(),
-                            ),
-                            dcc.Tab(
-                                label="Tennent monitoring (fixture)",
-                                value=TENNENT_TAB_VALUE,
-                                children=build_tennent_monitoring_layout(),
-                            ),
-                        ],
-                        colors={
-                            "border": "#2d2d2d",
-                            "primary": "#5eead4",
-                            "background": "#1a1a1a",
-                        },
-                    ),
+                            style={
+                                "padding": "8px 12px",
+                                "borderBottom": "1px solid #2d2d2d",
+                            },
+                        ),
+                        dcc.Tabs(
+                            id="custody-main-tabs",
+                            value="tab-custody-overview",
+                            children=[
+                                dcc.Tab(
+                                    label="Custody overview",
+                                    value="tab-custody-overview",
+                                    children=html.Div([
+                                        build_overview_layout(),
+                                        html.Hr(style={"borderColor": "#2d2d2d", "margin": "8px 0"}),
+                                        build_entity_detail_layout(),
+                                    ]),
+                                ),
+                                dcc.Tab(
+                                    label="Whitsun replay (fixture)",
+                                    value="tab-whitsun-replay",
+                                    children=build_whitsun_replay_layout(),
+                                ),
+                                dcc.Tab(
+                                    label="Tennent monitoring (fixture)",
+                                    value=TENNENT_TAB_VALUE,
+                                    children=build_tennent_monitoring_layout(),
+                                ),
+                            ],
+                            colors={
+                                "border": "#2d2d2d",
+                                "primary": "#5eead4",
+                                "background": "#1a1a1a",
+                            },
+                        ),
+                    ],
+                    id=MAIN_CONTENT_COL,
                     width=10,
                 ),
             ],
@@ -131,6 +156,7 @@ portfolio.register(app)
 map_layers.register(app)
 entity_detail.register(app)
 whitsun_replay.register(app)
+sidebar_collapse.register(app)
 
 # ---------------------------------------------------------------------------
 # Dev server
