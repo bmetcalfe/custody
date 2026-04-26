@@ -302,16 +302,60 @@ def test_simulated_followup_stays_footprint_only() -> None:
     assert not has_image_asset(fu[0])
 
 
-def test_sentinel_overlays_stay_footprint_only() -> None:
-    """No Sentinel imagery is committed yet — every Sentinel entry
-    must remain footprint-only with an explicit missing_asset_reason."""
+def test_sentinel_overlays_in_mixed_state() -> None:
+    """The canonical manifest reflects a real Sentinel Hub run with
+    quality gates applied:
+
+      * Sentinel-2 entries with valid unique previews are promoted
+        (image_kind=sentinel_preview, asset_url set).
+      * Sentinel-1 entries kept footprint-only because Sentinel Hub
+        returned empty placeholders for those acquisitions.
+      * Sentinel-2 duplicates kept footprint-only with a clear
+        "Duplicate preview of <obs>" reason.
+
+    Every Sentinel overlay — promoted or footprint-only — preserves
+    weak_signal=True / confirmation_layer=False.  The intent is to
+    prove multi-source pipeline handling + graceful fallback, not
+    coverage perfection."""
     overlays = load_map_overlays()
-    sentinel = [o for o in overlays if o.source in ("sentinel-1", "sentinel-2")]
+    sentinel = [
+        o for o in overlays if o.source in ("sentinel-1", "sentinel-2")
+    ]
     assert sentinel
+
+    promoted = [o for o in sentinel if o.image_kind == "sentinel_preview"]
+    footprint_only = [
+        o for o in sentinel if o.image_kind == "footprint-only"
+    ]
+    # Mixed state: at least one of each, proving both pipelines.
+    assert promoted, "expected at least one promoted Sentinel preview"
+    assert footprint_only, (
+        "expected at least one footprint-only Sentinel overlay"
+    )
+
+    # Promoted overlays must carry an asset url and have no
+    # missing_asset_reason left over from their pre-fetch state.
+    for o in promoted:
+        assert has_image_asset(o), o.overlay_id
+        assert o.asset_url and o.asset_url.startswith(
+            "/assets/evidence/sentinel/"
+        )
+        assert not o.missing_asset_reason
+        # Promoted Sentinel-2 only — Sentinel-1 returned empty
+        # placeholders this run and was rejected by the quality gate.
+        assert o.source == "sentinel-2", o.overlay_id
+
+    # Footprint-only overlays must declare WHY (empty placeholder or
+    # duplicate); the dashboard surfaces this verbatim.
+    for o in footprint_only:
+        assert not has_image_asset(o), o.overlay_id
+        reason = o.missing_asset_reason or ""
+        assert reason, o.overlay_id
+
+    # Honesty markers preserved across both groups.
     for o in sentinel:
-        assert o.image_kind == "footprint-only"
-        assert not has_image_asset(o)
-        assert o.missing_asset_reason
+        assert o.weak_signal is True, o.overlay_id
+        assert o.confirmation_layer is False, o.overlay_id
 
 
 # ---------------------------------------------------------------------------

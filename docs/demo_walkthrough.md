@@ -105,15 +105,24 @@ Total target runtime: **8–10 minutes** of dashboard time.
 
 **Say:**
 
-> "Steps five and six bring in the Sentinel layer. Sentinel-2 first, then Sentinel-1. Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero. They never get treated as equivalent to Umbra. The dashboard surfaces the source class in a badge for every record. That's a discipline thing — Sentinel is a weak-signal cueing layer here, useful for change candidates and tasking cues, not a substitute for tasked SAR.
+> "Steps five and six bring in the Sentinel layer.  This is where we prove **multi-source pipeline handling**, not detection equivalence with Umbra.
 >
-> Notice the WEAK-SIGNAL CUE callout that just appeared at the top of the observations panel. The UI says it explicitly: *Sentinel-N provides a possible change cue. Recommend higher-resolution tasking if mission priority warrants. Umbra remains the high-confidence confirmation layer.* That callout is on screen so anyone watching can read the operational hierarchy directly, without me needing to disclaim it from the script."
+> Sentinel-2 gives us a real public optical preview — that's the colour image you can see on the map at step five.  Sentinel-1 demonstrates the public SAR observation pipeline: the metadata is here, the AOI footprint is rendered, but the live Process API call returned an empty placeholder for these acquisition windows, so the dashboard gracefully falls back to footprint-only.  We don't fake a Sentinel-1 image we don't have.
+>
+> Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero.  Neither is treated as equivalent to Umbra's one-point-zero.  The dashboard surfaces the source class in a badge for every record.  Sentinel here is a weak-signal cueing layer — useful for change candidates and tasking cues, not a substitute for tasked SAR.
+>
+> Notice the WEAK-SIGNAL CUE callout that just appeared at the top of the observations panel.  The UI says it explicitly: *Sentinel-N provides a possible change cue.  Recommend higher-resolution tasking if mission priority warrants.  Umbra remains the high-confidence confirmation layer.*  That callout is on screen so anyone watching can read the operational hierarchy directly, without me needing to disclaim it from the script."
+
+**Multi-source pipeline framing (one-liner if asked):**
+
+> The demo proves the system handles **three distinct imagery pipelines** according to their trust level: Umbra is the **confirmation layer** with tasked SAR; Sentinel-2 is **public optical context** when a valid preview exists; Sentinel-1 is the **public SAR observation pipeline with graceful fallback** — when Sentinel Hub returns an empty preview, we keep the overlay footprint-only and surface the reason rather than render a fake image.
 
 **Do not oversell:**
 
-- Don't claim the system pulled Sentinel data live. It didn't — the records cross-reference the committed `whitsun_sentinel_observations.fixture.json`.
-- Don't claim the confidence weights are calibrated. They're demo heuristics.
-- **Don't say "Sentinel confirms", "Sentinel proves", "definitive change", "Sentinel reacquired the target".** Sentinel here is a weak-signal cueing layer, not confirmation evidence. Umbra is the confirmation layer.
+- Don't claim every Sentinel layer has imagery on every run.  In this committed state two Sentinel-2 acquisitions are real previews; the rest stay footprint-only after quality gates rejected empty placeholders and within-run duplicates.
+- Don't claim the system pulled Sentinel data live during the demo.  It didn't — `scripts/32_fetch_sentinel_previews.py` is a deterministic build-time refresh; the running dashboard only reads committed PNGs.
+- Don't claim the confidence weights are calibrated.  They're demo heuristics.
+- **Don't say "Sentinel confirms", "Sentinel proves", "definitive change", "Sentinel reacquired the target".**  Sentinel here is a weak-signal cueing layer, not confirmation evidence.  Umbra is the confirmation layer.
 
 ### Event 07 — Custody risk — 30 seconds
 

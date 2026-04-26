@@ -47,6 +47,8 @@ Run::
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json as _json
 import os
 import sys
@@ -111,6 +113,47 @@ DEFAULT_PREVIEW_PX = 512
 # revisit at our latitude; ±2 days catches the matching scene without
 # pulling neighbouring revisits.
 TIME_WINDOW_DAYS = 2
+
+# Content-validation thresholds.  Sentinel Hub Process API can return
+# HTTP 200 with a small uniform "no scene matched" placeholder PNG —
+# typically ~334 bytes of fully-zero pixels.  Any preview below
+# ``MIN_PREVIEW_SIZE_BYTES`` or with pixel-std-dev under
+# ``MIN_PREVIEW_STDDEV`` is rejected as an empty placeholder so the
+# overlay stays footprint-only instead of rendering as an opaque
+# black square on the map.
+MIN_PREVIEW_SIZE_BYTES = 5 * 1024
+MIN_PREVIEW_STDDEV = 0.5
+
+
+def _validate_preview_png(png_bytes: bytes) -> tuple[bool, str]:
+    """Return ``(ok, reason)`` after sanity-checking a Process API
+    response body.  Treats sub-threshold size or near-uniform pixel
+    content as a failed preview so the manifest stays footprint-only.
+
+    Network-level failures are caught earlier in ``_process_one``;
+    this function only sees byte payloads from successful HTTP 200
+    responses.
+    """
+    if not png_bytes:
+        return False, "empty body"
+    if len(png_bytes) < MIN_PREVIEW_SIZE_BYTES:
+        return False, (
+            f"preview too small ({len(png_bytes)} B < "
+            f"{MIN_PREVIEW_SIZE_BYTES} B); likely empty placeholder"
+        )
+    try:
+        from PIL import Image
+        import numpy as np
+        img = Image.open(io.BytesIO(png_bytes)).convert("L")
+        std = float(np.array(img, dtype="float32").std())
+    except Exception as exc:  # pragma: no cover - corrupt PNG branch
+        return False, f"could not parse preview PNG: {exc}"
+    if std < MIN_PREVIEW_STDDEV:
+        return False, (
+            f"preview is uniform (pixel std {std:.2f} < "
+            f"{MIN_PREVIEW_STDDEV}); likely empty placeholder"
+        )
+    return True, "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -531,8 +574,15 @@ def main(argv: list[str] | None = None) -> int:
     # Manifest ---------------------------------------------------------
     manifest = _json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
-    successes: list[str] = []
-    failures: list[tuple[str, str]] = []
+    fetched: list[str] = []        # HTTP 200 + non-empty body
+    promoted: list[str] = []       # passed validation + unique → manifest updated
+    empty: list[tuple[str, str]] = []      # 200 OK but uniform / too small
+    duplicate: list[tuple[str, str]] = []  # bytes match an earlier promoted preview
+    failed: list[tuple[str, str]] = []     # HTTP error / API exception
+
+    # sha256 → first-promoted observation_id, for within-run dedup.
+    seen_hashes: dict[str, str] = {}
+
     for fixture in selected_fixtures:
         if not fixture.exists():
             print(f"skipping missing fixture {fixture}")
@@ -542,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
             obs_id = str(obs.get("observation_id") or "")
             scenario = _scenario_for(obs_id)
             if scenario is None:
-                failures.append((obs_id, "could not classify scenario"))
+                failed.append((obs_id, "could not classify scenario"))
                 continue
             aoi_bbox = _aoi_bbox_from_geojson(AOI_FIXTURES[scenario])
             ok, reason, png = _process_one(
@@ -550,12 +600,51 @@ def main(argv: list[str] | None = None) -> int:
                 width=args.width, height=args.height,
             )
             if not ok:
-                failures.append((obs_id, reason))
+                failed.append((obs_id, reason))
                 update_manifest_for_failure(
                     manifest, observation_id=obs_id,
                     reason=f"sentinel hub preview unavailable: {reason}",
                 )
                 continue
+
+            # HTTP succeeded; fetched bytes in hand.
+            fetched.append(obs_id)
+
+            # Content validation: catch sub-threshold size + uniform tiles
+            # before the manifest claims they're real previews.
+            ok_content, content_reason = _validate_preview_png(png or b"")
+            if not ok_content:
+                empty.append((obs_id, content_reason))
+                update_manifest_for_failure(
+                    manifest, observation_id=obs_id,
+                    reason=(
+                        "Sentinel Hub preview returned empty placeholder; "
+                        "keeping footprint-only overlay"
+                    ),
+                )
+                print(f"  empty {obs_id}: {content_reason}")
+                continue
+
+            # Within-run duplicate detection by sha256.  The first
+            # observation that produced a given image is kept; later
+            # collisions stay footprint-only so the dashboard doesn't
+            # render the same picture under multiple dates.
+            digest = hashlib.sha256(png).hexdigest()
+            if digest in seen_hashes:
+                first_obs = seen_hashes[digest]
+                duplicate.append((obs_id, first_obs))
+                update_manifest_for_failure(
+                    manifest, observation_id=obs_id,
+                    reason=(
+                        f"Duplicate preview of {first_obs}; keeping "
+                        f"footprint-only overlay to avoid misleading replay"
+                    ),
+                )
+                print(f"  duplicate {obs_id}: shares bytes with {first_obs}")
+                continue
+            seen_hashes[digest] = obs_id
+
+            # Promote: write the PNG and stamp the manifest.
             out_path, rel_path, asset_url = _output_paths_for(scenario, obs_id)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(png)
@@ -565,17 +654,27 @@ def main(argv: list[str] | None = None) -> int:
                 image_path=rel_path,
                 asset_url=asset_url,
             )
-            successes.append(obs_id)
-            print(f"  fetched {obs_id} -> {rel_path}")
+            promoted.append(obs_id)
+            print(f"  promoted {obs_id} -> {rel_path}")
 
     MANIFEST_PATH.write_text(
         _json.dumps(manifest, indent=2) + "\n", encoding="utf-8",
     )
 
     print()
-    print(f"sentinel previews: {len(successes)} fetched, {len(failures)} skipped")
-    for obs_id, reason in failures:
-        print(f"  skip {obs_id}: {reason}")
+    print(
+        f"sentinel previews: {len(fetched)} fetched, "
+        f"{len(promoted)} promoted, "
+        f"{len(empty)} empty/placeholder, "
+        f"{len(duplicate)} duplicate, "
+        f"{len(failed)} failed"
+    )
+    for obs_id, reason in empty:
+        print(f"  empty/placeholder {obs_id}: {reason}")
+    for obs_id, first_obs in duplicate:
+        print(f"  duplicate {obs_id}: byte-identical to {first_obs}")
+    for obs_id, reason in failed:
+        print(f"  failed {obs_id}: {reason}")
     return 0
 
 

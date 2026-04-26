@@ -91,9 +91,9 @@
       "sensor_type": "optical",
       "display_name": "Sentinel-2 L2A 2023-12-12 (8% cloud)",
       "data_mode": "fixture",
-      "image_path": null,
-      "asset_url": null,
-      "image_kind": "footprint-only",
+      "image_path": "src/app/assets/evidence/sentinel/whitsun/fixture-s2-l2a-whitsun-20231212-low-cloud/preview.png",
+      "asset_url": "/assets/evidence/sentinel/whitsun/fixture-s2-l2a-whitsun-20231212-low-cloud/preview.png",
+      "image_kind": "sentinel_preview",
       "bounds": [
         114.45,
         9.75,
@@ -137,7 +137,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "low cloud Sentinel-2; useful for tasking cues, not definitive"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": null,
       "collection_time": "2023-12-12",
       "default_visible": true,
       "resolution_m": null,
@@ -199,7 +199,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "public Sentinel-1 GRD; useful for change candidates, not definitive"
       ],
-      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "missing_asset_reason": "Sentinel Hub preview returned empty placeholder; keeping footprint-only overlay",
       "collection_time": "2023-12-10",
       "default_visible": true,
       "resolution_m": 10.0,
@@ -261,7 +261,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "high cloud cover; usable_for_detection is false"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": "Duplicate preview of fixture-s2-l2a-whitsun-20231212-low-cloud; keeping footprint-only overlay to avoid misleading replay",
       "collection_time": "2023-12-15",
       "default_visible": false,
       "resolution_m": null,
@@ -384,7 +384,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "in-between coverage record (pre-Umbra context)"
       ],
-      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "missing_asset_reason": "Sentinel Hub preview returned empty placeholder; keeping footprint-only overlay",
       "collection_time": "2023-12-04",
       "default_visible": false,
       "resolution_m": 10.0,
@@ -400,9 +400,9 @@
       "sensor_type": "optical",
       "display_name": "Sentinel-2 L2A 2023-12-07 (45% cloud)",
       "data_mode": "fixture",
-      "image_path": null,
-      "asset_url": null,
-      "image_kind": "footprint-only",
+      "image_path": "src/app/assets/evidence/sentinel/whitsun/fixture-s2-l2a-whitsun-20231207-mid-cloud/preview.png",
+      "asset_url": "/assets/evidence/sentinel/whitsun/fixture-s2-l2a-whitsun-20231207-mid-cloud/preview.png",
+      "image_kind": "sentinel_preview",
       "bounds": [
         114.45,
         9.75,
@@ -447,7 +447,7 @@
         "mid-cloud Sentinel-2; usable for context only, not detection",
         "in-between coverage record"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": null,
       "collection_time": "2023-12-07",
       "default_visible": false,
       "resolution_m": null,
@@ -509,7 +509,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "in-between coverage record (between Umbra primary and follow-up)"
       ],
-      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "missing_asset_reason": "Sentinel Hub preview returned empty placeholder; keeping footprint-only overlay",
       "collection_time": "2023-12-09",
       "default_visible": false,
       "resolution_m": 10.0,
@@ -572,7 +572,7 @@
         "low cloud Sentinel-2; useful for tasking cues, not definitive",
         "in-between coverage record (post-follow-up)"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": "Duplicate preview of fixture-s2-l2a-whitsun-20231212-low-cloud; keeping footprint-only overlay to avoid misleading replay",
       "collection_time": "2023-12-14",
       "default_visible": false,
       "resolution_m": null,

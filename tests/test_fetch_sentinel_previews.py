@@ -34,6 +34,33 @@ def fetch_module():
     return mod
 
 
+def _noise_png(seed: int = 42, size: int = 96) -> bytes:
+    """Build a noise-pattern PNG that passes content validation:
+    > 5 KB and pixel-stddev far above the uniform threshold."""
+    import io
+    import numpy as np
+    from PIL import Image
+    rng = np.random.default_rng(seed=seed)
+    arr = rng.integers(0, 255, size=(size, size, 3), dtype=np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _placeholder_png() -> bytes:
+    """A tiny all-zero PNG (~85 B) that mimics the Sentinel Hub
+    "no scene matched" placeholder.  Below the 5 KB size floor,
+    so the fetcher's size guard rejects it before variance even
+    runs."""
+    import io
+    import numpy as np
+    from PIL import Image
+    arr = np.zeros((4, 4), dtype=np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Manifest-update unit tests
 # ---------------------------------------------------------------------------
@@ -279,6 +306,11 @@ def test_main_with_missing_credentials_exits_clean(monkeypatch, fetch_module):
 def test_main_dry_run_with_mock_oauth_and_fetcher_does_not_write(
     monkeypatch, fetch_module, tmp_path,
 ):
+    """``--dry-run`` must not call live HTTP and must not mutate
+    whatever state the manifest is currently in.  Snapshots the
+    manifest before, runs the dry-run, and asserts byte-identical
+    state afterwards regardless of which Sentinel overlays were
+    promoted in earlier real fetches."""
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
     monkeypatch.setattr(
@@ -288,13 +320,9 @@ def test_main_dry_run_with_mock_oauth_and_fetcher_does_not_write(
         fetch_module, "_request_preview",
         lambda **kwargs: b"\x89PNG\r\n\x1a\n",
     )
-    # Mirror the manifest into a tmp file so the script does not
-    # mutate the committed fixture.
     manifest_copy = tmp_path / "map_overlays.fixture.json"
-    manifest_copy.write_text(
-        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
+    original_text = fetch_module.MANIFEST_PATH.read_text(encoding="utf-8")
+    manifest_copy.write_text(original_text, encoding="utf-8")
     monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
     monkeypatch.setattr(fetch_module, "EVIDENCE_DIR", tmp_path / "ev")
 
@@ -302,26 +330,26 @@ def test_main_dry_run_with_mock_oauth_and_fetcher_does_not_write(
     assert rc == 0
     # Dry run must not write any PNGs ...
     assert not (tmp_path / "ev").exists()
-    # ... and must leave the manifest unchanged.
-    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
-    sentinel = next(
-        o for o in payload["overlays"]
-        if o.get("observation_id") ==
-        "fixture-s2-l2a-whitsun-20231212-low-cloud"
-    )
-    assert sentinel["image_kind"] == "footprint-only"
+    # ... and must leave the manifest byte-identical to the snapshot.
+    assert manifest_copy.read_text(encoding="utf-8") == original_text
 
 
 def test_main_writes_pngs_and_updates_manifest_with_mocks(
     monkeypatch, fetch_module, tmp_path,
 ):
+    """Each observation gets a unique valid noise PNG so all 7
+    Whitsun observations get promoted (no validation rejection,
+    no within-run duplicate detection)."""
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
 
-    fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    counter = {"i": 0}
 
     def fake_fetch(**kwargs):
-        return fake_png
+        # Use a different seed per call so every preview is unique
+        # and passes the within-run dedup check.
+        counter["i"] += 1
+        return _noise_png(seed=counter["i"])
 
     monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
     monkeypatch.setattr(fetch_module, "_request_preview", fake_fetch)
@@ -364,8 +392,9 @@ def test_main_writes_pngs_and_updates_manifest_with_mocks(
         (tmp_path / "evidence" / "sentinel").rglob("preview.png")
     )
     assert written, "expected at least one preview.png to be written"
+    # Every written preview is the noise pattern the mock produced.
     for p in written:
-        assert p.read_bytes() == fake_png
+        assert p.stat().st_size >= fetch_module.MIN_PREVIEW_SIZE_BYTES
 
 
 def test_main_failure_keeps_footprint_only_with_specific_reason(
@@ -524,10 +553,14 @@ def test_live_main_with_scenario_whitsun_does_not_touch_tennent(
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
     monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
 
-    fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    counter = {"i": 0}
+
+    def fake_fetch(**kwargs):
+        counter["i"] += 1
+        return _noise_png(seed=counter["i"])
 
     monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
-    monkeypatch.setattr(fetch_module, "_request_preview", lambda **kwargs: fake_png)
+    monkeypatch.setattr(fetch_module, "_request_preview", fake_fetch)
 
     manifest_copy = tmp_path / "map_overlays.fixture.json"
     manifest_copy.write_text(
@@ -561,3 +594,258 @@ def test_live_main_with_scenario_whitsun_does_not_touch_tennent(
         assert o["image_kind"] == "footprint-only", o["overlay_id"]
         assert o["asset_url"] is None
         assert o["image_path"] is None
+
+
+# ---------------------------------------------------------------------------
+# Quality gates: size + variance + dedup
+# ---------------------------------------------------------------------------
+
+
+def test_validate_preview_png_rejects_empty_body(fetch_module):
+    ok, reason = fetch_module._validate_preview_png(b"")
+    assert ok is False
+    assert "empty" in reason.lower()
+
+
+def test_validate_preview_png_rejects_too_small(fetch_module):
+    """The Sentinel Hub placeholder is ~334 B; any sub-5 KB body is
+    treated as a placeholder regardless of its pixel content."""
+    placeholder = _placeholder_png()
+    assert len(placeholder) < fetch_module.MIN_PREVIEW_SIZE_BYTES
+    ok, reason = fetch_module._validate_preview_png(placeholder)
+    assert ok is False
+    assert "too small" in reason.lower()
+
+
+def test_validate_preview_png_rejects_uniform_image(fetch_module, monkeypatch):
+    """A fully-zero PNG is uniform.  Patch ``MIN_PREVIEW_SIZE_BYTES``
+    to 1 so the size guard doesn't pre-empt the variance check, then
+    verify the variance branch fires."""
+    import io
+    import numpy as np
+    from PIL import Image
+    monkeypatch.setattr(fetch_module, "MIN_PREVIEW_SIZE_BYTES", 1)
+    arr = np.zeros((128, 128, 3), dtype=np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    ok, reason = fetch_module._validate_preview_png(buf.getvalue())
+    assert ok is False
+    assert "uniform" in reason.lower()
+
+
+def test_validate_preview_png_accepts_noisy_image(fetch_module):
+    ok, reason = fetch_module._validate_preview_png(_noise_png())
+    assert ok is True
+    assert reason == "ok"
+
+
+def test_main_does_not_promote_empty_placeholder(
+    monkeypatch, fetch_module, tmp_path,
+):
+    """Sentinel Hub returns the 334 B all-zero placeholder for every
+    request → no promotion, every overlay stays footprint-only with
+    the new "empty placeholder" missing_asset_reason."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
+    placeholder = _placeholder_png()
+    monkeypatch.setattr(
+        fetch_module, "_request_preview", lambda **kwargs: placeholder,
+    )
+
+    manifest_copy = tmp_path / "map_overlays.fixture.json"
+    manifest_copy.write_text(
+        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
+    monkeypatch.setattr(
+        fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
+    )
+
+    rc = fetch_module.main(["--scenario", "whitsun"])
+    assert rc == 0
+    # No PNGs written.
+    written = list((tmp_path / "evidence" / "sentinel").rglob("preview.png"))
+    assert written == []
+    # All Whitsun Sentinel overlays remain footprint-only with the
+    # new placeholder reason.
+    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
+    whitsun_sentinel = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "whitsun"
+        and o.get("source") in ("sentinel-1", "sentinel-2")
+    ]
+    assert whitsun_sentinel
+    for o in whitsun_sentinel:
+        assert o["image_kind"] == "footprint-only", o["overlay_id"]
+        assert o["asset_url"] is None
+        assert "empty placeholder" in (o["missing_asset_reason"] or "")
+        # Honesty markers preserved.
+        assert o["weak_signal"] is True
+        assert o["confirmation_layer"] is False
+
+
+def test_main_promotes_first_duplicate_only(
+    monkeypatch, fetch_module, tmp_path,
+):
+    """Sentinel Hub returns the SAME bytes for every request (mimics
+    the Process API serving one scene to overlapping ±2-day windows).
+    The first observation is promoted; later ones stay footprint-only
+    with the duplicate reason."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
+    same_png = _noise_png(seed=7)
+    monkeypatch.setattr(
+        fetch_module, "_request_preview", lambda **kwargs: same_png,
+    )
+
+    manifest_copy = tmp_path / "map_overlays.fixture.json"
+    manifest_copy.write_text(
+        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
+    monkeypatch.setattr(
+        fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
+    )
+
+    rc = fetch_module.main(["--scenario", "whitsun"])
+    assert rc == 0
+
+    # Exactly one PNG written.
+    written = list((tmp_path / "evidence" / "sentinel").rglob("preview.png"))
+    assert len(written) == 1, [p.name for p in written]
+
+    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
+    promoted = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "whitsun"
+        and o.get("source") in ("sentinel-1", "sentinel-2")
+        and o["image_kind"] == "sentinel_preview"
+    ]
+    duplicates = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "whitsun"
+        and o.get("source") in ("sentinel-1", "sentinel-2")
+        and o["image_kind"] == "footprint-only"
+        and "Duplicate preview of" in (o["missing_asset_reason"] or "")
+    ]
+    # Exactly one promoted, the rest carry the duplicate reason.
+    assert len(promoted) == 1, [o["overlay_id"] for o in promoted]
+    assert len(duplicates) >= 6
+    # Duplicate reason references the first promoted observation id.
+    first_id = promoted[0]["observation_id"]
+    for o in duplicates:
+        assert first_id in o["missing_asset_reason"]
+        assert o["weak_signal"] is True
+        assert o["confirmation_layer"] is False
+
+
+def test_main_mixed_state_some_promote_some_reject(
+    monkeypatch, fetch_module, tmp_path,
+):
+    """Mock that returns valid noise for Sentinel-2 and the empty
+    placeholder for Sentinel-1, mirroring the real-world result of
+    the live fetch.  Verifies the manifest ends up in mixed state:
+    promoted S2 + footprint-only S1, with Umbra untouched."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
+
+    placeholder = _placeholder_png()
+    counter = {"i": 0}
+
+    def hybrid_fetch(**kwargs):
+        # The dataFilter routing tags S1 with "sentinel-1-grd" and
+        # S2 with "sentinel-2-l2a"; use that to decide what to return.
+        if kwargs.get("data_collection") == "sentinel-1-grd":
+            return placeholder
+        counter["i"] += 1
+        return _noise_png(seed=counter["i"])
+
+    monkeypatch.setattr(fetch_module, "_request_preview", hybrid_fetch)
+
+    manifest_copy = tmp_path / "map_overlays.fixture.json"
+    manifest_copy.write_text(
+        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
+    monkeypatch.setattr(
+        fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
+    )
+
+    rc = fetch_module.main(["--scenario", "whitsun"])
+    assert rc == 0
+
+    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
+
+    # Sentinel-2 promoted ...
+    s2 = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "whitsun" and o.get("source") == "sentinel-2"
+    ]
+    assert s2
+    promoted_s2 = [o for o in s2 if o["image_kind"] == "sentinel_preview"]
+    assert promoted_s2, "expected at least one Sentinel-2 promotion"
+    for o in promoted_s2:
+        assert o["asset_url"]
+        assert o["weak_signal"] is True
+        assert o["confirmation_layer"] is False
+
+    # ... Sentinel-1 stays footprint-only.
+    s1 = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "whitsun" and o.get("source") == "sentinel-1"
+    ]
+    assert s1
+    for o in s1:
+        assert o["image_kind"] == "footprint-only", o["overlay_id"]
+        assert o["asset_url"] is None
+        assert "empty placeholder" in (o["missing_asset_reason"] or "")
+        assert o["weak_signal"] is True
+        assert o["confirmation_layer"] is False
+
+    # Umbra confirmation layer is unchanged in this run — it has its
+    # own preview pipeline (scripts/30_*) and never touches the
+    # Sentinel evidence directory.
+    umbra = [
+        o for o in payload["overlays"]
+        if o.get("source") == "umbra" and o.get("image_kind") == "png"
+    ]
+    assert umbra
+    for o in umbra:
+        assert o.get("confirmation_layer") is True
+
+
+def test_main_quality_gates_status_summary(
+    monkeypatch, fetch_module, tmp_path, capsys,
+):
+    """Live run prints a final per-status summary line so the operator
+    can see counts at a glance without re-reading individual lines."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
+    monkeypatch.setattr(
+        fetch_module, "_request_preview",
+        lambda **kwargs: _placeholder_png(),
+    )
+
+    manifest_copy = tmp_path / "map_overlays.fixture.json"
+    manifest_copy.write_text(
+        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
+    monkeypatch.setattr(
+        fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
+    )
+
+    rc = fetch_module.main(["--scenario", "whitsun"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    # Headline summary names every status bucket.
+    for term in ("fetched", "promoted", "empty", "duplicate", "failed"):
+        assert term in captured, f"summary missing {term!r}: {captured!r}"
