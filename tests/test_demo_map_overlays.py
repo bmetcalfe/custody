@@ -364,6 +364,11 @@ def test_sentinel_overlays_in_mixed_state() -> None:
 
 
 def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
+    """Tennent renders BitmapLayers from two distinct asset trees:
+    Umbra GEC previews under ``/assets/overlays/`` and quality-gated
+    Sentinel-2 Process API previews under
+    ``/assets/evidence/sentinel/...``.  Both are valid raster
+    sources; the test pins the union, not Umbra alone."""
     helpers = _import_helpers()
     overlays = load_map_overlays()
     avail = overlays_for_scenario(overlays, "tennent")
@@ -378,16 +383,35 @@ def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
         if l.get("@@type") == "BitmapLayer"
     ]
     assert bitmap_layers, "expected at least one BitmapLayer for Tennent"
+    # At least one Umbra GEC preview is always present; that's the
+    # tasked confirmation imagery the demo can't function without.
+    umbra_bitmaps = [
+        l for l in bitmap_layers
+        if l.get("image", "").startswith("/assets/overlays/")
+    ]
+    assert umbra_bitmaps, (
+        "expected at least one Umbra BitmapLayer under /assets/overlays/"
+    )
     for l in bitmap_layers:
-        assert l.get("image", "").startswith("/assets/overlays/")
+        url = l.get("image", "")
+        assert (
+            url.startswith("/assets/overlays/")
+            or url.startswith("/assets/evidence/sentinel/")
+        ), f"BitmapLayer image {url!r} not from a known asset tree"
         assert isinstance(l.get("bounds"), list)
         assert len(l["bounds"]) == 4
 
 
 def test_umbra_overlay_omitted_drops_its_bitmap_layer() -> None:
     """The dynamic overlay manager controls visibility by filtering
-    overlays before they reach build_deck_json; Umbra rasters should
-    disappear when no Umbra overlays are passed in."""
+    overlays before they reach build_deck_json; the resulting deck
+    spec should never contain an Umbra BitmapLayer when no Umbra
+    overlays are passed in.
+
+    Sentinel-2 previews under /assets/evidence/sentinel/ remain
+    valid raster sources independently and may still render — that's
+    the multi-source pipeline working as designed.
+    """
     helpers = _import_helpers()
     overlays = load_map_overlays()
     avail_no_umbra = tuple(
@@ -404,8 +428,13 @@ def test_umbra_overlay_omitted_drops_its_bitmap_layer() -> None:
         l for l in spec.get("layers", [])
         if l.get("@@type") == "BitmapLayer"
     ]
-    assert not bitmap_layers, (
-        "BitmapLayers should be absent when no Umbra overlays are passed"
+    umbra_bitmaps = [
+        l for l in bitmap_layers
+        if l.get("image", "").startswith("/assets/overlays/")
+    ]
+    assert not umbra_bitmaps, (
+        "Umbra BitmapLayers should be absent when no Umbra overlays "
+        "are passed"
     )
 
 

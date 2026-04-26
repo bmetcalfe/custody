@@ -572,6 +572,18 @@ def test_live_main_with_scenario_whitsun_does_not_touch_tennent(
         fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
     )
 
+    # Snapshot Tennent's pre-run state so we can assert byte-for-byte
+    # that --scenario whitsun never mutates Tennent overlays —
+    # regardless of whether Tennent was footprint-only or already had
+    # promoted previews from a prior live run.
+    pre = json.loads(manifest_copy.read_text(encoding="utf-8"))
+    tennent_pre = [
+        dict(o) for o in pre["overlays"]
+        if o.get("scenario_id") == "tennent"
+        and o.get("source") in ("sentinel-1", "sentinel-2")
+    ]
+    assert tennent_pre, "manifest should contain Tennent Sentinel overlays"
+
     rc = fetch_module.main(["--scenario", "whitsun"])
     assert rc == 0
 
@@ -582,18 +594,17 @@ def test_live_main_with_scenario_whitsun_does_not_touch_tennent(
         assert "whitsun" in str(p)
         assert "tennent" not in str(p)
 
-    # Tennent overlays in the manifest are still footprint-only.
-    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
-    tennent = [
-        o for o in payload["overlays"]
+    # Tennent overlays in the manifest are byte-identical pre/post.
+    post = json.loads(manifest_copy.read_text(encoding="utf-8"))
+    tennent_post = [
+        dict(o) for o in post["overlays"]
         if o.get("scenario_id") == "tennent"
         and o.get("source") in ("sentinel-1", "sentinel-2")
     ]
-    assert tennent, "manifest should still contain Tennent Sentinel overlays"
-    for o in tennent:
-        assert o["image_kind"] == "footprint-only", o["overlay_id"]
-        assert o["asset_url"] is None
-        assert o["image_path"] is None
+    assert tennent_post == tennent_pre, (
+        "--scenario whitsun must not mutate any Tennent overlay; "
+        "diff between pre and post snapshots indicates leakage"
+    )
 
 
 # ---------------------------------------------------------------------------

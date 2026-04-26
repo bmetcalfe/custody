@@ -695,7 +695,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "public Sentinel-1 GRD; useful for change candidates, not definitive"
       ],
-      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "missing_asset_reason": "Sentinel Hub preview returned empty placeholder; keeping footprint-only overlay",
       "collection_time": "2023-07-15",
       "default_visible": false,
       "resolution_m": 10.0,
@@ -711,9 +711,9 @@
       "sensor_type": "optical",
       "display_name": "Sentinel-2 L2A 2023-07-18 (12% cloud)",
       "data_mode": "fixture",
-      "image_path": null,
-      "asset_url": null,
-      "image_kind": "footprint-only",
+      "image_path": "src/app/assets/evidence/sentinel/tennent/fixture-s2-l2a-tennent-20230718-low-cloud/preview.png",
+      "asset_url": "/assets/evidence/sentinel/tennent/fixture-s2-l2a-tennent-20230718-low-cloud/preview.png",
+      "image_kind": "sentinel_preview",
       "bounds": [
         114.55,
         8.78,
@@ -757,7 +757,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "low cloud Sentinel-2; useful for tasking cues, not definitive"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": null,
       "collection_time": "2023-07-18",
       "default_visible": false,
       "resolution_m": null,
@@ -773,9 +773,9 @@
       "sensor_type": "optical",
       "display_name": "Sentinel-2 L2A 2023-07-28 (85% cloud)",
       "data_mode": "fixture",
-      "image_path": null,
-      "asset_url": null,
-      "image_kind": "footprint-only",
+      "image_path": "src/app/assets/evidence/sentinel/tennent/fixture-s2-l2a-tennent-20230728-cloudy/preview.png",
+      "asset_url": "/assets/evidence/sentinel/tennent/fixture-s2-l2a-tennent-20230728-cloudy/preview.png",
+      "image_kind": "sentinel_preview",
       "bounds": [
         114.55,
         8.78,
@@ -819,7 +819,7 @@
         "weak-signal cueing layer; not high-confidence proof",
         "high cloud cover; usable_for_detection is false"
       ],
-      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "missing_asset_reason": null,
       "collection_time": "2023-07-28",
       "default_visible": false,
       "resolution_m": null,
