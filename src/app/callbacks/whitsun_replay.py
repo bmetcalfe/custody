@@ -40,6 +40,10 @@ import dash_bootstrap_components as dbc
 from custody.demo import load_whitsun_decision_trace
 from custody.demo.decision_trace import DecisionTrace
 
+from layout.tennent_monitoring import (
+    TENNENT_SIDEBAR_BLOCK,
+    TENNENT_TAB_VALUE,
+)
 from layout.whitsun_replay import (
     CUSTODY_MAIN_TABS,
     WHITSUN_CONTEXT_MAP,
@@ -813,9 +817,14 @@ def register(app: Dash) -> None:
     @app.callback(
         Output(WHITSUN_SIDEBAR_OVERVIEW, "style"),
         Output(WHITSUN_SIDEBAR_REPLAY, "style"),
+        Output(TENNENT_SIDEBAR_BLOCK, "style"),
         Input(CUSTODY_MAIN_TABS, "value"),
     )
     def _toggle_sidebar(tab_value):
+        hidden = {"display": "none"}
+        visible = {"display": "block"}
         if tab_value == "tab-whitsun-replay":
-            return {"display": "none"}, {"display": "block"}
-        return {"display": "block"}, {"display": "none"}
+            return hidden, visible, hidden
+        if tab_value == TENNENT_TAB_VALUE:
+            return hidden, hidden, visible
+        return visible, hidden, hidden

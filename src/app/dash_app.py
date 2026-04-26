@@ -23,6 +23,12 @@ from adapter import scenario_names
 from layout.sidebar import build_sidebar
 from layout.overview import build_overview_layout
 from layout.entity_detail import build_entity_detail_layout
+from layout.tennent_monitoring import (
+    TENNENT_SIDEBAR_BLOCK,
+    TENNENT_TAB_VALUE,
+    build_tennent_monitoring_layout,
+    build_tennent_sidebar_block,
+)
 from layout.whitsun_replay import (
     WHITSUN_SIDEBAR_OVERVIEW,
     WHITSUN_SIDEBAR_REPLAY,
@@ -67,6 +73,11 @@ app.layout = html.Div(
                             id=WHITSUN_SIDEBAR_REPLAY,
                             style={"display": "none"},
                         ),
+                        html.Div(
+                            build_tennent_sidebar_block(),
+                            id=TENNENT_SIDEBAR_BLOCK,
+                            style={"display": "none"},
+                        ),
                     ]),
                     width=2,
                     style={"borderRight": "1px solid #2d2d2d", "minHeight": "100vh"},
@@ -89,6 +100,11 @@ app.layout = html.Div(
                                 label="Whitsun replay (fixture)",
                                 value="tab-whitsun-replay",
                                 children=build_whitsun_replay_layout(),
+                            ),
+                            dcc.Tab(
+                                label="Tennent monitoring (fixture)",
+                                value=TENNENT_TAB_VALUE,
+                                children=build_tennent_monitoring_layout(),
                             ),
                         ],
                         colors={
