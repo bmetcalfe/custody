@@ -331,6 +331,256 @@
       "confirmation_layer": true
     },
     {
+      "overlay_id": "whitsun-sentinel-1-grd-20231204",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s1-grd-whitsun-20231204",
+      "source": "sentinel-1",
+      "sensor_type": "sar",
+      "display_name": "Sentinel-1 GRD 2023-12-04 (ascending)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 5,
+      "z_index": 20,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "in-between coverage record (pre-Umbra context)"
+      ],
+      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "collection_time": "2023-12-04",
+      "default_visible": false,
+      "resolution_m": 10.0,
+      "cloud_coverage": null,
+      "weak_signal": true,
+      "confirmation_layer": false
+    },
+    {
+      "overlay_id": "whitsun-sentinel-2-mid-cloud-20231207",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s2-l2a-whitsun-20231207-mid-cloud",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-12-07 (45% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.45,
+      "visible_from_event_ordinal": 4,
+      "z_index": 18,
+      "confidence_weight": 0.2,
+      "usable_for_detection": false,
+      "usable_for_context": true,
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "mid-cloud Sentinel-2; usable for context only, not detection",
+        "in-between coverage record"
+      ],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "collection_time": "2023-12-07",
+      "default_visible": false,
+      "resolution_m": null,
+      "cloud_coverage": 45,
+      "weak_signal": true,
+      "confirmation_layer": false
+    },
+    {
+      "overlay_id": "whitsun-sentinel-1-grd-20231209",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s1-grd-whitsun-20231209",
+      "source": "sentinel-1",
+      "sensor_type": "sar",
+      "display_name": "Sentinel-1 GRD 2023-12-09 (descending)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 5,
+      "z_index": 20,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "in-between coverage record (between Umbra primary and follow-up)"
+      ],
+      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only",
+      "collection_time": "2023-12-09",
+      "default_visible": false,
+      "resolution_m": 10.0,
+      "cloud_coverage": null,
+      "weak_signal": true,
+      "confirmation_layer": false
+    },
+    {
+      "overlay_id": "whitsun-sentinel-2-low-cloud-20231214",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s2-l2a-whitsun-20231214-low-cloud",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-12-14 (15% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 4,
+      "z_index": 25,
+      "confidence_weight": 0.3,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "weak-signal cueing layer; not high-confidence proof",
+        "low cloud Sentinel-2; useful for tasking cues, not definitive",
+        "in-between coverage record (post-follow-up)"
+      ],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only",
+      "collection_time": "2023-12-14",
+      "default_visible": false,
+      "resolution_m": null,
+      "cloud_coverage": 15,
+      "weak_signal": true,
+      "confirmation_layer": false
+    },
+    {
       "overlay_id": "tennent-aoi",
       "scenario_id": "tennent",
       "observation_id": null,
