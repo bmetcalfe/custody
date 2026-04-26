@@ -312,5 +312,7 @@ class TestCallbackCount:
         # Phase 1: 5 nav + 1 portfolio = 6
         # Phase 2: +1 map + 2 entity detail = 3
         # Phase 3: +1 timestep display + 1 step buttons = 2
-        # Total: 11
-        assert len(app.callback_map) == 11
+        # Whitsun replay: +1 selected-event sync + 1 fan-out
+        #   refresh-all-panels = 2
+        # Total: 13
+        assert len(app.callback_map) == 13

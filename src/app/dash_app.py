@@ -15,7 +15,7 @@ for _p in [os.path.join(_repo_root, "src"), os.path.join(_repo_root, "src", "app
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from dash import Dash, html
+from dash import Dash, dcc, html
 import dash_bootstrap_components as dbc
 
 import state
@@ -23,7 +23,10 @@ from adapter import scenario_names
 from layout.sidebar import build_sidebar
 from layout.overview import build_overview_layout
 from layout.entity_detail import build_entity_detail_layout
-from callbacks import navigation, portfolio, map_layers, entity_detail
+from layout.whitsun_replay import build_whitsun_replay_layout
+from callbacks import (
+    navigation, portfolio, map_layers, entity_detail, whitsun_replay,
+)
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -54,11 +57,31 @@ app.layout = html.Div(
                     style={"borderRight": "1px solid #2d2d2d", "minHeight": "100vh"},
                 ),
                 dbc.Col(
-                    html.Div([
-                        build_overview_layout(),
-                        html.Hr(style={"borderColor": "#2d2d2d", "margin": "8px 0"}),
-                        build_entity_detail_layout(),
-                    ]),
+                    dcc.Tabs(
+                        id="custody-main-tabs",
+                        value="tab-custody-overview",
+                        children=[
+                            dcc.Tab(
+                                label="Custody overview",
+                                value="tab-custody-overview",
+                                children=html.Div([
+                                    build_overview_layout(),
+                                    html.Hr(style={"borderColor": "#2d2d2d", "margin": "8px 0"}),
+                                    build_entity_detail_layout(),
+                                ]),
+                            ),
+                            dcc.Tab(
+                                label="Whitsun replay (fixture)",
+                                value="tab-whitsun-replay",
+                                children=build_whitsun_replay_layout(),
+                            ),
+                        ],
+                        colors={
+                            "border": "#2d2d2d",
+                            "primary": "#5eead4",
+                            "background": "#1a1a1a",
+                        },
+                    ),
                     width=9,
                 ),
             ],
@@ -76,6 +99,7 @@ navigation.register(app)
 portfolio.register(app)
 map_layers.register(app)
 entity_detail.register(app)
+whitsun_replay.register(app)
 
 # ---------------------------------------------------------------------------
 # Dev server
