@@ -93,11 +93,19 @@ Total target runtime: **8–10 minutes** of dashboard time.
 
 > "Step three adds VLM-derived evidence artifacts and three vessel detections off the same Umbra tile. The evidence carries an explicit caveat — VLM output is candidate evidence, not ground truth — and that string is in the panel, verbatim."
 
-**Click:** `04. Sentinel-2 weak-signal cue available`. Then `05. Sentinel-1 weak-signal cue available`.
+**Click:** `04. Candidate tracks initialized`.
+
+**Look at:** the **Context (map placeholder)** panel.
 
 **Say:**
 
-> "Steps four and five bring in the Sentinel layer. Sentinel-2 first, then Sentinel-1. Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero. They never get treated as equivalent to Umbra. The dashboard surfaces the source class in a badge for every record. That's a discipline thing — Sentinel is a weak-signal cueing layer here, useful for change candidates and tasking cues, not a substitute for tasked SAR.
+> "Step four initializes three candidate tracks straight off the VLM detections. Note the panel header is `Context (map placeholder)`, and the body says map visualization is planned for the next slice. We don't have a real map layer yet, and we're not pretending we do."
+
+**Click:** `05. Sentinel-2 context observation available`. Then `06. Sentinel-1 context observation available`.
+
+**Say:**
+
+> "Steps five and six bring in the Sentinel layer. Sentinel-2 first, then Sentinel-1. Look at the confidence weights: Sentinel-1 is point-four-five, Sentinel-2 low-cloud is point-three-zero. They never get treated as equivalent to Umbra. The dashboard surfaces the source class in a badge for every record. That's a discipline thing — Sentinel is a weak-signal cueing layer here, useful for change candidates and tasking cues, not a substitute for tasked SAR.
 >
 > Notice the WEAK-SIGNAL CUE callout that just appeared at the top of the observations panel. The UI says it explicitly: *Sentinel-N provides a possible change cue. Recommend higher-resolution tasking if mission priority warrants. Umbra remains the high-confidence confirmation layer.* That callout is on screen so anyone watching can read the operational hierarchy directly, without me needing to disclaim it from the script."
 
@@ -107,15 +115,7 @@ Total target runtime: **8–10 minutes** of dashboard time.
 - Don't claim the confidence weights are calibrated. They're demo heuristics.
 - **Don't say "Sentinel confirms", "Sentinel proves", "definitive change", "Sentinel reacquired the target".** Sentinel here is a weak-signal cueing layer, not confirmation evidence. Umbra is the confirmation layer.
 
-### Events 06–07 — Tracks and custody risk — 45 seconds
-
-**Click:** `06. Candidate tracks initialized`.
-
-**Look at:** the **Context (map placeholder)** panel.
-
-**Say:**
-
-> "Step six initializes three candidate tracks. Note the panel header is `Context (map placeholder)`, and the body says map visualization is planned for the next slice. We don't have a real map layer yet, and we're not pretending we do."
+### Event 07 — Custody risk — 30 seconds
 
 **Click:** `07. Custody risk increases`.
 
@@ -154,25 +154,25 @@ Total target runtime: **8–10 minutes** of dashboard time.
 - **Do not call the policy a "trained model" or "RL decision".** It is a deterministic heuristic.
 - **Do not call the score components "calibrated".** They are demo heuristics.
 
-### Events 11–13 — Approval, follow-up, outcome — 60 seconds
+### Events 11–13 — Review, approve, follow-up + outcome — 60 seconds
 
-**Click:** `11. Operator reviews and approves`.
-
-**Say:**
-
-> "Step eleven is the human action. Operator approve, with a one-line reason. The badge says `SIMULATED` because there's no real operator in the loop here — this is a demo record."
-
-**Click:** `12. Follow-up collection occurs`.
+**Click:** `11. Operator reviews`.
 
 **Say:**
 
-> "Step twelve adds the follow-up collect — a simulated Umbra repeat over the same AOI. The observations panel grows by one row. Note the data-mode badge on this new row says `SIMULATED`, not `FIXTURE` — we're being honest that this is the demo's hypothetical execution, not a committed real-shape record."
+> "Step eleven is the operator review. The recommendation, the score breakdown, and the policy/RL rationale are all on screen for a deliberate beat — the operator reads them before deciding."
 
-**Click:** `13. Outcome recorded`.
+**Click:** `12. Human approves`.
 
 **Say:**
 
-> "Step thirteen is the outcome. Track trk-002 reacquired. Custody score recovers from point-four-two to point-eight-one — a delta of plus zero-point-three-nine. The before-and-after row in the outcome panel makes that visible."
+> "Step twelve is the human action. Operator approve, with a one-line reason. The badge says `SIMULATED` because there's no real operator in the loop here — this is a demo record."
+
+**Click:** `13. Follow-up collection / outcome recorded`.
+
+**Say:**
+
+> "Step thirteen rolls the follow-up collect and the outcome together — the simulated Umbra repeat executes over the same AOI and the result lands. The observations panel grows by one row (note the `SIMULATED` data-mode badge — this is the demo's hypothetical execution, not a real-shape committed record), and the outcome panel shows trk-002 reacquired with custody score recovering from point-four-two to point-eight-one — a delta of plus zero-point-three-nine."
 
 ### Event 14 — Counterfactuals and follow-up — 45 seconds
 

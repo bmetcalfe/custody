@@ -396,7 +396,7 @@ def _weak_signal_cue_note(
       - recommends higher-resolution tasking if mission priority warrants
       - reminds that Umbra remains the high-confidence confirmation layer
     """
-    if current_ord < 4:
+    if current_ord < 5:
         return None
     saw_umbra_before_sentinel = False
     last_sentinel_label: str | None = None

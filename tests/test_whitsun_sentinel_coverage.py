@@ -255,14 +255,15 @@ def _import_evidence_callbacks():
     return mod
 
 
-def test_whitsun_sentinel_cueing_lists_all_in_between_overlays_at_event_five() -> None:
-    """At Whitsun event 05 (Sentinel-1 weak-signal cue arrives), the
+def test_whitsun_sentinel_cueing_lists_all_in_between_overlays_at_event_six() -> None:
+    """At Whitsun event 06 (Sentinel-1 context observation arrives,
+    after Candidate tracks at ev-04 and Sentinel-2 at ev-05), the
     cueing-context section must list every Sentinel overlay revealed
     so far — including the new in-between records."""
     cb = _import_evidence_callbacks()
     from custody.demo import available_overlays_for
     available = available_overlays_for(
-        cb._OVERLAYS, scenario_id="whitsun", current_ordinal=5,
+        cb._OVERLAYS, scenario_id="whitsun", current_ordinal=6,
     )
     sentinel = [
         o for o in available
@@ -270,7 +271,7 @@ def test_whitsun_sentinel_cueing_lists_all_in_between_overlays_at_event_five() -
     ]
     obs_ids = {o.observation_id for o in sentinel}
     # All seven Whitsun Sentinel observations should be revealed by
-    # event 05 (S2 reveals at ord 4, S1 at ord 5).
+    # event 06 (S2 reveals at ord 5, S1 at ord 6).
     expected = {
         "fixture-s1-grd-whitsun-20231210",
         "fixture-s2-l2a-whitsun-20231212-low-cloud",
@@ -281,5 +282,5 @@ def test_whitsun_sentinel_cueing_lists_all_in_between_overlays_at_event_five() -
         "fixture-s2-l2a-whitsun-20231214-low-cloud",
     }
     assert expected <= obs_ids, (
-        f"missing in-between coverage at event 5: {expected - obs_ids}"
+        f"missing in-between coverage at event 6: {expected - obs_ids}"
     )

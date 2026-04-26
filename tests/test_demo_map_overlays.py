@@ -104,32 +104,41 @@ def test_whitsun_umbra_overlay_appears_at_ordinal_2() -> None:
     assert "whitsun-sentinel-2-low-cloud-20231212" not in ids
 
 
-def test_whitsun_sentinel_2_overlays_appear_at_ordinal_4() -> None:
-    overlays = load_map_overlays()
-    avail = available_overlays_for(
-        overlays, scenario_id="whitsun", current_ordinal=4,
-    )
-    ids = _ids(avail)
-    assert "whitsun-sentinel-2-low-cloud-20231212" in ids
-    assert "whitsun-sentinel-2-cloudy-20231215" in ids
-    # Sentinel-1 still gated until ordinal 5.
-    assert "whitsun-sentinel-1-grd-20231210" not in ids
-
-
-def test_whitsun_sentinel_1_overlay_appears_at_ordinal_5() -> None:
+def test_whitsun_sentinel_2_overlays_appear_at_ordinal_5() -> None:
+    """Sentinel-2 cue arrives at trace ordinal 5 (after Candidate
+    tracks initialise at ordinal 4 in the dispatch-ordered trace)."""
     overlays = load_map_overlays()
     avail = available_overlays_for(
         overlays, scenario_id="whitsun", current_ordinal=5,
     )
+    ids = _ids(avail)
+    assert "whitsun-sentinel-2-low-cloud-20231212" in ids
+    assert "whitsun-sentinel-2-cloudy-20231215" in ids
+    # Sentinel-1 still gated until ordinal 6.
+    assert "whitsun-sentinel-1-grd-20231210" not in ids
+
+
+def test_whitsun_sentinel_1_overlay_appears_at_ordinal_6() -> None:
+    """Sentinel-1 cue arrives at trace ordinal 6, immediately after S2."""
+    overlays = load_map_overlays()
+    avail = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=6,
+    )
     assert "whitsun-sentinel-1-grd-20231210" in _ids(avail)
 
 
-def test_whitsun_followup_overlay_appears_at_ordinal_12() -> None:
+def test_whitsun_followup_overlay_appears_at_ordinal_13() -> None:
+    """Follow-up Umbra collect + outcome are merged at trace ordinal 13."""
     overlays = load_map_overlays()
     avail = available_overlays_for(
-        overlays, scenario_id="whitsun", current_ordinal=12,
+        overlays, scenario_id="whitsun", current_ordinal=13,
     )
     assert "whitsun-umbra-followup-20231213" in _ids(avail)
+    # Pre-merge step (ordinal 12 = "Human approves") must NOT include it.
+    avail_12 = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=12,
+    )
+    assert "whitsun-umbra-followup-20231213" not in _ids(avail_12)
 
 
 def test_whitsun_ordinal_14_includes_all_whitsun_overlays() -> None:

@@ -12,7 +12,10 @@
     "time_window_start": "2023-12-06T00:00:00+00:00",
     "time_window_end": "2023-12-15T23:59:59+00:00",
     "primary_evidence_source": "umbra-sar",
-    "context_evidence_sources": ["sentinel-1", "sentinel-2"],
+    "context_evidence_sources": [
+      "sentinel-1",
+      "sentinel-2"
+    ],
     "operational_hierarchy": {
       "umbra-sar": "high-confidence confirmation layer; tasked evidence",
       "sentinel-1": "weak-signal cueing layer; public SAR context, useful for tasking cues",
@@ -62,14 +65,37 @@
       "data_mode": "fixture",
       "refs": {
         "observation_id": "fixture-umbra-whitsun-20231206",
-        "evidence_artifact_ids": ["art-vlm-cluster-001", "art-vlm-isolate-002"],
-        "detection_ids": ["det-vsl-001", "det-vsl-002", "det-vsl-003"]
+        "evidence_artifact_ids": [
+          "art-vlm-cluster-001",
+          "art-vlm-isolate-002"
+        ],
+        "detection_ids": [
+          "det-vsl-001",
+          "det-vsl-002",
+          "det-vsl-003"
+        ]
       }
     },
     {
       "event_id": "ev-04",
       "ordinal": 4,
-      "label": "Sentinel-2 weak-signal cue available",
+      "label": "Candidate tracks initialized",
+      "timestamp": "2023-12-10T22:30:00+00:00",
+      "kind": "tracks_initialized",
+      "summary": "Three candidate vessel tracks initialized from VLM detections + Sentinel context association.",
+      "data_mode": "simulated",
+      "refs": {
+        "track_ids": [
+          "trk-001",
+          "trk-002",
+          "trk-003"
+        ]
+      }
+    },
+    {
+      "event_id": "ev-05",
+      "ordinal": 5,
+      "label": "Sentinel-2 context observation available",
       "timestamp": "2023-12-12T03:00:00+00:00",
       "kind": "context_observation_available",
       "summary": "Sentinel-2 L2A (8% cloud) covers the AOI as a weak-signal cueing layer. Useful as a change candidate / tasking cue, not as definitive proof.",
@@ -80,9 +106,9 @@
       }
     },
     {
-      "event_id": "ev-05",
-      "ordinal": 5,
-      "label": "Sentinel-1 weak-signal cue available",
+      "event_id": "ev-06",
+      "ordinal": 6,
+      "label": "Sentinel-1 context observation available",
       "timestamp": "2023-12-10T22:00:00+00:00",
       "kind": "context_observation_available",
       "summary": "Sentinel-1 GRD ascending pass covers the AOI as a weak-signal cueing layer. Useful as a change candidate / tasking cue, not as definitive proof.",
@@ -90,18 +116,6 @@
       "refs": {
         "observation_id": "fixture-s1-grd-whitsun-20231210",
         "external_fixture": "data/demo/whitsun_sentinel_observations.fixture.json"
-      }
-    },
-    {
-      "event_id": "ev-06",
-      "ordinal": 6,
-      "label": "Candidate tracks initialized",
-      "timestamp": "2023-12-10T22:30:00+00:00",
-      "kind": "tracks_initialized",
-      "summary": "Three candidate vessel tracks initialized from VLM detections + Sentinel context association.",
-      "data_mode": "simulated",
-      "refs": {
-        "track_ids": ["trk-001", "trk-002", "trk-003"]
       }
     },
     {
@@ -127,7 +141,13 @@
       "data_mode": "simulated",
       "refs": {
         "track_id": "trk-002",
-        "tasking_option_ids": ["opt-sat-a", "opt-sat-b", "opt-wait", "opt-optical", "opt-expand-search"]
+        "tasking_option_ids": [
+          "opt-sat-a",
+          "opt-sat-b",
+          "opt-wait",
+          "opt-optical",
+          "opt-expand-search"
+        ]
       }
     },
     {
@@ -139,7 +159,13 @@
       "summary": "Each tasking option receives a deterministic score breakdown.",
       "data_mode": "simulated",
       "refs": {
-        "score_breakdown_ids": ["sb-sat-a", "sb-sat-b", "sb-wait", "sb-optical", "sb-expand-search"]
+        "score_breakdown_ids": [
+          "sb-sat-a",
+          "sb-sat-b",
+          "sb-wait",
+          "sb-optical",
+          "sb-expand-search"
+        ]
       }
     },
     {
@@ -158,10 +184,23 @@
     {
       "event_id": "ev-11",
       "ordinal": 11,
-      "label": "Operator reviews and approves",
+      "label": "Operator reviews",
       "timestamp": "2023-12-12T04:30:00+00:00",
+      "kind": "human_review",
+      "summary": "Operator reviews the SAT-B recommendation, the score breakdown, and the policy/RL rationale before approving.",
+      "data_mode": "simulated",
+      "refs": {
+        "selected_recommendation_id": "rec-sat-b",
+        "policy_rationale_id": "pol-rat-001"
+      }
+    },
+    {
+      "event_id": "ev-12",
+      "ordinal": 12,
+      "label": "Human approves",
+      "timestamp": "2023-12-12T04:35:00+00:00",
       "kind": "human_action",
-      "summary": "Operator reviews SAT-B recommendation and approves the collect.",
+      "summary": "Operator approves SAT-B; tasking is committed for execution.",
       "data_mode": "simulated",
       "refs": {
         "human_action_id": "ha-001",
@@ -169,27 +208,16 @@
       }
     },
     {
-      "event_id": "ev-12",
-      "ordinal": 12,
-      "label": "Follow-up collection occurs",
-      "timestamp": "2023-12-13T10:05:00+00:00",
-      "kind": "followup_collection",
-      "summary": "Tasked Umbra repeat collect executed for SAT-B; new observation available.",
+      "event_id": "ev-13",
+      "ordinal": 13,
+      "label": "Follow-up collection / outcome recorded",
+      "timestamp": "2023-12-13T10:35:00+00:00",
+      "kind": "followup_collection_and_outcome",
+      "summary": "Tasked Umbra repeat collect from SAT-B is executed and the outcome is recorded; trk-002 reacquired and custody score restored.",
       "data_mode": "simulated",
       "refs": {
         "observation_id": "fixture-umbra-whitsun-20231213-followup",
-        "selected_recommendation_id": "rec-sat-b"
-      }
-    },
-    {
-      "event_id": "ev-13",
-      "ordinal": 13,
-      "label": "Outcome recorded",
-      "timestamp": "2023-12-13T10:35:00+00:00",
-      "kind": "outcome_recorded",
-      "summary": "trk-002 reacquired in follow-up collect; custody score restored.",
-      "data_mode": "simulated",
-      "refs": {
+        "selected_recommendation_id": "rec-sat-b",
         "outcome_id": "out-001",
         "track_id": "trk-002",
         "custody_state_id": "cs-snap-003"
@@ -204,7 +232,12 @@
       "summary": "Counterfactuals for the unselected options shown; deterministic follow-up recommendation produced.",
       "data_mode": "simulated",
       "refs": {
-        "counterfactual_ids": ["cf-sat-a", "cf-wait", "cf-optical", "cf-expand-search"],
+        "counterfactual_ids": [
+          "cf-sat-a",
+          "cf-wait",
+          "cf-optical",
+          "cf-expand-search"
+        ],
         "followup_recommendation_id": "fr-001"
       }
     }
@@ -223,13 +256,22 @@
       "platform": "umbra-04",
       "instrument": "x-band sar",
       "resolution_m": 0.5,
-      "polarization": ["VV"],
+      "polarization": [
+        "VV"
+      ],
       "orbit_direction": "ascending",
-      "bbox": [114.45, 9.75, 114.85, 10.25],
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "confidence_weight": 1.0,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["high-confidence tasked SAR; canonical evidence for this trace"]
+      "caveats": [
+        "high-confidence tasked SAR; canonical evidence for this trace"
+      ]
     },
     {
       "observation_id": "fixture-umbra-whitsun-20231213-followup",
@@ -244,9 +286,16 @@
       "platform": "umbra-04",
       "instrument": "x-band sar",
       "resolution_m": 0.5,
-      "polarization": ["VV"],
+      "polarization": [
+        "VV"
+      ],
       "orbit_direction": "ascending",
-      "bbox": [114.45, 9.75, 114.85, 10.25],
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "confidence_weight": 1.0,
       "usable_for_detection": true,
       "usable_for_context": true,
@@ -274,7 +323,7 @@
       "data_mode": "fixture",
       "external_fixture": "data/demo/whitsun_sentinel_observations.fixture.json",
       "cloud_coverage": 8.0,
-      "confidence_weight": 0.30,
+      "confidence_weight": 0.3,
       "usable_for_detection": true,
       "usable_for_context": true,
       "caveats": [
@@ -288,7 +337,7 @@
       "data_mode": "fixture",
       "external_fixture": "data/demo/whitsun_sentinel_observations.fixture.json",
       "cloud_coverage": 72.0,
-      "confidence_weight": 0.10,
+      "confidence_weight": 0.1,
       "usable_for_detection": false,
       "usable_for_context": true,
       "caveats": [
@@ -307,7 +356,9 @@
       "source_observation_id": "fixture-umbra-whitsun-20231206",
       "summary": "Cluster of three vessel-like returns within reef polygon",
       "confidence": 0.85,
-      "caveats": ["VLM output is candidate evidence, not ground truth"]
+      "caveats": [
+        "VLM output is candidate evidence, not ground truth"
+      ]
     },
     {
       "evidence_artifact_id": "art-vlm-isolate-002",
@@ -316,8 +367,10 @@
       "kind": "vlm_summary",
       "source_observation_id": "fixture-umbra-whitsun-20231206",
       "summary": "One additional vessel-like return offset from cluster",
-      "confidence": 0.70,
-      "caveats": ["VLM output is candidate evidence, not ground truth"]
+      "confidence": 0.7,
+      "caveats": [
+        "VLM output is candidate evidence, not ground truth"
+      ]
     }
   ],
   "detections": [
@@ -391,7 +444,10 @@
       "captured_at": "2023-12-12T04:00:00+00:00",
       "status": "ambiguous",
       "score": 0.42,
-      "primary_ambiguity": ["vessel_cluster_activity", "ais_dark_or_poorly_observed_vessels"],
+      "primary_ambiguity": [
+        "vessel_cluster_activity",
+        "ais_dark_or_poorly_observed_vessels"
+      ],
       "summary": "trk-002 separates from cluster and goes AIS-dark; custody score drops."
     },
     {
@@ -413,7 +469,9 @@
       "candidate_collect_type": "cross_geometry_sar",
       "expected_latency_hours": 24.0,
       "expected_cost_units": 0.55,
-      "caveats": ["different platform geometry; cross-track resolution may complicate vessel reacquisition"]
+      "caveats": [
+        "different platform geometry; cross-track resolution may complicate vessel reacquisition"
+      ]
     },
     {
       "tasking_option_id": "opt-sat-b",
@@ -422,8 +480,10 @@
       "description": "Tasked Umbra repeat SAR collect over the same AOI; matched geometry; high-confidence evidence.",
       "candidate_collect_type": "repeat_sar",
       "expected_latency_hours": 8.0,
-      "expected_cost_units": 0.50,
-      "caveats": ["recommended option for this trace"]
+      "expected_cost_units": 0.5,
+      "caveats": [
+        "recommended option for this trace"
+      ]
     },
     {
       "tasking_option_id": "opt-wait",
@@ -433,7 +493,9 @@
       "candidate_collect_type": "wait_or_monitor",
       "expected_latency_hours": 0.0,
       "expected_cost_units": 0.0,
-      "caveats": ["preserves resources but does not resolve trk-002 ambiguity"]
+      "caveats": [
+        "preserves resources but does not resolve trk-002 ambiguity"
+      ]
     },
     {
       "tasking_option_id": "opt-optical",
@@ -442,8 +504,10 @@
       "description": "Sentinel-2 / opportunistic optical context collect at lower confidence than Umbra.",
       "candidate_collect_type": "optical_context",
       "expected_latency_hours": 12.0,
-      "expected_cost_units": 0.30,
-      "caveats": ["weather-dependent; cloud cover may render this unusable for detection"]
+      "expected_cost_units": 0.3,
+      "caveats": [
+        "weather-dependent; cloud cover may render this unusable for detection"
+      ]
     },
     {
       "tasking_option_id": "opt-expand-search",
@@ -453,7 +517,9 @@
       "candidate_collect_type": "expand_search",
       "expected_latency_hours": 12.0,
       "expected_cost_units": 0.65,
-      "caveats": ["wider AOI dilutes per-pixel resolution; lower per-target reacquisition probability"]
+      "caveats": [
+        "wider AOI dilutes per-pixel resolution; lower per-target reacquisition probability"
+      ]
     }
   ],
   "score_breakdowns": [
@@ -463,9 +529,9 @@
       "data_mode": "simulated",
       "components": {
         "ambiguity_resolution": 0.55,
-        "custody_health_improvement": 0.50,
+        "custody_health_improvement": 0.5,
         "mission_relevance": 0.55,
-        "timeliness": 0.30,
+        "timeliness": 0.3,
         "feasibility": 0.65,
         "cost_penalty": -0.18
       },
@@ -478,7 +544,7 @@
       "components": {
         "ambiguity_resolution": 0.85,
         "custody_health_improvement": 0.78,
-        "mission_relevance": 0.80,
+        "mission_relevance": 0.8,
         "timeliness": 0.85,
         "feasibility": 0.85,
         "cost_penalty": -0.15
@@ -492,26 +558,26 @@
       "components": {
         "ambiguity_resolution": 0.05,
         "custody_health_improvement": 0.05,
-        "mission_relevance": 0.20,
-        "timeliness": 1.00,
-        "feasibility": 1.00,
+        "mission_relevance": 0.2,
+        "timeliness": 1.0,
+        "feasibility": 1.0,
         "cost_penalty": 0.0
       },
-      "total_score": 0.20
+      "total_score": 0.2
     },
     {
       "score_breakdown_id": "sb-optical",
       "tasking_option_id": "opt-optical",
       "data_mode": "simulated",
       "components": {
-        "ambiguity_resolution": 0.30,
+        "ambiguity_resolution": 0.3,
         "custody_health_improvement": 0.25,
-        "mission_relevance": 0.40,
+        "mission_relevance": 0.4,
         "timeliness": 0.55,
-        "feasibility": 0.60,
+        "feasibility": 0.6,
         "cost_penalty": -0.08
       },
-      "total_score": 0.40
+      "total_score": 0.4
     },
     {
       "score_breakdown_id": "sb-expand-search",
@@ -519,13 +585,13 @@
       "data_mode": "simulated",
       "components": {
         "ambiguity_resolution": 0.45,
-        "custody_health_improvement": 0.40,
-        "mission_relevance": 0.50,
+        "custody_health_improvement": 0.4,
+        "mission_relevance": 0.5,
         "timeliness": 0.55,
         "feasibility": 0.55,
-        "cost_penalty": -0.20
+        "cost_penalty": -0.2
       },
-      "total_score": 0.50
+      "total_score": 0.5
     }
   ],
   "selected_recommendation": {
