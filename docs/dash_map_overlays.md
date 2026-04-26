@@ -8,6 +8,8 @@
 
 A real `dash_deck` (`pydeck`) map panel mounted on both the **Whitsun replay** tab and the **Tennent monitoring** tab.  Both tabs share one rendering helper (`src/app/layout/map_overlays_helpers.py`) and one committed manifest (`data/demo/map_overlays.fixture.json`).
 
+**Real Umbra GEC tiles drive the Umbra overlays.**  `scripts/30_prepare_demo_overlays.py` walks `data/raw/umbra/sar-data/tasks/ship_detection_testdata/`, classifies each scene by AOI proximity, reprojects + downsamples + log-stretches the GEC TIFF into a ≤768-pixel PNG preview under `src/app/assets/overlays/`, and rewrites the manifest with the resulting `image_kind: "png"` entries (`data_mode: "real"`).  Sentinel and simulated entries remain `footprint-only` until imagery is committed.
+
 The map renders:
 
 - **AOI polygon** outline.
@@ -82,20 +84,21 @@ The Tennent map is not gated — every Tennent overlay is visible from ordinal 0
 
 ## Imagery acquisition needs
 
-To upgrade footprint-only overlays to true raster overlays, the following assets are needed.  Once any of these land under `data/demo/overlays/`, only the corresponding manifest entry needs `image_kind` / `image_path` / `bounds` updated.
+The Umbra side is now driven by real GEC tiles.  The remaining imagery gaps are the Sentinel layers and the simulated Whitsun follow-up:
 
-| Scenario | Observation | Required asset |
+| Scenario | Observation | Status                                                                                  |
 | --- | --- | --- |
-| Whitsun | `fixture-umbra-whitsun-20231206` | Georeferenced PNG + bounds, or COG |
-| Whitsun | `fixture-s1-grd-whitsun-20231210` | PNG preview + bounds, or COG |
-| Whitsun | `fixture-s2-l2a-whitsun-20231212-low-cloud` | RGB PNG preview + bounds, or COG |
-| Whitsun | `fixture-s2-l2a-whitsun-20231215-cloudy` | RGB PNG preview + bounds, or COG |
-| Whitsun | `fixture-umbra-whitsun-20231213-followup` (simulated) | Optional placeholder, marked `data_mode: simulated` |
-| Tennent | `fixture-s1-grd-tennent-20230715` | PNG preview + bounds, or COG |
-| Tennent | `fixture-s2-l2a-tennent-20230718-low-cloud` | PNG preview + bounds, or COG |
-| Tennent | `fixture-s2-l2a-tennent-20230728-cloudy` | PNG preview + bounds, or COG |
+| Whitsun | `fixture-umbra-whitsun-20231206`                       | ✅ real Umbra GEC preview committed                                              |
+| Whitsun | `fixture-s1-grd-whitsun-20231210`                     | ❌ PNG preview + bounds, or COG, still needed                                    |
+| Whitsun | `fixture-s2-l2a-whitsun-20231212-low-cloud`           | ❌ RGB PNG preview + bounds, or COG                                              |
+| Whitsun | `fixture-s2-l2a-whitsun-20231215-cloudy`              | ❌ RGB PNG preview + bounds, or COG                                              |
+| Whitsun | `fixture-umbra-whitsun-20231213-followup` (simulated) | ❌ optional placeholder; not faked because the trace's follow-up is `data_mode: simulated` |
+| Tennent | `tennent-umbra-20230702` … `tennent-umbra-20230813`   | ✅ five real Umbra GEC previews committed (multi-date site monitoring)            |
+| Tennent | `fixture-s1-grd-tennent-20230715`                     | ❌ PNG preview + bounds, or COG                                                  |
+| Tennent | `fixture-s2-l2a-tennent-20230718-low-cloud`           | ❌ PNG preview + bounds, or COG                                                  |
+| Tennent | `fixture-s2-l2a-tennent-20230728-cloudy`              | ❌ PNG preview + bounds, or COG                                                  |
 
-`rasterio>=1.5` is already a runtime dependency, so a small COG → PNG-with-bounds conversion helper can land in a follow-up without adding any new dependency.
+`rasterio>=1.5` is already a runtime dependency, so the same COG → PNG-with-bounds path can extend to Sentinel imagery without adding any new dependency.
 
 ## Files added in this slice
 

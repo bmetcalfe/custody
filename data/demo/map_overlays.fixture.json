@@ -2,20 +2,21 @@
   "schema": "custody.demo.map_overlays.v1",
   "metadata": {
     "data_mode": "fixture",
-    "description": "Committed map overlay manifest for the Whitsun replay and Tennent monitoring tabs. Every entry is currently footprint-only because no georeferenced imagery is committed to the repo. When real imagery lands under data/demo/overlays/, only the matching entries need updating: set image_kind to png/geotiff/cog/thumbnail, populate image_path, and the dashboard will render the BitmapLayer in addition to the footprint outline.",
+    "description": "Map overlay manifest for the Whitsun replay and Tennent monitoring tabs.  Real Umbra GEC tiles drive the Umbra overlays via downsampled PNG previews under src/app/assets/overlays/.  Sentinel and simulated entries remain footprint-only until imagery is committed; the renderer surfaces the missing-asset reason verbatim.  Regenerate with scripts/30_prepare_demo_overlays.py.",
+    "regenerate_command": "uv run python scripts/30_prepare_demo_overlays.py",
+    "discovered_umbra_scenes": 8,
     "imagery_acquisition_needs": [
-      "Whitsun Umbra SAR tile 2023-12-06 — georeferenced PNG + bounds, or COG",
-      "Whitsun Sentinel-1 GRD 2023-12-10 — PNG preview + bounds, or COG",
-      "Whitsun Sentinel-2 L2A 2023-12-12 (low cloud) — RGB PNG preview + bounds, or COG",
-      "Whitsun Sentinel-2 L2A 2023-12-15 (cloudy) — same; note usable_for_detection is false",
-      "Whitsun Umbra repeat 2023-12-13 (simulated follow-up) — optional placeholder",
-      "Tennent Sentinel-1 GRD 2023-07-15 — PNG preview + bounds, or COG",
-      "Tennent Sentinel-2 L2A 2023-07-18 (low cloud) — PNG preview + bounds, or COG",
-      "Tennent Sentinel-2 L2A 2023-07-28 (cloudy) — same"
+      "Whitsun Sentinel-1 GRD 2023-12-10 \u2014 PNG preview + bounds, or COG",
+      "Whitsun Sentinel-2 L2A 2023-12-12 (low cloud) \u2014 RGB PNG preview + bounds, or COG",
+      "Whitsun Sentinel-2 L2A 2023-12-15 (cloudy) \u2014 same",
+      "Whitsun Umbra repeat 2023-12-13 (simulated follow-up) \u2014 optional",
+      "Tennent Sentinel-1 GRD 2023-07-15 \u2014 PNG preview + bounds, or COG",
+      "Tennent Sentinel-2 L2A 2023-07-18 (low cloud) \u2014 same",
+      "Tennent Sentinel-2 L2A 2023-07-28 (cloudy) \u2014 same"
     ],
     "caveats": [
-      "deterministic demo fixture; not a real query result",
-      "no committed georeferenced imagery; all entries are footprint-only today",
+      "deterministic demo manifest, regenerated from raw Umbra inventory",
+      "Umbra previews are log-stretched amplitude PNGs, not science-grade calibrated SAR products",
       "confidence_weight values are demo heuristics, not calibrated reliability",
       "Sentinel observations are public lower-confidence context, not equivalent to Umbra"
     ]
@@ -32,14 +33,38 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.6,
       "visible_from_event_ordinal": 1,
@@ -47,37 +72,10 @@
       "confidence_weight": null,
       "usable_for_detection": null,
       "usable_for_context": null,
-      "caveats": ["AOI polygon, not imagery"],
+      "caveats": [
+        "AOI polygon, not imagery"
+      ],
       "missing_asset_reason": null
-    },
-    {
-      "overlay_id": "whitsun-umbra-20231206",
-      "scenario_id": "whitsun",
-      "observation_id": "fixture-umbra-whitsun-20231206",
-      "source": "umbra",
-      "sensor_type": "sar",
-      "display_name": "Umbra SAR 2023-12-06",
-      "data_mode": "fixture",
-      "image_path": null,
-      "asset_url": null,
-      "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
-      },
-      "opacity_default": 0.65,
-      "visible_from_event_ordinal": 2,
-      "z_index": 30,
-      "confidence_weight": 1.0,
-      "usable_for_detection": true,
-      "usable_for_context": true,
-      "caveats": ["high-confidence tasked SAR; canonical evidence"],
-      "missing_asset_reason": "no committed georeferenced Umbra raster; footprint-only"
     },
     {
       "overlay_id": "whitsun-sentinel-2-low-cloud-20231212",
@@ -90,22 +88,48 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.55,
       "visible_from_event_ordinal": 4,
       "z_index": 25,
-      "confidence_weight": 0.30,
+      "confidence_weight": 0.3,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["low cloud Sentinel-2; lower confidence than Umbra"],
+      "caveats": [
+        "low cloud Sentinel-2; lower confidence than Umbra"
+      ],
       "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
     },
     {
@@ -119,14 +143,38 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.55,
       "visible_from_event_ordinal": 5,
@@ -134,7 +182,9 @@
       "confidence_weight": 0.45,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["public SAR context; lower confidence than Umbra"],
+      "caveats": [
+        "public SAR context; lower confidence than Umbra"
+      ],
       "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only"
     },
     {
@@ -148,22 +198,48 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
-      "opacity_default": 0.40,
+      "opacity_default": 0.4,
       "visible_from_event_ordinal": 4,
       "z_index": 15,
-      "confidence_weight": 0.10,
+      "confidence_weight": 0.1,
       "usable_for_detection": false,
       "usable_for_context": true,
-      "caveats": ["high cloud cover; usable_for_detection is false"],
+      "caveats": [
+        "high cloud cover; usable_for_detection is false"
+      ],
       "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
     },
     {
@@ -177,14 +253,38 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "bounds": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.65,
       "visible_from_event_ordinal": 12,
@@ -192,7 +292,9 @@
       "confidence_weight": 1.0,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["simulated follow-up Umbra collect; demo scaffolding"],
+      "caveats": [
+        "simulated follow-up Umbra collect; demo scaffolding"
+      ],
       "missing_asset_reason": "simulated record; no upstream raster"
     },
     {
@@ -206,14 +308,38 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "bounds": [
+        114.55,
+        8.78,
+        114.75,
+        8.93
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.55, 8.78], [114.75, 8.78],
-          [114.75, 8.93], [114.55, 8.93],
-          [114.55, 8.78]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.55,
+              8.78
+            ],
+            [
+              114.75,
+              8.78
+            ],
+            [
+              114.75,
+              8.93
+            ],
+            [
+              114.55,
+              8.93
+            ],
+            [
+              114.55,
+              8.78
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.6,
       "visible_from_event_ordinal": 0,
@@ -221,7 +347,9 @@
       "confidence_weight": null,
       "usable_for_detection": null,
       "usable_for_context": null,
-      "caveats": ["AOI polygon, not imagery"],
+      "caveats": [
+        "AOI polygon, not imagery"
+      ],
       "missing_asset_reason": null
     },
     {
@@ -235,14 +363,38 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "bounds": [
+        114.55,
+        8.78,
+        114.75,
+        8.93
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.55, 8.78], [114.75, 8.78],
-          [114.75, 8.93], [114.55, 8.93],
-          [114.55, 8.78]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.55,
+              8.78
+            ],
+            [
+              114.75,
+              8.78
+            ],
+            [
+              114.75,
+              8.93
+            ],
+            [
+              114.55,
+              8.93
+            ],
+            [
+              114.55,
+              8.78
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.55,
       "visible_from_event_ordinal": 0,
@@ -250,7 +402,9 @@
       "confidence_weight": 0.45,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["public SAR context"],
+      "caveats": [
+        "public SAR context"
+      ],
       "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only"
     },
     {
@@ -264,22 +418,48 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "bounds": [
+        114.55,
+        8.78,
+        114.75,
+        8.93
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.55, 8.78], [114.75, 8.78],
-          [114.75, 8.93], [114.55, 8.93],
-          [114.55, 8.78]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.55,
+              8.78
+            ],
+            [
+              114.75,
+              8.78
+            ],
+            [
+              114.75,
+              8.93
+            ],
+            [
+              114.55,
+              8.93
+            ],
+            [
+              114.55,
+              8.78
+            ]
+          ]
+        ]
       },
       "opacity_default": 0.55,
       "visible_from_event_ordinal": 0,
       "z_index": 25,
-      "confidence_weight": 0.30,
+      "confidence_weight": 0.3,
       "usable_for_detection": true,
       "usable_for_context": true,
-      "caveats": ["low cloud Sentinel-2"],
+      "caveats": [
+        "low cloud Sentinel-2"
+      ],
       "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
     },
     {
@@ -293,23 +473,1051 @@
       "image_path": null,
       "asset_url": null,
       "image_kind": "footprint-only",
-      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "bounds": [
+        114.55,
+        8.78,
+        114.75,
+        8.93
+      ],
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.55, 8.78], [114.75, 8.78],
-          [114.75, 8.93], [114.55, 8.93],
-          [114.55, 8.78]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.55,
+              8.78
+            ],
+            [
+              114.75,
+              8.78
+            ],
+            [
+              114.75,
+              8.93
+            ],
+            [
+              114.55,
+              8.93
+            ],
+            [
+              114.55,
+              8.78
+            ]
+          ]
+        ]
       },
-      "opacity_default": 0.40,
+      "opacity_default": 0.4,
       "visible_from_event_ordinal": 0,
       "z_index": 15,
-      "confidence_weight": 0.10,
+      "confidence_weight": 0.1,
       "usable_for_detection": false,
       "usable_for_context": true,
-      "caveats": ["high cloud cover; usable_for_detection is false"],
+      "caveats": [
+        "high cloud cover; usable_for_detection is false"
+      ],
       "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
+    },
+    {
+      "overlay_id": "tennent-umbra-20230702",
+      "scenario_id": "tennent",
+      "observation_id": "real-umbra-tennent-20230702",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-07-02 (UMBRA-05, 0.25 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/tennent-2023-07-02-14-00-55_UMBRA-05.png",
+      "asset_url": "/assets/overlays/tennent-2023-07-02-14-00-55_UMBRA-05.png",
+      "image_kind": "png",
+      "bounds": [
+        114.63945494837321,
+        8.830135918329933,
+        114.69082493770424,
+        8.881227680601933
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.63946337862697,
+              8.854444278695107
+            ],
+            [
+              114.64282775986716,
+              8.851407502366804
+            ],
+            [
+              114.64619678143077,
+              8.848370241229572
+            ],
+            [
+              114.6495638400401,
+              8.84533355202085
+            ],
+            [
+              114.65292683933895,
+              8.842294350779035
+            ],
+            [
+              114.65629658866658,
+              8.839257727582693
+            ],
+            [
+              114.6596607951356,
+              8.83621996946001
+            ],
+            [
+              114.66302815940533,
+              8.83318307996935
+            ],
+            [
+              114.66639148308153,
+              8.830143667428484
+            ],
+            [
+              114.6694485350165,
+              8.833491884627346
+            ],
+            [
+              114.67250149563819,
+              8.836840789091823
+            ],
+            [
+              114.67555693935897,
+              8.840189298560622
+            ],
+            [
+              114.67861128164259,
+              8.843535718971943
+            ],
+            [
+              114.6816651437896,
+              8.846884517855116
+            ],
+            [
+              114.68471792127855,
+              8.850231225500124
+            ],
+            [
+              114.68777171720195,
+              8.853578921752296
+            ],
+            [
+              114.69082653369473,
+              8.8569276062933
+            ],
+            [
+              114.68745974129169,
+              8.85996499088022
+            ],
+            [
+              114.68409611552312,
+              8.863003242944698
+            ],
+            [
+              114.68073057657419,
+              8.866042064120888
+            ],
+            [
+              114.67736461499014,
+              8.869080067508651
+            ],
+            [
+              114.67399822765881,
+              8.872117256911377
+            ],
+            [
+              114.67062990535317,
+              8.875155024346505
+            ],
+            [
+              114.66726472752025,
+              8.87819368748001
+            ],
+            [
+              114.6638955284735,
+              8.881229845501897
+            ],
+            [
+              114.66084407526347,
+              8.877883200283907
+            ],
+            [
+              114.65778647659074,
+              8.874534131729302
+            ],
+            [
+              114.65473499328235,
+              8.87118636898003
+            ],
+            [
+              114.65168093511274,
+              8.86783788969568
+            ],
+            [
+              114.64862429162116,
+              8.864488694306436
+            ],
+            [
+              114.64557224937296,
+              8.861142192178962
+            ],
+            [
+              114.64251911764445,
+              8.85779359224579
+            ],
+            [
+              114.63946337862697,
+              8.854444278695107
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 0,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "tennent-umbra-20230723",
+      "scenario_id": "tennent",
+      "observation_id": "real-umbra-tennent-20230723",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-07-23 (UMBRA-05, 0.25 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/tennent-2023-07-23-14-02-49_UMBRA-05.png",
+      "asset_url": "/assets/overlays/tennent-2023-07-23-14-02-49_UMBRA-05.png",
+      "image_kind": "png",
+      "bounds": [
+        114.63943964049113,
+        8.830120979861949,
+        114.6908412678292,
+        8.881243364759307
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.64938757745315,
+              8.845596949360907
+            ],
+            [
+              114.65270102778086,
+              8.842501582239125
+            ],
+            [
+              114.65601656626279,
+              8.839408908586522
+            ],
+            [
+              114.65932881152285,
+              8.836313840633407
+            ],
+            [
+              114.66264315845864,
+              8.833221456773742
+            ],
+            [
+              114.66595921276593,
+              8.830127048274418
+            ],
+            [
+              114.66906889436953,
+              8.833423103386982
+            ],
+            [
+              114.67217698855295,
+              8.836718352385176
+            ],
+            [
+              114.67529194634895,
+              8.840014982574491
+            ],
+            [
+              114.67840033867516,
+              8.843310432047296
+            ],
+            [
+              114.68151214699166,
+              8.846605442747679
+            ],
+            [
+              114.68462430679585,
+              8.849902905378746
+            ],
+            [
+              114.68773490426061,
+              8.853199556705652
+            ],
+            [
+              114.69084548244113,
+              8.85649394724304
+            ],
+            [
+              114.68753010164062,
+              8.859587803899926
+            ],
+            [
+              114.68421836398001,
+              8.86268289948548
+            ],
+            [
+              114.68090337608925,
+              8.865775599481525
+            ],
+            [
+              114.67759048235882,
+              8.868870996103698
+            ],
+            [
+              114.67427777503231,
+              8.87196582587723
+            ],
+            [
+              114.67096025727119,
+              8.875059712374279
+            ],
+            [
+              114.6676479137497,
+              8.878153418531898
+            ],
+            [
+              114.66433419631275,
+              8.88124801469383
+            ],
+            [
+              114.66122093959491,
+              8.87795092250131
+            ],
+            [
+              114.65810958220808,
+              8.874654833014638
+            ],
+            [
+              114.65500012284399,
+              8.871359747149034
+            ],
+            [
+              114.65188910635335,
+              8.868063836916916
+            ],
+            [
+              114.64877652518425,
+              8.86476710344607
+            ],
+            [
+              114.64566582978794,
+              8.861471376614212
+            ],
+            [
+              114.64255856704787,
+              8.858175217587387
+            ],
+            [
+              114.63944471408504,
+              8.854877850244556
+            ],
+            [
+              114.64276115403443,
+              8.85178599365265
+            ],
+            [
+              114.6460742869765,
+              8.848691751826081
+            ],
+            [
+              114.64938757745315,
+              8.845596949360907
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 0,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "tennent-umbra-20230807",
+      "scenario_id": "tennent",
+      "observation_id": "real-umbra-tennent-20230807",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-08-07 (UMBRA-04, 0.50 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/tennent-2023-08-07-13-53-00_UMBRA-04.png",
+      "asset_url": "/assets/overlays/tennent-2023-08-07-13-53-00_UMBRA-04.png",
+      "image_kind": "png",
+      "bounds": [
+        114.63944785558365,
+        8.830134375291044,
+        114.6908144526832,
+        8.881221857523315
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.66310250887808,
+              8.833175356342023
+            ],
+            [
+              114.6664797466996,
+              8.830149474278798
+            ],
+            [
+              114.66952466604387,
+              8.833505892242922
+            ],
+            [
+              114.6725669434098,
+              8.836864045945015
+            ],
+            [
+              114.67560658961166,
+              8.840223942240558
+            ],
+            [
+              114.67865032115475,
+              8.843579529374564
+            ],
+            [
+              114.68169657150065,
+              8.84693821243662
+            ],
+            [
+              114.68473509130338,
+              8.850297309049138
+            ],
+            [
+              114.68778284010925,
+              8.853653447257749
+            ],
+            [
+              114.69082290735048,
+              8.857010011511063
+            ],
+            [
+              114.6874484964283,
+              8.8600394380561
+            ],
+            [
+              114.68406926857273,
+              8.863064567539494
+            ],
+            [
+              114.6806971495521,
+              8.866092468587036
+            ],
+            [
+              114.67731680183103,
+              8.869119109583941
+            ],
+            [
+              114.67394185139098,
+              8.872144168889093
+            ],
+            [
+              114.67056545763667,
+              8.87517369953936
+            ],
+            [
+              114.66718933699106,
+              8.87820031539157
+            ],
+            [
+              114.66381003725648,
+              8.881227038421486
+            ],
+            [
+              114.66077232896005,
+              8.877868198974456
+            ],
+            [
+              114.65772679113779,
+              8.874509760924221
+            ],
+            [
+              114.65468202289058,
+              8.871150068795053
+            ],
+            [
+              114.65163974539117,
+              8.867793494093236
+            ],
+            [
+              114.64859823572533,
+              8.864435659106254
+            ],
+            [
+              114.64555747982301,
+              8.861076560125653
+            ],
+            [
+              114.64250877175458,
+              8.857717826241851
+            ],
+            [
+              114.63946601177649,
+              8.854359189100691
+            ],
+            [
+              114.6428431589676,
+              8.851334779064992
+            ],
+            [
+              114.64622050961685,
+              8.848307445132896
+            ],
+            [
+              114.6495998572166,
+              8.845281555112065
+            ],
+            [
+              114.65297077764443,
+              8.84225437373311
+            ],
+            [
+              114.65635233167453,
+              8.839226970312984
+            ],
+            [
+              114.65972731144753,
+              8.83620264412831
+            ],
+            [
+              114.66310250887808,
+              8.833175356342023
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 0,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "tennent-umbra-20230809",
+      "scenario_id": "tennent",
+      "observation_id": "real-umbra-tennent-20230809",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-08-09 (UMBRA-06, 0.25 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/tennent-2023-08-09-02-23-25_UMBRA-06.png",
+      "asset_url": "/assets/overlays/tennent-2023-08-09-02-23-25_UMBRA-06.png",
+      "image_kind": "png",
+      "bounds": [
+        114.64070919771862,
+        8.831377752607539,
+        114.68959916000847,
+        8.880002041027328
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.68959235783778,
+              8.863615098081482
+            ],
+            [
+              114.68554071444073,
+              8.865664520709288
+            ],
+            [
+              114.68148536478111,
+              8.86771225954187
+            ],
+            [
+              114.67743587100333,
+              8.869760844462085
+            ],
+            [
+              114.67338266374739,
+              8.871807738332881
+            ],
+            [
+              114.66933149364625,
+              8.873856105148658
+            ],
+            [
+              114.66527757845304,
+              8.875904676613544
+            ],
+            [
+              114.6612247227145,
+              8.877952816815874
+            ],
+            [
+              114.65717292189342,
+              8.88000052235665
+            ],
+            [
+              114.65511281056828,
+              8.875969521459123
+            ],
+            [
+              114.6530531233395,
+              8.87194000029817
+            ],
+            [
+              114.65099668851732,
+              8.867909419994477
+            ],
+            [
+              114.64893590003602,
+              8.863879039976169
+            ],
+            [
+              114.64687836217206,
+              8.859847594965208
+            ],
+            [
+              114.64481743180204,
+              8.855818239931795
+            ],
+            [
+              114.64275974632902,
+              8.851787813260982
+            ],
+            [
+              114.64070150321186,
+              8.84775693909077
+            ],
+            [
+              114.64475322703059,
+              8.845709678197263
+            ],
+            [
+              114.64880601219703,
+              8.843661997210221
+            ],
+            [
+              114.65285605796285,
+              8.841614521758295
+            ],
+            [
+              114.65691097793147,
+              8.83956601006099
+            ],
+            [
+              114.66096316473043,
+              8.837517709288592
+            ],
+            [
+              114.66501261868986,
+              8.83546962073772
+            ],
+            [
+              114.6690641055542,
+              8.833423020034106
+            ],
+            [
+              114.6731157202297,
+              8.831374122098559
+            ],
+            [
+              114.67517777096971,
+              8.835403872539455
+            ],
+            [
+              114.67723546783277,
+              8.839433800510058
+            ],
+            [
+              114.67929358373631,
+              8.843465185627798
+            ],
+            [
+              114.68135497666957,
+              8.847495514735455
+            ],
+            [
+              114.68341202057907,
+              8.851526039248338
+            ],
+            [
+              114.68547234338851,
+              8.855555513644113
+            ],
+            [
+              114.68753213223984,
+              8.859584566473917
+            ],
+            [
+              114.68959235783778,
+              8.863615098081482
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 0,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "tennent-umbra-20230813",
+      "scenario_id": "tennent",
+      "observation_id": "real-umbra-tennent-20230813",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-08-13 (UMBRA-06, 0.50 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/tennent-2023-08-13-15-00-09_UMBRA-06.png",
+      "asset_url": "/assets/overlays/tennent-2023-08-13-15-00-09_UMBRA-06.png",
+      "image_kind": "png",
+      "bounds": [
+        114.6396557181803,
+        8.830350858684861,
+        114.69061087181652,
+        8.881028921505923
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.64516512822527,
+              8.85941990108134
+            ],
+            [
+              114.64241723561125,
+              8.85581929463648
+            ],
+            [
+              114.63966938459937,
+              8.852217846489266
+            ],
+            [
+              114.64328951492864,
+              8.849483059180013
+            ],
+            [
+              114.64690915583324,
+              8.846750422734686
+            ],
+            [
+              114.65053246379351,
+              8.84401868498192
+            ],
+            [
+              114.65415278185489,
+              8.841285817476956
+            ],
+            [
+              114.65777425134802,
+              8.838550565227814
+            ],
+            [
+              114.66139114799596,
+              8.83581870978023
+            ],
+            [
+              114.66501332903825,
+              8.83308321537006
+            ],
+            [
+              114.66863507815393,
+              8.830349865681509
+            ],
+            [
+              114.67138214689383,
+              8.83394998472281
+            ],
+            [
+              114.67413178938183,
+              8.837552538320857
+            ],
+            [
+              114.67687898558005,
+              8.841150955968361
+            ],
+            [
+              114.67962465629154,
+              8.84475306717213
+            ],
+            [
+              114.68237450874751,
+              8.848353104642388
+            ],
+            [
+              114.68512444721048,
+              8.851952319026198
+            ],
+            [
+              114.68787285645885,
+              8.855555250716298
+            ],
+            [
+              114.69061889230906,
+              8.859154074562342
+            ],
+            [
+              114.68700193242552,
+              8.861887538889798
+            ],
+            [
+              114.6833804212527,
+              8.86462438618978
+            ],
+            [
+              114.67975762734385,
+              8.867355557491118
+            ],
+            [
+              114.67614094516756,
+              8.870090939190424
+            ],
+            [
+              114.6725188628696,
+              8.872821886969659
+            ],
+            [
+              114.66889875055624,
+              8.875558280950738
+            ],
+            [
+              114.66527734978422,
+              8.87828901146054
+            ],
+            [
+              114.66165789752938,
+              8.881025187641656
+            ],
+            [
+              114.65890880283143,
+              8.877421661576241
+            ],
+            [
+              114.65615810580053,
+              8.873821867156142
+            ],
+            [
+              114.65341163264293,
+              8.870220026087535
+            ],
+            [
+              114.65066356468937,
+              8.866621899734609
+            ],
+            [
+              114.64791307215489,
+              8.863019673064786
+            ],
+            [
+              114.64516512822527,
+              8.85941990108134
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 0,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "whitsun-umbra-20231206",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-umbra-whitsun-20231206",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-12-06 (UMBRA-04, 0.25 m)",
+      "data_mode": "real",
+      "image_path": "src/app/assets/overlays/whitsun-2023-12-06-02-07-18_UMBRA-04.png",
+      "asset_url": "/assets/overlays/whitsun-2023-12-06-02-07-18_UMBRA-04.png",
+      "image_kind": "png",
+      "bounds": [
+        114.6160347906877,
+        9.961142738626378,
+        114.66154794061926,
+        10.0062561277714
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.62665247737051,
+              9.961142383934305
+            ],
+            [
+              114.63101426799764,
+              9.96245663067498
+            ],
+            [
+              114.63537715721317,
+              9.963771148562294
+            ],
+            [
+              114.63973960203909,
+              9.96508419957601
+            ],
+            [
+              114.64410246363579,
+              9.966399416793575
+            ],
+            [
+              114.64846713452282,
+              9.967713002559538
+            ],
+            [
+              114.65282845846015,
+              9.969027170738809
+            ],
+            [
+              114.65719383986563,
+              9.97033954292016
+            ],
+            [
+              114.6615552029212,
+              9.971654392512974
+            ],
+            [
+              114.66023011951671,
+              9.97597811870504
+            ],
+            [
+              114.658905024713,
+              9.98030498642364
+            ],
+            [
+              114.65757978635827,
+              9.984629449688468
+            ],
+            [
+              114.6562552267739,
+              9.988955170915514
+            ],
+            [
+              114.6549298176876,
+              9.993280408613339
+            ],
+            [
+              114.65360579205783,
+              9.99760501757598
+            ],
+            [
+              114.6522801960424,
+              10.001931067112576
+            ],
+            [
+              114.65095374172084,
+              10.006256658304725
+            ],
+            [
+              114.64659052416411,
+              10.004942745858674
+            ],
+            [
+              114.6422262022307,
+              10.003629252844883
+            ],
+            [
+              114.63786300905817,
+              10.002316028153402
+            ],
+            [
+              114.6334994176698,
+              10.001001321597332
+            ],
+            [
+              114.62913694239725,
+              9.999686887459847
+            ],
+            [
+              114.62477332630205,
+              9.99837288272521
+            ],
+            [
+              114.62040855734264,
+              9.997059310344946
+            ],
+            [
+              114.61604560658786,
+              9.99574411277566
+            ],
+            [
+              114.61737107966407,
+              9.991419624702724
+            ],
+            [
+              114.61869791626835,
+              9.987094527121497
+            ],
+            [
+              114.6200238585968,
+              9.982768970895618
+            ],
+            [
+              114.62134819899498,
+              9.978444847423814
+            ],
+            [
+              114.62267461361895,
+              9.974118189225631
+            ],
+            [
+              114.62399943389818,
+              9.969792945980007
+            ],
+            [
+              114.62532492282133,
+              9.965468945261614
+            ],
+            [
+              114.62665247737051,
+              9.961142383934305
+            ]
+          ]
+        ]
+      },
+      "opacity_default": 0.85,
+      "visible_from_event_ordinal": 2,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": [
+        "real Umbra GEC tile, log-stretched and downsampled for dashboard preview"
+      ],
+      "missing_asset_reason": null
     }
   ]
 }

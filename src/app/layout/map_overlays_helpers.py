@@ -10,6 +10,7 @@ existing overview map already targets.
 """
 from __future__ import annotations
 
+import json as _json
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -56,6 +57,37 @@ def _scale_color(rgba: Sequence[int], opacity: float) -> list[int]:
 # ---------------------------------------------------------------------------
 # Layer constructors
 # ---------------------------------------------------------------------------
+
+
+def _bitmap_layer_specs(
+    overlays: Iterable[OverlayArtifact],
+    opacity: float,
+) -> list[dict[str, Any]]:
+    """Raw BitmapLayer specs (deck.gl JSON shape).
+
+    Returned as plain dicts because ``pdk.Layer("BitmapLayer", image=url)``
+    wraps the URL in a ``pydeck.types.image.Image`` that base64-encodes a
+    local file at serialization time — wrong for a URL that the browser
+    fetches relative to the Dash assets endpoint.
+    """
+    sorted_overlays = sorted(
+        (o for o in overlays if has_image_asset(o) and o.bounds is not None),
+        key=lambda o: o.z_index,
+    )
+    out: list[dict[str, Any]] = []
+    for o in sorted_overlays:
+        url = o.asset_url or o.image_path
+        if not url:
+            continue
+        out.append({
+            "@@type": "BitmapLayer",
+            "id": f"bitmap-{o.overlay_id}",
+            "image": url,
+            "bounds": list(o.bounds),
+            "opacity": max(0.0, min(1.0, opacity * o.opacity_default)),
+            "pickable": False,
+        })
+    return out
 
 
 def _build_aoi_layer(
@@ -211,6 +243,33 @@ def build_deck_json(
     overlays = tuple(overlays)
     layers: list[pdk.Layer] = []
 
+    # Bitmap-layer dicts collected separately and inserted at the front of
+    # the layer list after pydeck serialization, so they render under the
+    # AOI / footprint outlines.  Per-source toggles also apply.
+    bitmap_specs: list[dict[str, Any]] = []
+    if layer_visibility.get("footprints", True):
+        bitmap_candidates = []
+        for o in overlays:
+            if o.observation_id is None:
+                continue
+            if (
+                o.source == "umbra"
+                and not layer_visibility.get("umbra", True)
+            ):
+                continue
+            if (
+                o.source == "sentinel-1"
+                and not layer_visibility.get("sentinel_1", True)
+            ):
+                continue
+            if (
+                o.source == "sentinel-2"
+                and not layer_visibility.get("sentinel_2", True)
+            ):
+                continue
+            bitmap_candidates.append(o)
+        bitmap_specs = _bitmap_layer_specs(bitmap_candidates, opacity)
+
     if layer_visibility.get("aoi", True):
         l = _build_aoi_layer(overlays)
         if l is not None:
@@ -265,7 +324,12 @@ def build_deck_json(
         ),
         layers=layers,
     )
-    return deck.to_json()
+    spec = _json.loads(deck.to_json())
+    if bitmap_specs:
+        # Bitmap rasters underneath every other layer.  deck.gl draws
+        # later layers on top of earlier ones.
+        spec["layers"] = bitmap_specs + (spec.get("layers") or [])
+    return _json.dumps(spec)
 
 
 def overlays_with_missing_imagery(

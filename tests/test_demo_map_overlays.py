@@ -193,6 +193,206 @@ def test_no_overlay_silently_pretends_to_be_imagery() -> None:
             assert not has_image_asset(o)
 
 
+# ---------------------------------------------------------------------------
+# Real Umbra overlays from data/raw/umbra
+# ---------------------------------------------------------------------------
+
+
+def test_real_umbra_overlays_present() -> None:
+    overlays = load_map_overlays()
+    real = [o for o in overlays if o.data_mode == "real"]
+    # Per the inventory: 1 Whitsun (2023-12-06) + 5 Tennent + 1 Whitsun
+    # 2024-03-20 = 7 real overlays after dedup.
+    assert len(real) >= 6
+    assert all(has_image_asset(o) for o in real)
+    assert all(o.image_kind == "png" for o in real)
+    assert all(o.source == "umbra" for o in real)
+
+
+def test_real_umbra_overlay_has_existing_asset() -> None:
+    """Every real overlay's image_path should resolve to a committed file."""
+    overlays = load_map_overlays()
+    real = [o for o in overlays if o.data_mode == "real"]
+    assert real, "expected real Umbra overlays in the manifest"
+    for o in real:
+        path = REPO_ROOT / o.image_path
+        assert path.exists(), (
+            f"overlay {o.overlay_id} image_path {o.image_path!r} not found"
+        )
+        # PNGs should be modest in size (< 2 MB) so the dashboard load
+        # stays snappy.
+        assert path.stat().st_size < 2_000_000, (
+            f"overlay {o.overlay_id} preview is {path.stat().st_size} bytes"
+        )
+
+
+def test_real_overlay_asset_url_starts_with_assets_overlays() -> None:
+    overlays = load_map_overlays()
+    real = [o for o in overlays if o.data_mode == "real"]
+    assert real
+    for o in real:
+        assert (o.asset_url or "").startswith("/assets/overlays/")
+
+
+def test_real_overlay_bounds_inside_aoi() -> None:
+    """Real Umbra footprints should sit inside their scenario AOI bbox."""
+    overlays = load_map_overlays()
+    real = [o for o in overlays if o.data_mode == "real"]
+    aoi_by_scenario = {
+        "whitsun": (114.45, 9.75, 114.85, 10.25),
+        "tennent": (114.55, 8.78, 114.75, 8.93),
+    }
+    for o in real:
+        aoi = aoi_by_scenario[o.scenario_id]
+        assert o.bounds is not None
+        # Generous tolerance — footprints sometimes extend a hair past
+        # the AOI corner depending on squint / range geometry.
+        tol = 0.05
+        assert o.bounds[0] >= aoi[0] - tol, o.overlay_id
+        assert o.bounds[1] >= aoi[1] - tol, o.overlay_id
+        assert o.bounds[2] <= aoi[2] + tol, o.overlay_id
+        assert o.bounds[3] <= aoi[3] + tol, o.overlay_id
+
+
+def test_whitsun_real_umbra_visible_from_event_2() -> None:
+    overlays = load_map_overlays()
+    whitsun_real = [
+        o for o in overlays
+        if o.scenario_id == "whitsun" and o.data_mode == "real"
+        and o.source == "umbra"
+    ]
+    assert whitsun_real
+    # The trace's Umbra observation is revealed at event 02; that's
+    # when the real raster should appear on the map.
+    assert any(o.visible_from_event_ordinal == 2 for o in whitsun_real)
+
+
+def test_tennent_real_overlays_static() -> None:
+    """Tennent Umbra overlays use ordinal 0 (always visible)."""
+    overlays = load_map_overlays()
+    tennent_real = [
+        o for o in overlays
+        if o.scenario_id == "tennent" and o.data_mode == "real"
+    ]
+    assert len(tennent_real) >= 5
+    for o in tennent_real:
+        assert o.visible_from_event_ordinal == 0
+
+
+def test_simulated_followup_stays_footprint_only() -> None:
+    """Honest scoping: the simulated Whitsun follow-up has no real
+    raster, so it must not be promoted to data_mode 'real'."""
+    overlays = load_map_overlays()
+    fu = [
+        o for o in overlays
+        if o.overlay_id == "whitsun-umbra-followup-20231213"
+    ]
+    assert len(fu) == 1
+    assert fu[0].data_mode == "simulated"
+    assert fu[0].image_kind == "footprint-only"
+    assert not has_image_asset(fu[0])
+
+
+def test_sentinel_overlays_stay_footprint_only() -> None:
+    """No Sentinel imagery is committed yet — every Sentinel entry
+    must remain footprint-only with an explicit missing_asset_reason."""
+    overlays = load_map_overlays()
+    sentinel = [o for o in overlays if o.source in ("sentinel-1", "sentinel-2")]
+    assert sentinel
+    for o in sentinel:
+        assert o.image_kind == "footprint-only"
+        assert not has_image_asset(o)
+        assert o.missing_asset_reason
+
+
+# ---------------------------------------------------------------------------
+# BitmapLayer rendering
+# ---------------------------------------------------------------------------
+
+
+def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        layer_visibility=helpers.default_visibility(),
+        opacity=0.8,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    bitmap_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "BitmapLayer"
+    ]
+    assert bitmap_layers, "expected at least one BitmapLayer for Tennent"
+    for l in bitmap_layers:
+        assert l.get("image", "").startswith("/assets/overlays/")
+        assert isinstance(l.get("bounds"), list)
+        assert len(l["bounds"]) == 4
+
+
+def test_umbra_toggle_hides_real_bitmap_layers() -> None:
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    visibility = helpers.default_visibility()
+    visibility["umbra"] = False
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        layer_visibility=visibility,
+        opacity=0.8,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    bitmap_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "BitmapLayer"
+    ]
+    assert not bitmap_layers, (
+        "BitmapLayers should be hidden when the Umbra toggle is off"
+    )
+
+
+def test_whitsun_event_1_has_no_bitmap_layer() -> None:
+    """At event 01 only the AOI is revealed; no Umbra raster yet."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=1,
+    )
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        layer_visibility=helpers.default_visibility(),
+        opacity=0.8,
+        center_lat=9.98, center_lon=114.63,
+    ))
+    bitmap_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "BitmapLayer"
+    ]
+    assert not bitmap_layers
+
+
+def test_whitsun_event_2_has_real_umbra_bitmap_layer() -> None:
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=2,
+    )
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        layer_visibility=helpers.default_visibility(),
+        opacity=0.8,
+        center_lat=9.98, center_lon=114.63,
+    ))
+    bitmap_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "BitmapLayer"
+    ]
+    assert bitmap_layers, (
+        "expected the real Umbra BitmapLayer to appear at event 02"
+    )
+
+
 def test_aoi_overlays_dont_need_missing_reason() -> None:
     overlays = load_map_overlays()
     aois = [o for o in overlays if o.observation_id is None]
