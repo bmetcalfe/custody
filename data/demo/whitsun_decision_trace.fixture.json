@@ -73,7 +73,8 @@
           "det-vsl-001",
           "det-vsl-002",
           "det-vsl-003"
-        ]
+        ],
+        "custody_state_id": "cs-snap-001"
       }
     },
     {
@@ -619,7 +620,7 @@
     "human_action_id": "ha-001",
     "data_mode": "simulated",
     "operator_id": "operator-fixture-01",
-    "decided_at": "2023-12-12T04:30:00+00:00",
+    "decided_at": "2023-12-12T04:35:00+00:00",
     "action": "approve",
     "tasking_option_id": "opt-sat-b",
     "selected_recommendation_id": "rec-sat-b",
