@@ -20,10 +20,17 @@ Visual discipline:
 """
 from __future__ import annotations
 
+import dash_deck
+import pydeck as pdk
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 
-from custody.demo import load_whitsun_decision_trace
+from custody.demo import load_whitsun_decision_trace, load_map_overlays
+from layout.map_overlays_helpers import (
+    LAYER_TOGGLE_OPTIONS,
+    build_deck_json,
+    default_visibility,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +54,13 @@ WHITSUN_OUTCOME = "whitsun-replay-outcome"
 WHITSUN_COUNTERFACTUALS = "whitsun-replay-counterfactuals"
 WHITSUN_FOLLOWUP = "whitsun-replay-followup"
 WHITSUN_CONTEXT_MAP = "whitsun-replay-context-map"
+
+# Map / overlay panel IDs.
+WHITSUN_MAP_DECK = "whitsun-replay-map-deck"
+WHITSUN_MAP_LAYER_TOGGLES = "whitsun-replay-map-layers"
+WHITSUN_MAP_OPACITY = "whitsun-replay-map-opacity"
+WHITSUN_MAP_OVERLAY_BADGES = "whitsun-replay-map-overlay-badges"
+WHITSUN_MAP_MISSING_IMAGERY = "whitsun-replay-map-missing-imagery"
 
 # Sidebar swap targets — driven by the main Tabs value.
 WHITSUN_SIDEBAR_OVERVIEW = "custody-main-sidebar-overview"
@@ -224,22 +238,113 @@ def build_whitsun_replay_layout() -> html.Div:
         style={"display": "flex", "alignItems": "center"},
     )
 
-    context_map_body = html.Div(
+    aoi_center_lat = float(meta.get("aoi_center_lat_deg") or 9.98)
+    aoi_center_lon = float(meta.get("aoi_center_lon_deg") or 114.63)
+
+    initial_overlays = load_map_overlays()
+    initial_deck = build_deck_json(
+        overlays=tuple(
+            o for o in initial_overlays
+            if o.scenario_id == "whitsun"
+            and o.visible_from_event_ordinal <= 1
+        ),
+        layer_visibility=default_visibility(),
+        opacity=0.6,
+        center_lat=aoi_center_lat,
+        center_lon=aoi_center_lon,
+    )
+
+    map_body = html.Div(
         [
             html.Div(
-                "Map visualization is planned for the next slice. "
-                "Below: AOI, revealed tracks, and latest custody "
-                "snapshot.",
+                "Footprints + AOI on a real map.  No georeferenced "
+                "imagery is committed yet, so observation footprints "
+                "currently render as outlines and the panel says so "
+                "explicitly per source.",
                 style={
                     "color": _MUTED,
                     "fontSize": "0.72rem",
                     "fontStyle": "italic",
-                    "marginBottom": "6px",
+                    "marginBottom": "8px",
+                },
+            ),
+            dash_deck.DeckGL(
+                id=WHITSUN_MAP_DECK,
+                data=initial_deck,
+                mapboxKey="",
+                tooltip={"text": "{tooltip}"},
+                style={
+                    "width": "100%", "height": "320px",
+                    "position": "relative",
+                    "borderRadius": "4px", "overflow": "hidden",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "layers:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Checklist(
+                        id=WHITSUN_MAP_LAYER_TOGGLES,
+                        options=[
+                            {"label": label, "value": key}
+                            for key, label in LAYER_TOGGLE_OPTIONS
+                        ],
+                        value=[k for k, _ in LAYER_TOGGLE_OPTIONS],
+                        inline=True,
+                        inputStyle={"marginRight": "4px"},
+                        labelStyle={
+                            "color": _TEXT,
+                            "fontSize": "0.72rem",
+                            "marginRight": "8px",
+                        },
+                    ),
+                ],
+                style={
+                    "marginTop": "8px",
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "alignItems": "center",
+                    "gap": "8px",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "image opacity:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Slider(
+                        id=WHITSUN_MAP_OPACITY,
+                        min=0.0, max=1.0, step=0.05, value=0.6,
+                        marks=None,
+                        tooltip={"placement": "bottom",
+                                 "always_visible": False},
+                    ),
+                ],
+                style={"marginTop": "4px"},
+            ),
+            html.Div(
+                id=WHITSUN_MAP_OVERLAY_BADGES,
+                style={"marginTop": "8px"},
+            ),
+            html.Div(
+                id=WHITSUN_MAP_MISSING_IMAGERY,
+                style={
+                    "marginTop": "6px",
+                    "color": _MUTED,
+                    "fontSize": "0.7rem",
+                    "fontStyle": "italic",
                 },
             ),
             html.Div(
                 id=WHITSUN_CONTEXT_MAP,
-                style={"color": _MUTED, "fontSize": "0.75rem"},
+                style={
+                    "marginTop": "8px",
+                    "color": _MUTED,
+                    "fontSize": "0.72rem",
+                },
             ),
         ],
     )
@@ -278,8 +383,8 @@ def build_whitsun_replay_layout() -> html.Div:
                                 html.Div([timeline_subhead, timeline]),
                             ),
                             _panel(
-                                "Context (map placeholder)",
-                                context_map_body,
+                                "Map / evidence overlays",
+                                map_body,
                             ),
                         ],
                         width=4,

@@ -11,9 +11,25 @@ from custody.demo.decision_trace import (
     WHITSUN_DECISION_TRACE_PATH,
     load_whitsun_decision_trace,
 )
+from custody.demo.map_overlays import (
+    MAP_OVERLAYS_PATH,
+    OverlayArtifact,
+    available_overlays_for,
+    has_image_asset,
+    load_map_overlays,
+    overlay_by_id,
+    overlays_for_scenario,
+)
 
 __all__ = [
     "DecisionTrace",
+    "MAP_OVERLAYS_PATH",
+    "OverlayArtifact",
     "WHITSUN_DECISION_TRACE_PATH",
+    "available_overlays_for",
+    "has_image_asset",
+    "load_map_overlays",
     "load_whitsun_decision_trace",
+    "overlay_by_id",
+    "overlays_for_scenario",
 ]

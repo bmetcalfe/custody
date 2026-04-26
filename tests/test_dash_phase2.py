@@ -315,5 +315,6 @@ class TestCallbackCount:
         # Whitsun replay: +1 selected-event sync + 1 fan-out
         #   refresh-all-panels + 1 sidebar-block-swap = 3
         # Sidebar collapse: +1 toggle store + 1 apply collapse = 2
-        # Total: 16
-        assert len(app.callback_map) == 16
+        # Map overlays: +1 whitsun map + 1 tennent map = 2
+        # Total: 18
+        assert len(app.callback_map) == 18

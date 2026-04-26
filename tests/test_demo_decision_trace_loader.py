@@ -415,12 +415,20 @@ def test_layout_includes_sidebar_swap_target_ids() -> None:
     assert "custody-main-sidebar-whitsun" in seen
 
 
-def test_context_map_renamed_with_placeholder_note() -> None:
-    """M2: the panel header is renamed and a muted note is in the body."""
+def test_map_panel_replaces_placeholder() -> None:
+    """The 'Context (map placeholder)' panel was replaced by the real
+    'Map / evidence overlays' panel in the map-overlay slice."""
     mod = _import_layout_module()
     rendered = str(mod.build_whitsun_replay_layout())
-    assert "Context (map placeholder)" in rendered
-    assert "Map visualization is planned for the next slice" in rendered
+    assert "Map / evidence overlays" in rendered
+    # The old placeholder header / body must be gone.
+    assert "Context (map placeholder)" not in rendered
+    assert "Map visualization is planned for the next slice" not in rendered
+    # The deck component, the layer-toggle checklist, and the opacity
+    # slider are mounted.
+    assert "whitsun-replay-map-deck" in rendered
+    assert "whitsun-replay-map-layers" in rendered
+    assert "whitsun-replay-map-opacity" in rendered
 
 
 def test_timeline_uses_label_class_for_active_row_highlight() -> None:

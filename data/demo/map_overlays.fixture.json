@@ -1,0 +1,315 @@
+{
+  "schema": "custody.demo.map_overlays.v1",
+  "metadata": {
+    "data_mode": "fixture",
+    "description": "Committed map overlay manifest for the Whitsun replay and Tennent monitoring tabs. Every entry is currently footprint-only because no georeferenced imagery is committed to the repo. When real imagery lands under data/demo/overlays/, only the matching entries need updating: set image_kind to png/geotiff/cog/thumbnail, populate image_path, and the dashboard will render the BitmapLayer in addition to the footprint outline.",
+    "imagery_acquisition_needs": [
+      "Whitsun Umbra SAR tile 2023-12-06 — georeferenced PNG + bounds, or COG",
+      "Whitsun Sentinel-1 GRD 2023-12-10 — PNG preview + bounds, or COG",
+      "Whitsun Sentinel-2 L2A 2023-12-12 (low cloud) — RGB PNG preview + bounds, or COG",
+      "Whitsun Sentinel-2 L2A 2023-12-15 (cloudy) — same; note usable_for_detection is false",
+      "Whitsun Umbra repeat 2023-12-13 (simulated follow-up) — optional placeholder",
+      "Tennent Sentinel-1 GRD 2023-07-15 — PNG preview + bounds, or COG",
+      "Tennent Sentinel-2 L2A 2023-07-18 (low cloud) — PNG preview + bounds, or COG",
+      "Tennent Sentinel-2 L2A 2023-07-28 (cloudy) — same"
+    ],
+    "caveats": [
+      "deterministic demo fixture; not a real query result",
+      "no committed georeferenced imagery; all entries are footprint-only today",
+      "confidence_weight values are demo heuristics, not calibrated reliability",
+      "Sentinel observations are public lower-confidence context, not equivalent to Umbra"
+    ]
+  },
+  "overlays": [
+    {
+      "overlay_id": "whitsun-aoi",
+      "scenario_id": "whitsun",
+      "observation_id": null,
+      "source": "simulated",
+      "sensor_type": null,
+      "display_name": "Whitsun AOI",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.6,
+      "visible_from_event_ordinal": 1,
+      "z_index": 10,
+      "confidence_weight": null,
+      "usable_for_detection": null,
+      "usable_for_context": null,
+      "caveats": ["AOI polygon, not imagery"],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "whitsun-umbra-20231206",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-umbra-whitsun-20231206",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-12-06",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.65,
+      "visible_from_event_ordinal": 2,
+      "z_index": 30,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["high-confidence tasked SAR; canonical evidence"],
+      "missing_asset_reason": "no committed georeferenced Umbra raster; footprint-only"
+    },
+    {
+      "overlay_id": "whitsun-sentinel-2-low-cloud-20231212",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s2-l2a-whitsun-20231212-low-cloud",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-12-12 (8% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 4,
+      "z_index": 25,
+      "confidence_weight": 0.30,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["low cloud Sentinel-2; lower confidence than Umbra"],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
+    },
+    {
+      "overlay_id": "whitsun-sentinel-1-grd-20231210",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s1-grd-whitsun-20231210",
+      "source": "sentinel-1",
+      "sensor_type": "sar",
+      "display_name": "Sentinel-1 GRD 2023-12-10",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 5,
+      "z_index": 20,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["public SAR context; lower confidence than Umbra"],
+      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only"
+    },
+    {
+      "overlay_id": "whitsun-sentinel-2-cloudy-20231215",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-s2-l2a-whitsun-20231215-cloudy",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-12-15 (72% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.40,
+      "visible_from_event_ordinal": 4,
+      "z_index": 15,
+      "confidence_weight": 0.10,
+      "usable_for_detection": false,
+      "usable_for_context": true,
+      "caveats": ["high cloud cover; usable_for_detection is false"],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
+    },
+    {
+      "overlay_id": "whitsun-umbra-followup-20231213",
+      "scenario_id": "whitsun",
+      "observation_id": "fixture-umbra-whitsun-20231213-followup",
+      "source": "umbra",
+      "sensor_type": "sar",
+      "display_name": "Umbra SAR 2023-12-13 (simulated follow-up)",
+      "data_mode": "simulated",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.45, 9.75, 114.85, 10.25],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.45, 9.75], [114.85, 9.75],
+          [114.85, 10.25], [114.45, 10.25],
+          [114.45, 9.75]
+        ]]
+      },
+      "opacity_default": 0.65,
+      "visible_from_event_ordinal": 12,
+      "z_index": 35,
+      "confidence_weight": 1.0,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["simulated follow-up Umbra collect; demo scaffolding"],
+      "missing_asset_reason": "simulated record; no upstream raster"
+    },
+    {
+      "overlay_id": "tennent-aoi",
+      "scenario_id": "tennent",
+      "observation_id": null,
+      "source": "simulated",
+      "sensor_type": null,
+      "display_name": "Tennent AOI",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.55, 8.78], [114.75, 8.78],
+          [114.75, 8.93], [114.55, 8.93],
+          [114.55, 8.78]
+        ]]
+      },
+      "opacity_default": 0.6,
+      "visible_from_event_ordinal": 0,
+      "z_index": 10,
+      "confidence_weight": null,
+      "usable_for_detection": null,
+      "usable_for_context": null,
+      "caveats": ["AOI polygon, not imagery"],
+      "missing_asset_reason": null
+    },
+    {
+      "overlay_id": "tennent-sentinel-1-grd-20230715",
+      "scenario_id": "tennent",
+      "observation_id": "fixture-s1-grd-tennent-20230715",
+      "source": "sentinel-1",
+      "sensor_type": "sar",
+      "display_name": "Sentinel-1 GRD 2023-07-15",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.55, 8.78], [114.75, 8.78],
+          [114.75, 8.93], [114.55, 8.93],
+          [114.55, 8.78]
+        ]]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 0,
+      "z_index": 20,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["public SAR context"],
+      "missing_asset_reason": "no committed Sentinel-1 GRD raster; footprint-only"
+    },
+    {
+      "overlay_id": "tennent-sentinel-2-low-cloud-20230718",
+      "scenario_id": "tennent",
+      "observation_id": "fixture-s2-l2a-tennent-20230718-low-cloud",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-07-18 (12% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.55, 8.78], [114.75, 8.78],
+          [114.75, 8.93], [114.55, 8.93],
+          [114.55, 8.78]
+        ]]
+      },
+      "opacity_default": 0.55,
+      "visible_from_event_ordinal": 0,
+      "z_index": 25,
+      "confidence_weight": 0.30,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "caveats": ["low cloud Sentinel-2"],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
+    },
+    {
+      "overlay_id": "tennent-sentinel-2-cloudy-20230728",
+      "scenario_id": "tennent",
+      "observation_id": "fixture-s2-l2a-tennent-20230728-cloudy",
+      "source": "sentinel-2",
+      "sensor_type": "optical",
+      "display_name": "Sentinel-2 L2A 2023-07-28 (85% cloud)",
+      "data_mode": "fixture",
+      "image_path": null,
+      "asset_url": null,
+      "image_kind": "footprint-only",
+      "bounds": [114.55, 8.78, 114.75, 8.93],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [114.55, 8.78], [114.75, 8.78],
+          [114.75, 8.93], [114.55, 8.93],
+          [114.55, 8.78]
+        ]]
+      },
+      "opacity_default": 0.40,
+      "visible_from_event_ordinal": 0,
+      "z_index": 15,
+      "confidence_weight": 0.10,
+      "usable_for_detection": false,
+      "usable_for_context": true,
+      "caveats": ["high cloud cover; usable_for_detection is false"],
+      "missing_asset_reason": "no committed Sentinel-2 RGB preview; footprint-only"
+    }
+  ]
+}

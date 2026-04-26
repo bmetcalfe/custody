@@ -167,6 +167,13 @@ def test_compute_collapse_state_click_toggles() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_total_callback_count() -> None:
+    """Regression guard against accidentally re-registering a callback
+    when extending the dashboard."""
+    dash_app = _import_dash_app()
+    assert len(dash_app.app.callback_map) == 18
+
+
 def test_apply_callback_outputs_three_targets() -> None:
     """The apply-collapse callback must drive the sidebar col style,
     the main col width, and the toggle button text."""

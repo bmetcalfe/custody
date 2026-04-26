@@ -40,6 +40,13 @@ import dash_bootstrap_components as dbc
 from custody.demo import load_whitsun_decision_trace
 from custody.demo.decision_trace import DecisionTrace
 
+from custody.demo import load_map_overlays, available_overlays_for
+
+from layout.map_overlays_helpers import (
+    build_deck_json,
+    overlays_with_missing_imagery,
+    visibility_from_checked,
+)
 from layout.tennent_monitoring import (
     TENNENT_SIDEBAR_BLOCK,
     TENNENT_TAB_VALUE,
@@ -52,6 +59,11 @@ from layout.whitsun_replay import (
     WHITSUN_FOLLOWUP,
     WHITSUN_HEADER,
     WHITSUN_HUMAN_ACTION,
+    WHITSUN_MAP_DECK,
+    WHITSUN_MAP_LAYER_TOGGLES,
+    WHITSUN_MAP_MISSING_IMAGERY,
+    WHITSUN_MAP_OPACITY,
+    WHITSUN_MAP_OVERLAY_BADGES,
     WHITSUN_OBSERVATIONS_PANEL,
     WHITSUN_OPTIONS_TABLE,
     WHITSUN_OUTCOME,
@@ -98,6 +110,115 @@ REVEAL_ORDINALS: Mapping[str, int] = {
 
 
 _TRACE: DecisionTrace = load_whitsun_decision_trace()
+_OVERLAYS = load_map_overlays()
+_WHITSUN_AOI_CENTER = (
+    float(_TRACE.metadata.get("aoi_center_lat_deg") or 9.98),
+    float(_TRACE.metadata.get("aoi_center_lon_deg") or 114.63),
+)
+
+
+def _revealed_track_positions(current_ord: int):
+    """Return per-track lat/lon dicts for tracks revealed up to ``current_ord``.
+
+    Track positions come from each track's ``initial_detection_id`` so the
+    map can plot a marker at a real coordinate rather than the AOI centre.
+    """
+    out = []
+    for t in _TRACE.candidate_tracks:
+        if not _revealed(t.get("track_id"), current_ord):
+            continue
+        det_id = t.get("initial_detection_id")
+        det = _TRACE.get_detection(det_id) if det_id else None
+        if det is None:
+            continue
+        out.append({
+            "track_id": t.get("track_id"),
+            "label": t.get("label"),
+            "lat": det.get("lat"),
+            "lon": det.get("lon"),
+        })
+    return out
+
+
+def _custody_label_for(current_ord: int) -> str | None:
+    visible = [
+        cs for cs in _TRACE.custody_state_snapshots
+        if _revealed(cs.get("custody_state_id"), current_ord)
+    ]
+    if not visible:
+        return None
+    latest = visible[-1]
+    return (
+        f"Custody {str(latest.get('status', '?')).upper()} "
+        f"({float(latest.get('score', 0.0)):.2f})"
+    )
+
+
+def _build_overlay_badges(overlays) -> html.Div:
+    """One badge per overlay summarising source / image-kind / confidence."""
+    if not overlays:
+        return _na("no overlays available at this step")
+    chips = []
+    for o in overlays:
+        if o.observation_id is None:
+            chips.append(
+                dbc.Badge(
+                    f"{o.display_name}",
+                    color="light",
+                    text_color="dark",
+                    className="me-1",
+                ),
+            )
+            continue
+        cw = (
+            f" w={o.confidence_weight:.2f}"
+            if o.confidence_weight is not None else ""
+        )
+        chips.append(
+            dbc.Badge(
+                f"{o.display_name} · {o.image_kind}{cw}",
+                color=(
+                    "primary" if o.source == "umbra"
+                    else "info" if o.source == "sentinel-1"
+                    else "warning" if o.source == "sentinel-2"
+                    else "secondary"
+                ),
+                className="me-1",
+            ),
+        )
+    return html.Div(
+        chips,
+        style={
+            "display": "flex", "flexWrap": "wrap", "gap": "4px",
+        },
+    )
+
+
+def _build_missing_imagery_note(overlays) -> html.Div:
+    """Honest note enumerating which overlays still need image assets."""
+    missing = overlays_with_missing_imagery(overlays)
+    if not missing:
+        return html.Div()
+    items = []
+    for o in missing:
+        items.append(
+            html.Li(
+                f"{o.display_name} — {o.missing_asset_reason or 'no asset'}",
+                style={
+                    "color": _MUTED, "fontSize": "0.7rem",
+                    "fontStyle": "italic",
+                },
+            ),
+        )
+    return html.Div(
+        [
+            html.Span(
+                "image asset not available for:",
+                style={"color": _MUTED, "fontSize": "0.7rem"},
+            ),
+            html.Ul(items, style={"paddingLeft": "16px", "margin": "2px 0"}),
+        ],
+    )
 
 
 def _build_reveal_index(trace: DecisionTrace) -> dict[str, int]:
@@ -813,6 +934,35 @@ def register(app: Dash) -> None:
             _render_followup(_TRACE, ord_),
             step_counter,
         )
+
+    @app.callback(
+        Output(WHITSUN_MAP_DECK, "data"),
+        Output(WHITSUN_MAP_OVERLAY_BADGES, "children"),
+        Output(WHITSUN_MAP_MISSING_IMAGERY, "children"),
+        Input(WHITSUN_SELECTED_EVENT_STORE, "data"),
+        Input(WHITSUN_MAP_LAYER_TOGGLES, "value"),
+        Input(WHITSUN_MAP_OPACITY, "value"),
+    )
+    def _refresh_whitsun_map(event_id, checked_layers, opacity):
+        event = _TRACE.get_event(event_id) if event_id else {}
+        ord_ = _ord_for(event)
+        scenario_overlays = available_overlays_for(
+            _OVERLAYS, scenario_id="whitsun", current_ordinal=ord_,
+        )
+        visibility = visibility_from_checked(checked_layers)
+        deck_json = build_deck_json(
+            overlays=scenario_overlays,
+            layer_visibility=visibility,
+            opacity=float(opacity if opacity is not None else 0.6),
+            center_lat=_WHITSUN_AOI_CENTER[0],
+            center_lon=_WHITSUN_AOI_CENTER[1],
+            zoom=11.5,
+            tracks=_revealed_track_positions(ord_),
+            custody_label=_custody_label_for(ord_),
+        )
+        badges = _build_overlay_badges(scenario_overlays)
+        missing = _build_missing_imagery_note(scenario_overlays)
+        return deck_json, badges, missing
 
     @app.callback(
         Output(WHITSUN_SIDEBAR_OVERVIEW, "style"),

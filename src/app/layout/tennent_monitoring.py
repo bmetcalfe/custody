@@ -18,10 +18,17 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from dash import html
+import dash_deck
+from dash import dcc, html
 import dash_bootstrap_components as dbc
 
+from custody.demo import load_map_overlays
 from custody.ingest.sentinel import load_observation_cache
+from layout.map_overlays_helpers import (
+    LAYER_TOGGLE_OPTIONS,
+    build_deck_json,
+    default_visibility,
+)
 
 # Reuse the small style helpers from the Whitsun replay layout so the
 # two tabs render with identical visual discipline.
@@ -45,6 +52,13 @@ from layout.whitsun_replay import (
 TENNENT_TAB_VALUE = "tab-tennent-monitoring"
 TENNENT_SIDEBAR_BLOCK = "custody-main-sidebar-tennent"
 TENNENT_MONITORING_ROOT = "tennent-monitoring-root"
+
+# Map / overlay panel IDs.
+TENNENT_MAP_DECK = "tennent-monitoring-map-deck"
+TENNENT_MAP_LAYER_TOGGLES = "tennent-monitoring-map-layers"
+TENNENT_MAP_OPACITY = "tennent-monitoring-map-opacity"
+TENNENT_MAP_OVERLAY_BADGES = "tennent-monitoring-map-overlay-badges"
+TENNENT_MAP_MISSING_IMAGERY = "tennent-monitoring-map-missing-imagery"
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +266,112 @@ def _build_aoi_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
     return _panel("AOI / context", body)
 
 
+def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
+    """Map / overlay panel for the Tennent tab.
+
+    Static (no event timeline): every Tennent overlay is visible at
+    ordinal 0, so revealing is not gated.  The same layer toggles +
+    opacity slider as the Whitsun panel so the screen-share viewer
+    sees a consistent UI between scenarios.
+    """
+    overlays = load_map_overlays()
+    tennent_overlays = tuple(
+        o for o in overlays if o.scenario_id == "tennent"
+    )
+    center_lat = float(aoi_meta.get("center_lat_deg") or 8.8583)
+    center_lon = float(aoi_meta.get("center_lon_deg") or 114.6561)
+    initial_deck = build_deck_json(
+        overlays=tennent_overlays,
+        layer_visibility=default_visibility(),
+        opacity=0.6,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        zoom=12.0,
+    )
+    body = html.Div(
+        [
+            _muted_caption(
+                "Same overlay schema as the Whitsun replay; static "
+                "context — no event timeline.  No georeferenced "
+                "imagery is committed yet, so observation footprints "
+                "render as outlines and the panel below names every "
+                "missing asset."
+            ),
+            dash_deck.DeckGL(
+                id=TENNENT_MAP_DECK,
+                data=initial_deck,
+                mapboxKey="",
+                tooltip={"text": "{tooltip}"},
+                style={
+                    "width": "100%", "height": "320px",
+                    "position": "relative",
+                    "borderRadius": "4px", "overflow": "hidden",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "layers:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Checklist(
+                        id=TENNENT_MAP_LAYER_TOGGLES,
+                        options=[
+                            {"label": label, "value": key}
+                            for key, label in LAYER_TOGGLE_OPTIONS
+                        ],
+                        value=[k for k, _ in LAYER_TOGGLE_OPTIONS],
+                        inline=True,
+                        inputStyle={"marginRight": "4px"},
+                        labelStyle={
+                            "color": _TEXT,
+                            "fontSize": "0.72rem",
+                            "marginRight": "8px",
+                        },
+                    ),
+                ],
+                style={
+                    "marginTop": "8px",
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "alignItems": "center",
+                    "gap": "8px",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        "image opacity:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Slider(
+                        id=TENNENT_MAP_OPACITY,
+                        min=0.0, max=1.0, step=0.05, value=0.6,
+                        marks=None,
+                        tooltip={"placement": "bottom",
+                                 "always_visible": False},
+                    ),
+                ],
+                style={"marginTop": "4px"},
+            ),
+            html.Div(
+                id=TENNENT_MAP_OVERLAY_BADGES,
+                style={"marginTop": "8px"},
+            ),
+            html.Div(
+                id=TENNENT_MAP_MISSING_IMAGERY,
+                style={
+                    "marginTop": "6px",
+                    "color": _MUTED,
+                    "fontSize": "0.7rem",
+                    "fontStyle": "italic",
+                },
+            ),
+        ],
+    )
+    return _panel("Map / evidence overlays", body)
+
+
 def _build_observations_panel() -> dbc.Card:
     obs = load_observation_cache(_TENNENT_OBSERVATIONS_PATH)
 
@@ -400,6 +520,7 @@ def build_tennent_monitoring_layout() -> html.Div:
         [
             _build_header(aoi_meta),
             _build_aoi_panel(aoi_meta),
+            _build_map_panel(aoi_meta),
             _build_observations_panel(),
             _build_interpretation_panel(),
             _build_not_yet_panel(),
