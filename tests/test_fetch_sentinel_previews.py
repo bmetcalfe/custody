@@ -402,3 +402,162 @@ def test_main_failure_keeps_footprint_only_with_specific_reason(
     assert sentinel["image_kind"] == "footprint-only"
     assert sentinel["asset_url"] is None
     assert "HTTP 429" in (sentinel["missing_asset_reason"] or "")
+
+
+# ---------------------------------------------------------------------------
+# --scenario filter
+# ---------------------------------------------------------------------------
+
+
+def test_fixtures_for_scenario_helper(fetch_module):
+    whit = fetch_module._fixtures_for_scenario("whitsun")
+    tenn = fetch_module._fixtures_for_scenario("tennent")
+    both = fetch_module._fixtures_for_scenario("all")
+    assert whit == (fetch_module.SCENARIO_FIXTURES["whitsun"],)
+    assert tenn == (fetch_module.SCENARIO_FIXTURES["tennent"],)
+    assert set(both) == set(fetch_module.SCENARIO_FIXTURES.values())
+    with pytest.raises(ValueError):
+        fetch_module._fixtures_for_scenario("bogus")
+
+
+def test_default_scenario_is_whitsun_in_dry_run(
+    monkeypatch, fetch_module, capsys,
+):
+    """No --scenario argument → default ``whitsun`` (narrow scope)."""
+    # No creds intentionally; dry-run must skip live HTTP entirely.
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_SECRET", raising=False)
+    rc = fetch_module.main(["--dry-run"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "scenario=whitsun" in captured
+    # Only Whitsun observation ids surface; no Tennent ids leak.
+    assert "fixture-s1-grd-whitsun-" in captured
+    assert "fixture-s2-l2a-whitsun-" in captured
+    assert "tennent" not in captured.lower()
+
+
+def test_dry_run_scenario_whitsun_lists_seven_observations(
+    monkeypatch, fetch_module, capsys,
+):
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_SECRET", raising=False)
+    rc = fetch_module.main(["--dry-run", "--scenario", "whitsun"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "scenario=whitsun" in captured
+    # 3 original + 4 in-between coverage records = 7.
+    assert "7 preview(s) would be fetched" in captured
+    assert "tennent" not in captured.lower()
+
+
+def test_dry_run_scenario_tennent_lists_three_observations(
+    monkeypatch, fetch_module, capsys,
+):
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_SECRET", raising=False)
+    rc = fetch_module.main(["--dry-run", "--scenario", "tennent"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "scenario=tennent" in captured
+    assert "3 preview(s) would be fetched" in captured
+    # No Whitsun observation ids should leak through the Tennent
+    # scoping.
+    assert "fixture-s1-grd-whitsun" not in captured
+    assert "fixture-s2-l2a-whitsun" not in captured
+    # Tennent ids do appear.
+    assert "fixture-s1-grd-tennent" in captured
+
+
+def test_dry_run_scenario_all_lists_ten_observations(
+    monkeypatch, fetch_module, capsys,
+):
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SENTINEL_HUB_CLIENT_SECRET", raising=False)
+    rc = fetch_module.main(["--dry-run", "--scenario", "all"])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "scenario=all" in captured
+    # 7 Whitsun + 3 Tennent = 10.
+    assert "10 preview(s) would be fetched" in captured
+
+
+def test_scenario_unknown_value_rejected_by_argparse(fetch_module):
+    """Argparse should reject any value outside the documented choices."""
+    with pytest.raises(SystemExit):
+        fetch_module.main(["--scenario", "bogus", "--dry-run"])
+
+
+def test_dry_run_does_not_call_live_http(
+    monkeypatch, fetch_module,
+):
+    """The new dry-run skips OAuth + Process API entirely so it can
+    run without credentials and without burning live API quota."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+
+    oauth_calls: list = []
+    process_calls: list = []
+
+    def boom_oauth(*args, **kwargs):
+        oauth_calls.append((args, kwargs))
+        raise AssertionError("OAuth must not run during --dry-run")
+
+    def boom_process(**kwargs):
+        process_calls.append(kwargs)
+        raise AssertionError("Process API must not run during --dry-run")
+
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", boom_oauth)
+    monkeypatch.setattr(fetch_module, "_request_preview", boom_process)
+
+    rc = fetch_module.main(["--dry-run", "--scenario", "all"])
+    assert rc == 0
+    assert oauth_calls == []
+    assert process_calls == []
+
+
+def test_live_main_with_scenario_whitsun_does_not_touch_tennent(
+    monkeypatch, fetch_module, tmp_path,
+):
+    """Live mode (mocked fetcher) under --scenario whitsun must
+    write only Whitsun PNGs and update only Whitsun overlay records."""
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_ID", "fake")
+    monkeypatch.setenv("SENTINEL_HUB_CLIENT_SECRET", "fake")
+
+    fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+    monkeypatch.setattr(fetch_module, "_get_oauth_token", lambda *a, **kw: "tok")
+    monkeypatch.setattr(fetch_module, "_request_preview", lambda **kwargs: fake_png)
+
+    manifest_copy = tmp_path / "map_overlays.fixture.json"
+    manifest_copy.write_text(
+        fetch_module.MANIFEST_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fetch_module, "MANIFEST_PATH", manifest_copy)
+    monkeypatch.setattr(
+        fetch_module, "EVIDENCE_DIR", tmp_path / "evidence" / "sentinel",
+    )
+
+    rc = fetch_module.main(["--scenario", "whitsun"])
+    assert rc == 0
+
+    # PNGs only under whitsun/, never under tennent/.
+    written = list((tmp_path / "evidence" / "sentinel").rglob("preview.png"))
+    assert written, "expected Whitsun PNGs to be written"
+    for p in written:
+        assert "whitsun" in str(p)
+        assert "tennent" not in str(p)
+
+    # Tennent overlays in the manifest are still footprint-only.
+    payload = json.loads(manifest_copy.read_text(encoding="utf-8"))
+    tennent = [
+        o for o in payload["overlays"]
+        if o.get("scenario_id") == "tennent"
+        and o.get("source") in ("sentinel-1", "sentinel-2")
+    ]
+    assert tennent, "manifest should still contain Tennent Sentinel overlays"
+    for o in tennent:
+        assert o["image_kind"] == "footprint-only", o["overlay_id"]
+        assert o["asset_url"] is None
+        assert o["image_path"] is None

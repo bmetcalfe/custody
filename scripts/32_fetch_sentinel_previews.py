@@ -68,6 +68,31 @@ AOI_FIXTURES: dict[str, Path] = {
     "whitsun": REPO_ROOT / "data" / "demo" / "whitsun_aoi.fixture.geojson",
     "tennent": REPO_ROOT / "data" / "demo" / "tennent_aoi.fixture.geojson",
 }
+# Per-scenario observation fixtures, keyed by the same scenario id the
+# overlay manifest uses.  ``--scenario`` filters this map; the default
+# is intentionally narrow (``whitsun``) so an accidental run cannot
+# request Tennent previews without explicit opt-in.
+SCENARIO_FIXTURES: dict[str, Path] = {
+    "whitsun": SENTINEL_FIXTURES[0],
+    "tennent": SENTINEL_FIXTURES[1],
+}
+
+
+def _fixtures_for_scenario(scenario: str) -> tuple[Path, ...]:
+    """Resolve the ``--scenario`` choice to a tuple of fixture paths.
+
+    ``whitsun`` -> Whitsun fixture only (default, narrow scope)
+    ``tennent`` -> Tennent fixture only
+    ``all``     -> both, preserving the prior behaviour for callers
+                   that explicitly want it
+    """
+    if scenario == "whitsun":
+        return (SCENARIO_FIXTURES["whitsun"],)
+    if scenario == "tennent":
+        return (SCENARIO_FIXTURES["tennent"],)
+    if scenario == "all":
+        return (SCENARIO_FIXTURES["whitsun"], SCENARIO_FIXTURES["tennent"])
+    raise ValueError(f"unknown scenario {scenario!r}")
 MANIFEST_PATH = REPO_ROOT / "data" / "demo" / "map_overlays.fixture.json"
 
 # Outputs
@@ -432,13 +457,58 @@ def main(argv: list[str] | None = None) -> int:
         help="Preview height in pixels (default: 512).",
     )
     parser.add_argument(
+        "--scenario",
+        choices=("whitsun", "tennent", "all"),
+        default="whitsun",
+        help=(
+            "Which Sentinel observation fixture(s) to process: "
+            "'whitsun' (default, narrow scope), 'tennent', or 'all'."
+        ),
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help=(
-            "Do not write PNGs or update the manifest; just print what "
-            "would be fetched."
+            "Do not call Sentinel Hub, do not write PNGs, do not update "
+            "the manifest; just print which scenarios / observations "
+            "would be processed.  No OAuth, no Process API requests."
         ),
     )
     args = parser.parse_args(argv)
+
+    selected_fixtures = _fixtures_for_scenario(args.scenario)
+
+    # Dry-run reports the static plan without ever touching the
+    # network — no OAuth, no Process API calls, no writes.
+    if args.dry_run:
+        print(
+            f"[dry-run] scenario={args.scenario}; "
+            f"would call Sentinel Hub Process API for the following "
+            f"observations:"
+        )
+        total_would_fetch = 0
+        for fixture in selected_fixtures:
+            if not fixture.exists():
+                print(f"  skipping missing fixture {fixture}")
+                continue
+            observations = _load_observations(fixture)
+            for obs in observations:
+                obs_id = str(obs.get("observation_id") or "")
+                scenario = _scenario_for(obs_id)
+                if scenario is None:
+                    print(f"  skip {obs_id}: could not classify scenario")
+                    continue
+                _, rel_path, _ = _output_paths_for(scenario, obs_id)
+                print(
+                    f"  [dry-run] {obs_id} ({obs.get('source')}) "
+                    f"-> would write {rel_path}"
+                )
+                total_would_fetch += 1
+        print()
+        print(
+            f"[dry-run] {total_would_fetch} preview(s) would be fetched; "
+            f"no live HTTP performed, no files written."
+        )
+        return 0
 
     client_id = os.environ.get("SENTINEL_HUB_CLIENT_ID")
     client_secret = os.environ.get("SENTINEL_HUB_CLIENT_SECRET")
@@ -456,14 +526,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"sentinel hub OAuth failed: {exc}", file=sys.stderr)
         return 1
-    print("sentinel hub OAuth token acquired")
+    print(f"sentinel hub OAuth token acquired (scenario={args.scenario})")
 
     # Manifest ---------------------------------------------------------
     manifest = _json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
     successes: list[str] = []
     failures: list[tuple[str, str]] = []
-    for fixture in SENTINEL_FIXTURES:
+    for fixture in selected_fixtures:
         if not fixture.exists():
             print(f"skipping missing fixture {fixture}")
             continue
@@ -481,17 +551,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             if not ok:
                 failures.append((obs_id, reason))
-                if not args.dry_run:
-                    update_manifest_for_failure(
-                        manifest, observation_id=obs_id,
-                        reason=f"sentinel hub preview unavailable: {reason}",
-                    )
+                update_manifest_for_failure(
+                    manifest, observation_id=obs_id,
+                    reason=f"sentinel hub preview unavailable: {reason}",
+                )
                 continue
             out_path, rel_path, asset_url = _output_paths_for(scenario, obs_id)
-            if args.dry_run:
-                print(f"  [dry-run] {obs_id} -> would write {rel_path}")
-                successes.append(obs_id)
-                continue
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(png)
             update_manifest_with_preview(
@@ -503,10 +568,9 @@ def main(argv: list[str] | None = None) -> int:
             successes.append(obs_id)
             print(f"  fetched {obs_id} -> {rel_path}")
 
-    if not args.dry_run:
-        MANIFEST_PATH.write_text(
-            _json.dumps(manifest, indent=2) + "\n", encoding="utf-8",
-        )
+    MANIFEST_PATH.write_text(
+        _json.dumps(manifest, indent=2) + "\n", encoding="utf-8",
+    )
 
     print()
     print(f"sentinel previews: {len(successes)} fetched, {len(failures)} skipped")
