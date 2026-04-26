@@ -1,0 +1,35 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "S2B_MSIL2A_20231215T030000_FIX002",
+  "collection": "sentinel-2-l2a",
+  "bbox": [114.45, 9.75, 114.85, 10.25],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[
+      [114.45, 9.75], [114.85, 9.75],
+      [114.85, 10.25], [114.45, 10.25],
+      [114.45, 9.75]
+    ]]
+  },
+  "properties": {
+    "datetime": "2023-12-15T03:00:00Z",
+    "start_datetime": "2023-12-15T03:00:00Z",
+    "end_datetime": "2023-12-15T03:00:30Z",
+    "platform": "sentinel-2b",
+    "instruments": ["msi"],
+    "eo:cloud_cover": 72.0
+  },
+  "assets": {
+    "thumbnail": {
+      "href": "https://example.test/thumbs/s2-high-cloud.png",
+      "roles": ["thumbnail"]
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a/items/S2B_MSIL2A_20231215T030000_FIX002"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "name": "whitsun-aoi-fixture",
+    "data_mode": "fixture",
+    "description": "Demo placeholder AOI for the Whitsun Reef Sentinel ingestion sprint. NOT the real operational AOI; replace with the field-defined polygon before any operational use. Center reflects the existing _WHITSUN_CENTER constant (9.98 N, 114.63 E) used elsewhere in the codebase.",
+    "center_lat_deg": 9.98,
+    "center_lon_deg": 114.63,
+    "bbox_lon_west_deg": 114.45,
+    "bbox_lon_east_deg": 114.85,
+    "bbox_lat_south_deg": 9.75,
+    "bbox_lat_north_deg": 10.25,
+    "caveats": [
+      "demo placeholder AOI; not validated against any operational geometry",
+      "must be replaced with the real Whitsun AOI before any non-demo use"
+    ]
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "whitsun-aoi-fixture-polygon",
+        "data_mode": "fixture"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [114.45, 9.75],
+            [114.85, 9.75],
+            [114.85, 10.25],
+            [114.45, 10.25],
+            [114.45, 9.75]
+          ]
+        ]
+      }
+    }
+  ]
+}
