@@ -41,6 +41,11 @@ _SOURCE_STROKE = {
 }
 
 _AOI_STROKE = [255, 255, 255]
+# Default AOI is outline-only so the imagery overlays stay readable.
+# A fill is allowed but only at very low opacity (max 0.05) so the
+# fallback can never wash out the evidence.
+_AOI_FILL_ZERO = [255, 255, 255, 0]
+_AOI_MAX_FALLBACK_FILL_ALPHA = int(round(0.05 * 255))
 _TRACK_FILL = [251, 191, 36, 200]
 _TRACK_STROKE = [255, 255, 255]
 
@@ -117,7 +122,14 @@ def _build_aoi_layer(
         get_polygon="polygon",
         stroked=True,
         filled=False,
-        line_width_min_pixels=2,
+        # Belt-and-suspenders: even though ``filled=False`` should
+        # suppress the fill, set the colour explicitly to fully
+        # transparent so deck.gl cannot fall back to a strong default.
+        get_fill_color=_AOI_FILL_ZERO,
+        # Thin but readable outline.  Pin the upper bound so the line
+        # does not balloon at high zoom.
+        line_width_min_pixels=1,
+        line_width_max_pixels=2,
         get_line_color=_AOI_STROKE,
         pickable=True,
     )
@@ -227,108 +239,86 @@ def _build_custody_text_layer(
 def build_deck_json(
     *,
     overlays: Iterable[OverlayArtifact],
-    layer_visibility: Mapping[str, bool],
+    base_visibility: Mapping[str, bool] | None = None,
     opacity: float,
     center_lat: float,
     center_lon: float,
     zoom: float = 11.0,
     tracks: Iterable[Mapping[str, Any]] = (),
     custody_label: str | None = None,
+    layer_visibility: Mapping[str, bool] | None = None,
 ) -> str:
     """Render a deck JSON for the chosen overlays + tracks + custody label.
 
-    ``layer_visibility`` keys: ``aoi``, ``tracks``, ``custody``,
-    ``footprints``, ``umbra``, ``sentinel_1``, ``sentinel_2``.
+    ``overlays`` is the already-filtered set the dashboard wants drawn —
+    AOI overlays plus whichever observation-bound overlays the user has
+    selected via the per-overlay toggle manager.  Per-source filtering
+    is no longer the renderer's job; the caller owns that.
+
+    ``base_visibility`` keys: ``aoi``, ``tracks``, ``custody``.  These
+    gate the rendering of layers that are not driven by per-overlay
+    toggles (the AOI polygon, track markers, the custody-state label).
+
+    ``layer_visibility`` is a deprecated alias kept for callers that
+    still pass the legacy keyset; only ``aoi`` / ``tracks`` / ``custody``
+    are honoured from it.  Per-source keys (``umbra`` /
+    ``sentinel_1`` / ``sentinel_2``) and ``footprints`` are ignored;
+    drop those toggles before calling.
     """
     overlays = tuple(overlays)
-    layers: list[pdk.Layer] = []
+    bv = dict(base_visibility or layer_visibility or {})
 
-    # Bitmap-layer dicts collected separately and inserted at the front of
-    # the layer list after pydeck serialization, so they render under the
-    # AOI / footprint outlines.  Per-source toggles also apply.
-    bitmap_specs: list[dict[str, Any]] = []
-    if layer_visibility.get("footprints", True):
-        bitmap_candidates = []
-        for o in overlays:
-            if o.observation_id is None:
-                continue
-            if (
-                o.source == "umbra"
-                and not layer_visibility.get("umbra", True)
-            ):
-                continue
-            if (
-                o.source == "sentinel-1"
-                and not layer_visibility.get("sentinel_1", True)
-            ):
-                continue
-            if (
-                o.source == "sentinel-2"
-                and not layer_visibility.get("sentinel_2", True)
-            ):
-                continue
-            bitmap_candidates.append(o)
-        bitmap_specs = _bitmap_layer_specs(bitmap_candidates, opacity)
+    observation_overlays = tuple(
+        o for o in overlays if o.observation_id is not None
+    )
+    bitmap_specs = _bitmap_layer_specs(observation_overlays, opacity)
 
-    if layer_visibility.get("aoi", True):
+    # Build pydeck layers in two buckets so we can splice the raw
+    # bitmap specs in between.  Final z-order (bottom to top):
+    #   basemap, AOI outline, imagery overlays (BitmapLayers),
+    #   footprints, tracks, custody label.
+    aoi_layers: list[pdk.Layer] = []
+    if bv.get("aoi", True):
         l = _build_aoi_layer(overlays)
         if l is not None:
-            layers.append(l)
+            aoi_layers.append(l)
 
-    if layer_visibility.get("footprints", True):
-        # Filter footprints by per-source toggles.
-        kept: list[OverlayArtifact] = []
-        for o in overlays:
-            if o.observation_id is None:
-                continue
-            if o.source == "umbra" and not layer_visibility.get("umbra", True):
-                continue
-            if (
-                o.source == "sentinel-1"
-                and not layer_visibility.get("sentinel_1", True)
-            ):
-                continue
-            if (
-                o.source == "sentinel-2"
-                and not layer_visibility.get("sentinel_2", True)
-            ):
-                continue
-            if (
-                o.source == "simulated"
-                and not layer_visibility.get("umbra", True)
-                and o.observation_id is not None
-            ):
-                # The follow-up Umbra collect carries source "umbra"
-                # not "simulated"; this branch is a guard for any
-                # future simulated footprints sharing the umbra toggle.
-                continue
-            kept.append(o)
-        l = _build_footprint_layer(kept, opacity)
-        if l is not None:
-            layers.append(l)
+    upper_layers: list[pdk.Layer] = []
+    l = _build_footprint_layer(observation_overlays, opacity)
+    if l is not None:
+        upper_layers.append(l)
 
-    if layer_visibility.get("tracks", True):
+    if bv.get("tracks", True):
         l = _build_track_layer(tracks)
         if l is not None:
-            layers.append(l)
+            upper_layers.append(l)
 
-    if layer_visibility.get("custody", True):
+    if bv.get("custody", True):
         l = _build_custody_text_layer(custody_label, center_lon, center_lat)
         if l is not None:
-            layers.append(l)
+            upper_layers.append(l)
 
     deck = pdk.Deck(
         map_style=_BASEMAP,
         initial_view_state=pdk.ViewState(
             latitude=center_lat, longitude=center_lon, zoom=zoom,
         ),
-        layers=layers,
+        layers=aoi_layers + upper_layers,
     )
     spec = _json.loads(deck.to_json())
+    serialized_layers = list(spec.get("layers") or [])
     if bitmap_specs:
-        # Bitmap rasters underneath every other layer.  deck.gl draws
-        # later layers on top of earlier ones.
-        spec["layers"] = bitmap_specs + (spec.get("layers") or [])
+        # Insert bitmap rasters between the AOI outline and the
+        # footprint / track / custody layers so the AOI sits beneath
+        # the imagery (no fill muddying) while operator-relevant
+        # markers stay drawn on top of the imagery.
+        aoi_count = len(aoi_layers)
+        serialized_layers = (
+            serialized_layers[:aoi_count]
+            + bitmap_specs
+            + serialized_layers[aoi_count:]
+        )
+    spec["layers"] = serialized_layers
     return _json.dumps(spec)
 
 
@@ -342,26 +332,36 @@ def overlays_with_missing_imagery(
 
 
 # ---------------------------------------------------------------------------
-# Layer-toggle config (the UI checklist option set is shared by both tabs)
+# Base-layer toggle config (per-overlay toggles are dynamic and live on
+# each tab; these are the always-present base layers).
 # ---------------------------------------------------------------------------
 
 
-LAYER_TOGGLE_OPTIONS: tuple[tuple[str, str], ...] = (
+BASE_LAYER_TOGGLE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("aoi", "AOI"),
     ("tracks", "Tracks"),
     ("custody", "Custody state"),
-    ("footprints", "Footprints"),
-    ("umbra", "Umbra SAR"),
-    ("sentinel_1", "Sentinel-1"),
-    ("sentinel_2", "Sentinel-2"),
 )
+# Backward-compatible alias retained because external callers may still
+# import the old name; the value is the new base-toggle list.
+LAYER_TOGGLE_OPTIONS = BASE_LAYER_TOGGLE_OPTIONS
 
 
-def default_visibility() -> dict[str, bool]:
-    return {key: True for key, _ in LAYER_TOGGLE_OPTIONS}
+def default_base_visibility() -> dict[str, bool]:
+    return {key: True for key, _ in BASE_LAYER_TOGGLE_OPTIONS}
 
 
-def visibility_from_checked(values: Iterable[str] | None) -> dict[str, bool]:
-    """Build a visibility dict from a Dash checklist's selected values."""
+# Backward-compatible alias.
+default_visibility = default_base_visibility
+
+
+def base_visibility_from_checked(
+    values: Iterable[str] | None,
+) -> dict[str, bool]:
+    """Build a base-visibility dict from a Dash checklist's selected values."""
     selected = set(values or ())
-    return {key: (key in selected) for key, _ in LAYER_TOGGLE_OPTIONS}
+    return {key: (key in selected) for key, _ in BASE_LAYER_TOGGLE_OPTIONS}
+
+
+# Backward-compatible alias.
+visibility_from_checked = base_visibility_from_checked

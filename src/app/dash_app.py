@@ -37,7 +37,7 @@ from layout.whitsun_replay import (
 )
 from callbacks import (
     navigation, portfolio, map_layers, entity_detail, whitsun_replay,
-    sidebar_collapse, tennent_monitoring,
+    sidebar_collapse, tennent_monitoring, evidence_viewer,
 )
 from callbacks.sidebar_collapse import (
     MAIN_CONTENT_COL,
@@ -158,6 +158,7 @@ entity_detail.register(app)
 whitsun_replay.register(app)
 tennent_monitoring.register(app)
 sidebar_collapse.register(app)
+evidence_viewer.register(app)
 
 # ---------------------------------------------------------------------------
 # Dev server

@@ -331,15 +331,19 @@ def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
         assert len(l["bounds"]) == 4
 
 
-def test_umbra_toggle_hides_real_bitmap_layers() -> None:
+def test_umbra_overlay_omitted_drops_its_bitmap_layer() -> None:
+    """The dynamic overlay manager controls visibility by filtering
+    overlays before they reach build_deck_json; Umbra rasters should
+    disappear when no Umbra overlays are passed in."""
     helpers = _import_helpers()
     overlays = load_map_overlays()
-    avail = overlays_for_scenario(overlays, "tennent")
-    visibility = helpers.default_visibility()
-    visibility["umbra"] = False
+    avail_no_umbra = tuple(
+        o for o in overlays_for_scenario(overlays, "tennent")
+        if o.source != "umbra"
+    )
     spec = json.loads(helpers.build_deck_json(
-        overlays=avail,
-        layer_visibility=visibility,
+        overlays=avail_no_umbra,
+        base_visibility=helpers.default_base_visibility(),
         opacity=0.8,
         center_lat=8.86, center_lon=114.66,
     ))
@@ -348,7 +352,7 @@ def test_umbra_toggle_hides_real_bitmap_layers() -> None:
         if l.get("@@type") == "BitmapLayer"
     ]
     assert not bitmap_layers, (
-        "BitmapLayers should be hidden when the Umbra toggle is off"
+        "BitmapLayers should be absent when no Umbra overlays are passed"
     )
 
 
@@ -433,35 +437,220 @@ def test_build_deck_json_returns_parseable_json() -> None:
     assert isinstance(parsed["layers"], list)
 
 
-def test_layer_visibility_filters_per_source() -> None:
+def test_caller_owns_per_source_filtering() -> None:
+    """Per-source filtering moved out of build_deck_json; the caller
+    now passes the already-selected overlay list.  Confirm Sentinel
+    footprints are absent when their overlays are filtered out at the
+    call site."""
     helpers = _import_helpers()
     overlays = load_map_overlays()
-    avail = overlays_for_scenario(overlays, "tennent")
-    visibility = helpers.default_visibility()
-    visibility["sentinel_1"] = False
-    visibility["sentinel_2"] = False
+    avail = tuple(
+        o for o in overlays_for_scenario(overlays, "tennent")
+        if o.source not in ("sentinel-1", "sentinel-2")
+    )
     blob = helpers.build_deck_json(
         overlays=avail,
-        layer_visibility=visibility,
+        base_visibility=helpers.default_base_visibility(),
         opacity=0.6,
         center_lat=8.86, center_lon=114.66,
     )
-    parsed = json.loads(blob)
-    # PolygonLayer for footprints should still exist (AOI), but
-    # Sentinel-1 / Sentinel-2 footprints filtered out.
-    serialized = json.dumps(parsed)
+    serialized = blob
     assert "tennent-sentinel-1" not in serialized
     assert "tennent-sentinel-2" not in serialized
 
 
-def test_visibility_from_checked_excludes_unchecked_keys() -> None:
+def test_umbra_previews_are_neutral_grayscale_rgba() -> None:
+    """Umbra preview PNGs must be perfectly grayscale (R=G=B) with a
+    sane alpha channel: nodata pixels alpha=0 so the dark basemap
+    shows through cleanly, valid pixels alpha=255 so the SAR isn't
+    blended with the basemap into a teal cast."""
+    pytest.importorskip("PIL")
+    import numpy as np
+    from PIL import Image
+
+    overlay_dir = REPO_ROOT / "src" / "app" / "assets" / "overlays"
+    pngs = sorted(overlay_dir.glob("*.png"))
+    assert pngs, f"no Umbra preview PNGs found under {overlay_dir}"
+
+    for png in pngs:
+        img = np.array(Image.open(png))
+        assert img.ndim == 3 and img.shape[2] == 4, (
+            f"{png.name} must be RGBA, got shape {img.shape}"
+        )
+        rgb = img[..., :3].astype(int)
+        alpha = img[..., 3]
+
+        # Every alpha is either 0 (nodata, fully transparent) or 255
+        # (valid SAR, fully opaque).  Anything in between would suggest
+        # the BitmapLayer is partially blending with the basemap and
+        # would re-introduce the cyan/teal cast we are guarding
+        # against.
+        unique_alphas = set(np.unique(alpha).tolist())
+        assert unique_alphas <= {0, 255}, (
+            f"{png.name} carries non-binary alpha {unique_alphas}; "
+            f"expected only 0 / 255"
+        )
+        assert 0 in unique_alphas, (
+            f"{png.name} has no transparent pixels; nodata mask is "
+            f"not being applied"
+        )
+
+        valid = alpha == 255
+        assert valid.any(), f"{png.name} has no valid (alpha=255) pixels"
+        valid_rgb = rgb[valid]
+        r = valid_rgb[:, 0]
+        g = valid_rgb[:, 1]
+        b = valid_rgb[:, 2]
+        # Strict R=G=B for every valid pixel — the preview is
+        # generated with a single grayscale value broadcast into all
+        # three channels, so any deviation would mean a colour
+        # transform was applied somewhere.
+        assert np.array_equal(r, g), (
+            f"{png.name} R != G in valid pixels — preview is not "
+            f"neutral grayscale"
+        )
+        assert np.array_equal(g, b), (
+            f"{png.name} G != B in valid pixels — preview is not "
+            f"neutral grayscale"
+        )
+        # And the median |R-G|, |G-B| metrics the dispatch asks for.
+        assert int(np.median(np.abs(r - g))) == 0
+        assert int(np.median(np.abs(g - b))) == 0
+
+
+def test_aoi_default_style_is_outline_only_with_zero_fill() -> None:
+    """The AOI polygon must default to outline-only so it never washes
+    out the imagery overlays.  ``filled=False`` is the primary guard;
+    a fully-transparent ``getFillColor`` is the belt-and-suspenders
+    backstop in case ``filled=False`` is regressed in pydeck."""
     helpers = _import_helpers()
-    vis = helpers.visibility_from_checked(["aoi", "footprints"])
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    polygon_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "PolygonLayer"
+    ]
+    # The AOI layer is the first PolygonLayer (it sits beneath the
+    # imagery in the z-order).
+    aoi_layer = polygon_layers[0]
+    assert aoi_layer.get("filled") is False, (
+        "AOI must be outline-only by default"
+    )
+    fill = aoi_layer.get("getFillColor")
+    assert isinstance(fill, list) and len(fill) == 4, fill
+    # Either fully transparent (alpha 0) or, if a fallback fill is
+    # ever introduced, no greater than the documented 0.05 cap.
+    alpha_max = helpers._AOI_MAX_FALLBACK_FILL_ALPHA
+    assert fill[3] == 0 or fill[3] <= alpha_max, (
+        f"AOI default fill alpha must be 0 (outline-only) or "
+        f"<= {alpha_max} (very-low fallback); got {fill[3]}"
+    )
+    # Outline must remain readable but not heavy.
+    line_min = aoi_layer.get("lineWidthMinPixels")
+    assert line_min is not None and line_min <= 2, line_min
+
+
+def test_aoi_renders_below_imagery_overlays() -> None:
+    """Z-order must put AOI beneath BitmapLayers so the imagery sits
+    on top, with footprints / tracks / custody markers above the
+    imagery."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    layer_types = [l.get("@@type") for l in spec.get("layers", [])]
+    # First Polygon (AOI) before any Bitmap.
+    first_polygon = layer_types.index("PolygonLayer")
+    first_bitmap = (
+        layer_types.index("BitmapLayer")
+        if "BitmapLayer" in layer_types else None
+    )
+    assert first_bitmap is not None, "expected at least one BitmapLayer"
+    assert first_polygon < first_bitmap, (
+        f"AOI polygon must render below imagery; "
+        f"got AOI at {first_polygon} and first bitmap at {first_bitmap}"
+    )
+    # Footprint polygon (last PolygonLayer) sits above all bitmaps.
+    last_bitmap = max(
+        i for i, t in enumerate(layer_types) if t == "BitmapLayer"
+    )
+    last_polygon = max(
+        i for i, t in enumerate(layer_types) if t == "PolygonLayer"
+    )
+    assert last_polygon > last_bitmap, (
+        "footprint outlines must render on top of imagery"
+    )
+
+
+def test_aoi_toggle_off_drops_aoi_layer() -> None:
+    """The AOI base toggle must still be honoured even though the
+    layer renders outline-only by default."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    visibility = helpers.default_base_visibility()
+    visibility["aoi"] = False
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=visibility,
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    layer_types = [l.get("@@type") for l in spec.get("layers", [])]
+    # When AOI is off, only the footprint PolygonLayer (above imagery)
+    # remains.  Confirm that PolygonLayer comes AFTER any BitmapLayer.
+    if "BitmapLayer" in layer_types and "PolygonLayer" in layer_types:
+        first_polygon = layer_types.index("PolygonLayer")
+        first_bitmap = layer_types.index("BitmapLayer")
+        assert first_polygon > first_bitmap, (
+            "with AOI off, the only PolygonLayer is the footprint, "
+            "which must sit above the imagery"
+        )
+
+
+def test_aoi_layer_present_for_whitsun_at_event_one() -> None:
+    """Whitsun event 01 reveals only the AOI; even with no observation
+    overlays, the AOI outline must render."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=1,
+    )
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=9.98, center_lon=114.63,
+    ))
+    polygon_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "PolygonLayer"
+    ]
+    assert polygon_layers, "AOI PolygonLayer must render at event 01"
+    assert polygon_layers[0].get("filled") is False
+
+
+def test_base_visibility_from_checked_excludes_unchecked_keys() -> None:
+    helpers = _import_helpers()
+    vis = helpers.base_visibility_from_checked(["aoi"])
     assert vis["aoi"] is True
-    assert vis["footprints"] is True
-    assert vis["umbra"] is False
-    assert vis["sentinel_1"] is False
     assert vis["tracks"] is False
+    assert vis["custody"] is False
+    # Old per-source keys are no longer part of the base toggle set.
+    assert "umbra" not in vis
+    assert "sentinel_1" not in vis
+    assert "footprints" not in vis
 
 
 # ---------------------------------------------------------------------------

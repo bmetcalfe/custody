@@ -22,12 +22,17 @@ import dash_deck
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 
-from custody.demo import load_map_overlays
+from custody.demo import load_evidence_manifest, load_map_overlays
+from custody.demo.map_overlays import (
+    format_overlay_label,
+    is_observation_overlay,
+)
 from custody.ingest.sentinel import load_observation_cache
+from layout.evidence_viewer import build_tennent_evidence_panel
 from layout.map_overlays_helpers import (
-    LAYER_TOGGLE_OPTIONS,
+    BASE_LAYER_TOGGLE_OPTIONS,
     build_deck_json,
-    default_visibility,
+    default_base_visibility,
 )
 
 # Reuse the small style helpers from the Whitsun replay layout so the
@@ -56,6 +61,7 @@ TENNENT_MONITORING_ROOT = "tennent-monitoring-root"
 # Map / overlay panel IDs.
 TENNENT_MAP_DECK = "tennent-monitoring-map-deck"
 TENNENT_MAP_LAYER_TOGGLES = "tennent-monitoring-map-layers"
+TENNENT_OVERLAY_TOGGLES = "tennent-monitoring-overlay-toggles"
 TENNENT_MAP_OPACITY = "tennent-monitoring-map-opacity"
 TENNENT_MAP_OVERLAY_BADGES = "tennent-monitoring-map-overlay-badges"
 TENNENT_MAP_MISSING_IMAGERY = "tennent-monitoring-map-missing-imagery"
@@ -280,22 +286,42 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
     )
     center_lat = float(aoi_meta.get("center_lat_deg") or 8.8583)
     center_lon = float(aoi_meta.get("center_lon_deg") or 114.6561)
+
+    initial_default_obs_ids = tuple(
+        o.overlay_id for o in tennent_overlays
+        if is_observation_overlay(o) and o.default_visible
+    )
+    initial_default_set = set(initial_default_obs_ids)
+    initial_active_overlays = tuple(
+        o for o in tennent_overlays
+        if (not is_observation_overlay(o))
+        or o.overlay_id in initial_default_set
+    )
     initial_deck = build_deck_json(
-        overlays=tennent_overlays,
-        layer_visibility=default_visibility(),
-        opacity=0.6,
+        overlays=initial_active_overlays,
+        base_visibility=default_base_visibility(),
+        opacity=1.0,
         center_lat=center_lat,
         center_lon=center_lon,
         zoom=12.0,
     )
+    # Tennent has no event timeline; every overlay is always available.
+    overlay_options = [
+        {"label": format_overlay_label(o), "value": o.overlay_id}
+        for o in tennent_overlays
+        if is_observation_overlay(o)
+    ]
+    overlay_options.sort(
+        key=lambda opt: (opt["label"]),
+    )
+    layer_default_keys = ["aoi"]
     body = html.Div(
         [
             _muted_caption(
-                "Same overlay schema as the Whitsun replay; static "
-                "context — no event timeline.  No georeferenced "
-                "imagery is committed yet, so observation footprints "
-                "render as outlines and the panel below names every "
-                "missing asset."
+                "Umbra SAR preview overlays are generated from "
+                "committed GEC scenes.  Sentinel observations "
+                "currently render as weak-signal footprints unless "
+                "preview imagery is available."
             ),
             dash_deck.DeckGL(
                 id=TENNENT_MAP_DECK,
@@ -303,7 +329,7 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
                 mapboxKey="",
                 tooltip={"text": "{tooltip}"},
                 style={
-                    "width": "100%", "height": "320px",
+                    "width": "100%", "height": "420px",
                     "position": "relative",
                     "borderRadius": "4px", "overflow": "hidden",
                 },
@@ -311,16 +337,16 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
             html.Div(
                 [
                     html.Span(
-                        "layers:",
+                        "base layers:",
                         style={"color": _MUTED, "fontSize": "0.72rem"},
                     ),
                     dcc.Checklist(
                         id=TENNENT_MAP_LAYER_TOGGLES,
                         options=[
                             {"label": label, "value": key}
-                            for key, label in LAYER_TOGGLE_OPTIONS
+                            for key, label in BASE_LAYER_TOGGLE_OPTIONS
                         ],
-                        value=[k for k, _ in LAYER_TOGGLE_OPTIONS],
+                        value=layer_default_keys,
                         inline=True,
                         inputStyle={"marginRight": "4px"},
                         labelStyle={
@@ -341,12 +367,40 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
             html.Div(
                 [
                     html.Span(
+                        "imagery overlays:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Checklist(
+                        id=TENNENT_OVERLAY_TOGGLES,
+                        options=overlay_options,
+                        value=list(initial_default_obs_ids),
+                        inputStyle={"marginRight": "4px"},
+                        labelStyle={
+                            "color": _TEXT,
+                            "fontSize": "0.72rem",
+                            "marginRight": "0",
+                            "display": "block",
+                        },
+                        style={"marginLeft": "8px"},
+                    ),
+                ],
+                style={
+                    "marginTop": "6px",
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "alignItems": "flex-start",
+                    "gap": "8px",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
                         "image opacity:",
                         style={"color": _MUTED, "fontSize": "0.72rem"},
                     ),
                     dcc.Slider(
                         id=TENNENT_MAP_OPACITY,
-                        min=0.0, max=1.0, step=0.05, value=0.6,
+                        min=0.0, max=1.0, step=0.05, value=1.0,
                         marks=None,
                         tooltip={"placement": "bottom",
                                  "always_visible": False},
@@ -358,6 +412,7 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
                 id=TENNENT_MAP_OVERLAY_BADGES,
                 style={"marginTop": "8px"},
             ),
+            _build_tennent_map_legend(),
             html.Div(
                 id=TENNENT_MAP_MISSING_IMAGERY,
                 style={
@@ -372,6 +427,36 @@ def _build_map_panel(aoi_meta: Mapping[str, Any]) -> dbc.Card:
     return _panel("Map / evidence overlays", body)
 
 
+def _build_tennent_map_legend() -> html.Div:
+    line_style = {
+        "color": _MUTED,
+        "fontSize": "0.7rem",
+        "fontStyle": "italic",
+        "lineHeight": "1.4",
+    }
+    return html.Div(
+        [
+            html.Div(
+                "Umbra SAR — high-confidence confirmation imagery",
+                style=line_style,
+            ),
+            html.Div(
+                "Sentinel — weak-signal cueing / context",
+                style=line_style,
+            ),
+            html.Div(
+                "footprint-only — no image preview currently loaded",
+                style=line_style,
+            ),
+        ],
+        style={
+            "marginTop": "8px",
+            "padding": "6px 8px",
+            "borderTop": f"1px solid {_PANEL_BORDER}",
+        },
+    )
+
+
 def _build_observations_panel() -> dbc.Card:
     obs = load_observation_cache(_TENNENT_OBSERVATIONS_PATH)
 
@@ -381,8 +466,8 @@ def _build_observations_panel() -> dbc.Card:
             html.Th("timestamp"),
             html.Th("cloud %"),
             html.Th("confidence_weight"),
-            html.Th("for detection"),
-            html.Th("for context"),
+            html.Th("cue usable"),
+            html.Th("context usable"),
         ],
         style={"color": _MUTED, "fontSize": "0.75rem"},
     )
@@ -547,11 +632,13 @@ def _build_not_yet_panel() -> dbc.Card:
 def build_tennent_monitoring_layout() -> html.Div:
     """Return the complete Tennent monitoring tab tree."""
     aoi_meta = _load_aoi_metadata()
+    evidence_scenes = load_evidence_manifest()
     return html.Div(
         [
             _build_header(aoi_meta),
             _build_aoi_panel(aoi_meta),
             _build_map_panel(aoi_meta),
+            build_tennent_evidence_panel(evidence_scenes),
             _build_observations_panel(),
             _build_interpretation_panel(),
             _build_not_yet_panel(),

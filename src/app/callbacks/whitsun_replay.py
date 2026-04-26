@@ -34,18 +34,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from dash import Dash, Input, Output, html
+from dash import Dash, Input, Output, State, ctx, html
 import dash_bootstrap_components as dbc
 
 from custody.demo import load_whitsun_decision_trace
 from custody.demo.decision_trace import DecisionTrace
 
 from custody.demo import load_map_overlays, available_overlays_for
+from custody.demo.map_overlays import (
+    format_overlay_label,
+    is_observation_overlay,
+    overlay_kind_label,
+)
 
 from layout.map_overlays_helpers import (
+    base_visibility_from_checked,
     build_deck_json,
     overlays_with_missing_imagery,
-    visibility_from_checked,
 )
 from layout.tennent_monitoring import (
     TENNENT_SIDEBAR_BLOCK,
@@ -67,6 +72,8 @@ from layout.whitsun_replay import (
     WHITSUN_OBSERVATIONS_PANEL,
     WHITSUN_OPTIONS_TABLE,
     WHITSUN_OUTCOME,
+    WHITSUN_OVERLAY_STORE,
+    WHITSUN_OVERLAY_TOGGLES,
     WHITSUN_POLICY_RATIONALE,
     WHITSUN_SCORE_BREAKDOWN,
     WHITSUN_SELECTED_EVENT_STORE,
@@ -74,6 +81,7 @@ from layout.whitsun_replay import (
     WHITSUN_SIDEBAR_REPLAY,
     WHITSUN_TIMELINE_RADIO,
     WHITSUN_TIMELINE_STEP_COUNTER,
+    _overlay_toggle_options,
     data_mode_badge,
     source_badge,
 )
@@ -155,7 +163,15 @@ def _custody_label_for(current_ord: int) -> str | None:
 
 
 def _build_overlay_badges(overlays) -> html.Div:
-    """One badge per overlay summarising source / image-kind / confidence."""
+    """One badge per overlay in audience-facing prose.
+
+    Format:
+      ``<display_name> · image overlay · confidence X.XX``  for image rasters
+      ``<display_name> · weak-signal footprint · confidence X.XX``  for Sentinel
+      ``<display_name> · footprint · confidence X.XX``  for non-image,
+                                                        non-Sentinel overlays
+    AOI chips render as ``<display_name>`` only.
+    """
     if not overlays:
         return _na("no overlays available at this step")
     chips = []
@@ -170,13 +186,9 @@ def _build_overlay_badges(overlays) -> html.Div:
                 ),
             )
             continue
-        cw = (
-            f" w={o.confidence_weight:.2f}"
-            if o.confidence_weight is not None else ""
-        )
         chips.append(
             dbc.Badge(
-                f"{o.display_name} · {o.image_kind}{cw}",
+                _format_overlay_badge_text(o),
                 color=(
                     "primary" if o.source == "umbra"
                     else "info" if o.source == "sentinel-1"
@@ -192,6 +204,15 @@ def _build_overlay_badges(overlays) -> html.Div:
             "display": "flex", "flexWrap": "wrap", "gap": "4px",
         },
     )
+
+
+def _format_overlay_badge_text(o) -> str:
+    """Audience-facing badge text for one overlay.
+
+    Mirrors the dynamic-toggle Checklist label format so the visible
+    legend and the map-side badges read the same way.
+    """
+    return format_overlay_label(o)
 
 
 def _build_missing_imagery_note(overlays) -> html.Div:
@@ -467,11 +488,11 @@ def _render_observations(
                                 obs.get("confidence_weight", "n/a"),
                             ),
                             _kv(
-                                "usable_for_detection",
+                                "cue usable",
                                 obs.get("usable_for_detection"),
                             ),
                             _kv(
-                                "usable_for_context",
+                                "context usable",
                                 obs.get("usable_for_context"),
                             ),
                             _kv("timestamp", obs.get("timestamp")),
@@ -1000,32 +1021,108 @@ def register(app: Dash) -> None:
         )
 
     @app.callback(
+        Output(WHITSUN_OVERLAY_TOGGLES, "options"),
+        Output(WHITSUN_OVERLAY_TOGGLES, "value"),
+        Output(WHITSUN_OVERLAY_STORE, "data"),
+        Input(WHITSUN_SELECTED_EVENT_STORE, "data"),
+        Input(WHITSUN_OVERLAY_TOGGLES, "value"),
+        State(WHITSUN_OVERLAY_STORE, "data"),
+    )
+    def _manage_overlay_toggles(event_id, checklist_value, store_data):
+        """Drive the per-overlay Checklist from the selected event ordinal.
+
+        - When the user toggles a checkbox, persist the new selection.
+        - When the event ordinal changes, intersect the stored selection
+          with the now-available set and add any newly-revealed overlays
+          whose ``default_visible`` field is true.  Newly-revealed
+          defaults only auto-add when the user is moving forward past
+          the highest ordinal they have visited; backward navigation
+          and re-visits do not re-toggle defaults the user already
+          turned off.
+        """
+        event = _TRACE.get_event(event_id) if event_id else {}
+        ord_ = _ord_for(event)
+        available = available_overlays_for(
+            _OVERLAYS, scenario_id="whitsun", current_ordinal=ord_,
+        )
+        available_obs = [o for o in available if is_observation_overlay(o)]
+        available_ids = {o.overlay_id for o in available_obs}
+
+        store = dict(store_data or {})
+        prev_selected = set(store.get("selected_ids") or [])
+        last_ordinal = store.get("last_ordinal")
+
+        triggered = ctx.triggered_id
+        if triggered == WHITSUN_OVERLAY_TOGGLES:
+            new_selected = set(checklist_value or []) & available_ids
+        else:
+            # Event-driven update.  Drop overlays that are no longer
+            # available, then add any default-visible overlay whose
+            # reveal ordinal sits strictly above the highest ordinal
+            # the user has reached.
+            new_selected = prev_selected & available_ids
+            high_water = int(last_ordinal) if last_ordinal is not None else -1
+            if ord_ > high_water:
+                for o in available_obs:
+                    if (
+                        o.default_visible
+                        and o.visible_from_event_ordinal > high_water
+                        and o.visible_from_event_ordinal <= ord_
+                    ):
+                        new_selected.add(o.overlay_id)
+
+        # Always also include AOI overlays' ids in the store so the
+        # user-facing selection is purely the observation list.  AOI
+        # rendering is gated by the base toggle.
+        options = _overlay_toggle_options(available_obs)
+        ordered_value = [
+            opt["value"] for opt in options if opt["value"] in new_selected
+        ]
+        new_store = {
+            "selected_ids": ordered_value,
+            "last_ordinal": max(
+                ord_,
+                int(last_ordinal) if last_ordinal is not None else 0,
+            ),
+        }
+        return options, ordered_value, new_store
+
+    @app.callback(
         Output(WHITSUN_MAP_DECK, "data"),
         Output(WHITSUN_MAP_OVERLAY_BADGES, "children"),
         Output(WHITSUN_MAP_MISSING_IMAGERY, "children"),
         Input(WHITSUN_SELECTED_EVENT_STORE, "data"),
         Input(WHITSUN_MAP_LAYER_TOGGLES, "value"),
+        Input(WHITSUN_OVERLAY_STORE, "data"),
         Input(WHITSUN_MAP_OPACITY, "value"),
     )
-    def _refresh_whitsun_map(event_id, checked_layers, opacity):
+    def _refresh_whitsun_map(event_id, base_layers, store_data, opacity):
         event = _TRACE.get_event(event_id) if event_id else {}
         ord_ = _ord_for(event)
-        scenario_overlays = available_overlays_for(
+        available = available_overlays_for(
             _OVERLAYS, scenario_id="whitsun", current_ordinal=ord_,
         )
-        visibility = visibility_from_checked(checked_layers)
+        selected_ids = set(
+            (store_data or {}).get("selected_ids") or [],
+        )
+        active = tuple(
+            o for o in available
+            if (not is_observation_overlay(o)) or o.overlay_id in selected_ids
+        )
+        active_obs = tuple(o for o in active if is_observation_overlay(o))
+        base_visibility = base_visibility_from_checked(base_layers)
         deck_json = build_deck_json(
-            overlays=scenario_overlays,
-            layer_visibility=visibility,
-            opacity=float(opacity if opacity is not None else 0.6),
+            overlays=active,
+            base_visibility=base_visibility,
+            opacity=float(opacity if opacity is not None else 1.0),
             center_lat=_WHITSUN_AOI_CENTER[0],
             center_lon=_WHITSUN_AOI_CENTER[1],
             zoom=11.5,
             tracks=_revealed_track_positions(ord_),
             custody_label=_custody_label_for(ord_),
         )
-        badges = _build_overlay_badges(scenario_overlays)
-        missing = _build_missing_imagery_note(scenario_overlays)
+        badges = _build_overlay_badges(active_obs)
+        missing = _build_missing_imagery_note(active_obs)
         return deck_json, badges, missing
 
     @app.callback(

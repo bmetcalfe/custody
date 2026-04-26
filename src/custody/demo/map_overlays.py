@@ -32,9 +32,14 @@ MAP_OVERLAYS_PATH = WHITSUN_DECISION_TRACE_DEFAULT_OVERLAY_PATH
 _VALID_SOURCES = (
     "umbra", "sentinel-1", "sentinel-2", "simulated",
 )
-_VALID_IMAGE_KINDS = (
-    "png", "geotiff", "cog", "thumbnail", "footprint-only",
-)
+# ``png`` and ``png_preview`` are equivalent; ``footprint-only`` and
+# ``footprint_only`` are equivalent.  The newer underscored names are
+# what the dynamic overlay manager prefers; the older names remain
+# valid so existing fixture entries do not need a flag-day rename.
+_IMAGE_KIND_RASTERS = ("png", "png_preview", "sentinel_preview",
+                       "geotiff", "cog", "thumbnail")
+_IMAGE_KIND_FOOTPRINTS = ("footprint-only", "footprint_only")
+_VALID_IMAGE_KINDS = _IMAGE_KIND_RASTERS + _IMAGE_KIND_FOOTPRINTS
 _VALID_DATA_MODES = ("real", "fixture", "simulated")
 
 
@@ -60,6 +65,15 @@ class OverlayArtifact:
     usable_for_context: bool | None
     caveats: tuple[str, ...]
     missing_asset_reason: str | None
+    # Fields added for the dynamic overlay manager (ADR-0021 demo
+    # surface).  All default to None / sensible falsy values so older
+    # fixture entries remain loadable without a migration.
+    collection_time: str | None = None
+    default_visible: bool = False
+    resolution_m: float | None = None
+    cloud_coverage: float | None = None
+    weak_signal: bool = False
+    confirmation_layer: bool = False
 
 
 def _coerce_bounds(raw) -> tuple[float, float, float, float] | None:
@@ -123,6 +137,18 @@ def _overlay_from_mapping(rec: Mapping[str, Any]) -> OverlayArtifact:
         usable_for_context=rec.get("usable_for_context"),
         caveats=tuple(rec.get("caveats") or ()),
         missing_asset_reason=rec.get("missing_asset_reason"),
+        collection_time=rec.get("collection_time"),
+        default_visible=bool(rec.get("default_visible", False)),
+        resolution_m=(
+            float(rec["resolution_m"])
+            if rec.get("resolution_m") is not None else None
+        ),
+        cloud_coverage=(
+            float(rec["cloud_coverage"])
+            if rec.get("cloud_coverage") is not None else None
+        ),
+        weak_signal=bool(rec.get("weak_signal", False)),
+        confirmation_layer=bool(rec.get("confirmation_layer", False)),
     )
 
 
@@ -173,6 +199,76 @@ def overlay_by_id(
 
 def has_image_asset(overlay: OverlayArtifact) -> bool:
     return (
-        overlay.image_kind in ("png", "geotiff", "cog", "thumbnail")
+        overlay.image_kind in _IMAGE_KIND_RASTERS
         and (overlay.image_path is not None or overlay.asset_url is not None)
     )
+
+
+def is_observation_overlay(overlay: OverlayArtifact) -> bool:
+    """True if the overlay is bound to an observation (i.e., not an AOI)."""
+    return overlay.observation_id is not None
+
+
+_SOURCE_LABELS = {
+    "umbra": "Umbra SAR",
+    "sentinel-1": "Sentinel-1",
+    "sentinel-2": "Sentinel-2",
+    "simulated": "Simulated",
+}
+
+
+def _date_only(timestamp: str | None) -> str | None:
+    """Trim an ISO timestamp to its YYYY-MM-DD prefix when possible."""
+    if not timestamp:
+        return None
+    s = str(timestamp)
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return s
+
+
+def overlay_kind_label(overlay: OverlayArtifact) -> str:
+    """Audience-facing kind tag used in checklist labels and badges.
+
+    - ``image overlay`` for committed rasters
+    - ``weak-signal image/footprint`` for Sentinel sources without raster
+    - ``footprint`` for any other footprint-only entry
+    """
+    if has_image_asset(overlay):
+        return "image overlay"
+    if overlay.source in ("sentinel-1", "sentinel-2"):
+        return "weak-signal image/footprint"
+    return "footprint"
+
+
+def format_overlay_label(overlay: OverlayArtifact) -> str:
+    """Build the per-overlay label used in the dynamic toggle checklist.
+
+    Matches the dispatch examples:
+      ``Umbra SAR 2023-12-06 · 0.5 m · image overlay · confidence 1.00``
+      ``Sentinel-2 2023-12-12 · 8% cloud · weak-signal image/footprint · confidence 0.30``
+
+    AOI overlays (no observation_id) fall back to ``display_name``.
+    """
+    if not is_observation_overlay(overlay):
+        return overlay.display_name
+    parts: list[str] = []
+    parts.append(_SOURCE_LABELS.get(overlay.source, overlay.source))
+    date = _date_only(overlay.collection_time)
+    if date:
+        parts.append(date)
+    if overlay.source == "sentinel-2" and overlay.cloud_coverage is not None:
+        parts.append(f"{int(round(overlay.cloud_coverage))}% cloud")
+    elif overlay.resolution_m is not None:
+        parts.append(_format_resolution(overlay.resolution_m))
+    parts.append(overlay_kind_label(overlay))
+    if overlay.confidence_weight is not None:
+        parts.append(f"confidence {overlay.confidence_weight:.2f}")
+    return " · ".join(parts)
+
+
+def _format_resolution(meters: float) -> str:
+    """Render a SAR ground-resolution value (e.g. 0.25 → ``0.25 m``)."""
+    if abs(meters - round(meters)) < 1e-6:
+        return f"{int(round(meters))} m"
+    return f"{meters:g} m"

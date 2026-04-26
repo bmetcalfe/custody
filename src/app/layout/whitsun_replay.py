@@ -26,10 +26,16 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from custody.demo import load_whitsun_decision_trace, load_map_overlays
+from custody.demo.map_overlays import (
+    available_overlays_for,
+    format_overlay_label,
+    is_observation_overlay,
+)
+from layout.evidence_viewer import build_whitsun_evidence_panel
 from layout.map_overlays_helpers import (
-    LAYER_TOGGLE_OPTIONS,
+    BASE_LAYER_TOGGLE_OPTIONS,
     build_deck_json,
-    default_visibility,
+    default_base_visibility,
 )
 
 
@@ -58,6 +64,8 @@ WHITSUN_CONTEXT_MAP = "whitsun-replay-context-map"
 # Map / overlay panel IDs.
 WHITSUN_MAP_DECK = "whitsun-replay-map-deck"
 WHITSUN_MAP_LAYER_TOGGLES = "whitsun-replay-map-layers"
+WHITSUN_OVERLAY_TOGGLES = "whitsun-replay-overlay-toggles"
+WHITSUN_OVERLAY_STORE = "whitsun-replay-overlay-store"
 WHITSUN_MAP_OPACITY = "whitsun-replay-map-opacity"
 WHITSUN_MAP_OVERLAY_BADGES = "whitsun-replay-map-overlay-badges"
 WHITSUN_MAP_MISSING_IMAGERY = "whitsun-replay-map-missing-imagery"
@@ -108,6 +116,65 @@ def data_mode_badge(mode: str | None) -> dbc.Badge:
 
 def _muted(text: str) -> html.Span:
     return html.Span(text, style={"color": _MUTED, "fontSize": "0.75rem"})
+
+
+def _overlay_toggle_options(available_overlays):
+    """Build the dynamic per-overlay Checklist ``options`` list.
+
+    AOI overlays are excluded — the AOI base toggle covers them.
+    Observation-bound overlays render in ordinal order so the user
+    sees a stable list as new collects are revealed.
+    """
+    obs_overlays = [
+        o for o in available_overlays if is_observation_overlay(o)
+    ]
+    obs_overlays.sort(
+        key=lambda o: (
+            o.visible_from_event_ordinal,
+            o.collection_time or "",
+            o.overlay_id,
+        ),
+    )
+    return [
+        {"label": format_overlay_label(o), "value": o.overlay_id}
+        for o in obs_overlays
+    ]
+
+
+def _build_map_legend() -> html.Div:
+    """Small legend explaining what each map layer means.
+
+    Mirrors the operational hierarchy: Umbra is the high-confidence
+    confirmation layer, Sentinel is a weak-signal cueing / context
+    layer, and footprint-only entries indicate no preview is loaded.
+    """
+    line_style = {
+        "color": _MUTED,
+        "fontSize": "0.7rem",
+        "fontStyle": "italic",
+        "lineHeight": "1.4",
+    }
+    return html.Div(
+        [
+            html.Div(
+                "Umbra SAR — high-confidence confirmation imagery",
+                style=line_style,
+            ),
+            html.Div(
+                "Sentinel — weak-signal cueing / context",
+                style=line_style,
+            ),
+            html.Div(
+                "footprint-only — no image preview currently loaded",
+                style=line_style,
+            ),
+        ],
+        style={
+            "marginTop": "8px",
+            "padding": "6px 8px",
+            "borderTop": f"1px solid {_PANEL_BORDER}",
+        },
+    )
 
 
 def _panel(title: str, body, panel_id: str | None = None) -> dbc.Card:
@@ -242,25 +309,34 @@ def build_whitsun_replay_layout() -> html.Div:
     aoi_center_lon = float(meta.get("aoi_center_lon_deg") or 114.63)
 
     initial_overlays = load_map_overlays()
+    initial_available = available_overlays_for(
+        initial_overlays, scenario_id="whitsun", current_ordinal=1,
+    )
+    initial_selected_ids = tuple(
+        o.overlay_id for o in initial_available
+        if not is_observation_overlay(o) or o.default_visible
+    )
+    initial_selected_set = set(initial_selected_ids)
+    initial_active_overlays = tuple(
+        o for o in initial_available if o.overlay_id in initial_selected_set
+    )
     initial_deck = build_deck_json(
-        overlays=tuple(
-            o for o in initial_overlays
-            if o.scenario_id == "whitsun"
-            and o.visible_from_event_ordinal <= 1
-        ),
-        layer_visibility=default_visibility(),
-        opacity=0.6,
+        overlays=initial_active_overlays,
+        base_visibility=default_base_visibility(),
+        opacity=1.0,
         center_lat=aoi_center_lat,
         center_lon=aoi_center_lon,
     )
 
+    initial_overlay_options = _overlay_toggle_options(initial_available)
+
     map_body = html.Div(
         [
             html.Div(
-                "Footprints + AOI on a real map.  No georeferenced "
-                "imagery is committed yet, so observation footprints "
-                "currently render as outlines and the panel says so "
-                "explicitly per source.",
+                "Umbra SAR preview overlays are generated from "
+                "committed GEC scenes.  Sentinel observations "
+                "currently render as weak-signal footprints unless "
+                "preview imagery is available.",
                 style={
                     "color": _MUTED,
                     "fontSize": "0.72rem",
@@ -274,7 +350,7 @@ def build_whitsun_replay_layout() -> html.Div:
                 mapboxKey="",
                 tooltip={"text": "{tooltip}"},
                 style={
-                    "width": "100%", "height": "320px",
+                    "width": "100%", "height": "560px",
                     "position": "relative",
                     "borderRadius": "4px", "overflow": "hidden",
                 },
@@ -282,16 +358,16 @@ def build_whitsun_replay_layout() -> html.Div:
             html.Div(
                 [
                     html.Span(
-                        "layers:",
+                        "base layers:",
                         style={"color": _MUTED, "fontSize": "0.72rem"},
                     ),
                     dcc.Checklist(
                         id=WHITSUN_MAP_LAYER_TOGGLES,
                         options=[
                             {"label": label, "value": key}
-                            for key, label in LAYER_TOGGLE_OPTIONS
+                            for key, label in BASE_LAYER_TOGGLE_OPTIONS
                         ],
-                        value=[k for k, _ in LAYER_TOGGLE_OPTIONS],
+                        value=[k for k, _ in BASE_LAYER_TOGGLE_OPTIONS],
                         inline=True,
                         inputStyle={"marginRight": "4px"},
                         labelStyle={
@@ -312,12 +388,47 @@ def build_whitsun_replay_layout() -> html.Div:
             html.Div(
                 [
                     html.Span(
+                        "imagery overlays:",
+                        style={"color": _MUTED, "fontSize": "0.72rem"},
+                    ),
+                    dcc.Checklist(
+                        id=WHITSUN_OVERLAY_TOGGLES,
+                        options=initial_overlay_options,
+                        value=list(initial_selected_ids),
+                        inputStyle={"marginRight": "4px"},
+                        labelStyle={
+                            "color": _TEXT,
+                            "fontSize": "0.72rem",
+                            "marginRight": "0",
+                            "display": "block",
+                        },
+                        style={"marginLeft": "8px"},
+                    ),
+                ],
+                style={
+                    "marginTop": "6px",
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "alignItems": "flex-start",
+                    "gap": "8px",
+                },
+            ),
+            dcc.Store(
+                id=WHITSUN_OVERLAY_STORE,
+                data={
+                    "selected_ids": list(initial_selected_ids),
+                    "last_ordinal": 1,
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
                         "image opacity:",
                         style={"color": _MUTED, "fontSize": "0.72rem"},
                     ),
                     dcc.Slider(
                         id=WHITSUN_MAP_OPACITY,
-                        min=0.0, max=1.0, step=0.05, value=0.6,
+                        min=0.0, max=1.0, step=0.05, value=1.0,
                         marks=None,
                         tooltip={"placement": "bottom",
                                  "always_visible": False},
@@ -329,6 +440,7 @@ def build_whitsun_replay_layout() -> html.Div:
                 id=WHITSUN_MAP_OVERLAY_BADGES,
                 style={"marginTop": "8px"},
             ),
+            _build_map_legend(),
             html.Div(
                 id=WHITSUN_MAP_MISSING_IMAGERY,
                 style={
@@ -386,6 +498,7 @@ def build_whitsun_replay_layout() -> html.Div:
                                 "Map / evidence overlays",
                                 map_body,
                             ),
+                            build_whitsun_evidence_panel(),
                         ],
                         width=4,
                         style={"paddingRight": "10px"},

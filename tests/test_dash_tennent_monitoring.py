@@ -200,9 +200,11 @@ def test_sidebar_callback_outputs_cover_all_three_sidebars() -> None:
 
 def test_sidebar_callback_unchanged_count() -> None:
     """Tab-swap is one callback (extended outputs); collapse adds two;
-    map overlays add two more (Whitsun + Tennent)."""
+    map overlays add two more (Whitsun + Tennent); the dynamic overlay
+    manager on Whitsun adds one; the Evidence Viewer adds two more
+    (Whitsun + Tennent)."""
     dash_app = _import_dash_app()
-    assert len(dash_app.app.callback_map) == 18
+    assert len(dash_app.app.callback_map) == 21
 
 
 # ---------------------------------------------------------------------------

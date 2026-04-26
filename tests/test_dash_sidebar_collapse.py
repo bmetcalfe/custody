@@ -171,7 +171,7 @@ def test_total_callback_count() -> None:
     """Regression guard against accidentally re-registering a callback
     when extending the dashboard."""
     dash_app = _import_dash_app()
-    assert len(dash_app.app.callback_map) == 18
+    assert len(dash_app.app.callback_map) == 21
 
 
 def test_apply_callback_outputs_three_targets() -> None:

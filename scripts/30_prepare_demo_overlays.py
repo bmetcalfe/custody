@@ -29,9 +29,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import matplotlib.image as mpimg
 import numpy as np
 import rasterio
+from PIL import Image
 from rasterio.enums import Resampling
 from rasterio.vrt import WarpedVRT
 
@@ -109,6 +109,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "usable_for_context": None,
         "caveats": ["AOI polygon, not imagery"],
         "missing_asset_reason": None,
+        "collection_time": None,
+        "default_visible": True,
+        "resolution_m": None,
+        "cloud_coverage": None,
+        "weak_signal": False,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "whitsun-sentinel-2-low-cloud-20231212",
@@ -136,6 +142,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
+        "collection_time": "2023-12-12",
+        "default_visible": True,
+        "resolution_m": None,
+        "cloud_coverage": 8,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "whitsun-sentinel-1-grd-20231210",
@@ -163,6 +175,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-1 GRD raster; footprint-only"
         ),
+        "collection_time": "2023-12-10",
+        "default_visible": True,
+        "resolution_m": 10.0,
+        "cloud_coverage": None,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "whitsun-sentinel-2-cloudy-20231215",
@@ -190,6 +208,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
+        "collection_time": "2023-12-15",
+        "default_visible": False,
+        "resolution_m": None,
+        "cloud_coverage": 72,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "whitsun-umbra-followup-20231213",
@@ -212,6 +236,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "usable_for_context": True,
         "caveats": ["simulated follow-up Umbra collect; demo scaffolding"],
         "missing_asset_reason": "simulated record; no upstream raster",
+        "collection_time": "2023-12-13",
+        "default_visible": True,
+        "resolution_m": 0.5,
+        "cloud_coverage": None,
+        "weak_signal": False,
+        "confirmation_layer": True,
     },
     {
         "overlay_id": "tennent-aoi",
@@ -234,6 +264,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "usable_for_context": None,
         "caveats": ["AOI polygon, not imagery"],
         "missing_asset_reason": None,
+        "collection_time": None,
+        "default_visible": True,
+        "resolution_m": None,
+        "cloud_coverage": None,
+        "weak_signal": False,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "tennent-sentinel-1-grd-20230715",
@@ -261,6 +297,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-1 GRD raster; footprint-only"
         ),
+        "collection_time": "2023-07-15",
+        "default_visible": False,
+        "resolution_m": 10.0,
+        "cloud_coverage": None,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "tennent-sentinel-2-low-cloud-20230718",
@@ -288,6 +330,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
+        "collection_time": "2023-07-18",
+        "default_visible": False,
+        "resolution_m": None,
+        "cloud_coverage": 12,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
     {
         "overlay_id": "tennent-sentinel-2-cloudy-20230728",
@@ -315,6 +363,12 @@ _NON_UMBRA_OVERLAYS: list[dict[str, Any]] = [
         "missing_asset_reason": (
             "no committed Sentinel-2 RGB preview; footprint-only"
         ),
+        "collection_time": "2023-07-28",
+        "default_visible": False,
+        "resolution_m": None,
+        "cloud_coverage": 85,
+        "weak_signal": True,
+        "confirmation_layer": False,
     },
 ]
 
@@ -389,12 +443,22 @@ def generate_preview(
     max_width: int = 768,
     force: bool = False,
 ) -> tuple[float, float, float, float]:
-    """Reproject to EPSG:4326, downsample, log-stretch, write PNG.
+    """Reproject to EPSG:4326, downsample, log-stretch, write RGBA PNG.
+
+    Output PNG layout:
+        - valid pixels: R = G = B = ``stretched_uint8``, alpha = 255
+        - nodata / outside-footprint pixels: alpha = 0 (fully transparent)
+
+    The transparent nodata mask is what keeps the Umbra preview neutral
+    grayscale in deck.gl: an opaque black halo at any sub-1.0 BitmapLayer
+    opacity blends with the basemap and produces a teal / cyan cast,
+    which is misleading for a SAR-amplitude layer.
 
     Returns the EPSG:4326 axis-aligned bounds ``(west, south, east, north)``.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(gec_path) as src:
+        nodata = src.nodata
         with WarpedVRT(src, crs="EPSG:4326") as vrt:
             full_w, full_h = vrt.width, vrt.height
             scale = max(1, full_w // max_width)
@@ -414,21 +478,44 @@ def generate_preview(
             )
 
     arr = data.astype("float32")
+    # Valid-pixel mask: anything strictly positive AND not the
+    # source nodata sentinel.  Umbra GEC tiles fill non-imaged area
+    # with zero, so ``arr > 0`` is the conservative valid mask.
+    valid_mask = np.isfinite(arr) & (arr > 0)
+    if nodata is not None:
+        try:
+            valid_mask &= arr != float(nodata)
+        except (TypeError, ValueError):
+            pass
+
     # SAR amplitude — log-stretch to compress dynamic range.
-    arr = np.where(arr > 0, np.log10(arr + 1.0), 0.0)
-    finite = arr[np.isfinite(arr)]
-    if finite.size == 0:
-        # Empty / all-masked tile — fall back to mid-grey.
-        img = np.full((out_h, out_w), 128, dtype="uint8")
+    log_arr = np.zeros_like(arr)
+    log_arr[valid_mask] = np.log10(arr[valid_mask] + 1.0)
+
+    valid_values = log_arr[valid_mask]
+    if valid_values.size == 0:
+        gray = np.zeros((out_h, out_w), dtype="uint8")
+        alpha = np.zeros((out_h, out_w), dtype="uint8")
     else:
-        p2 = float(np.nanpercentile(finite, 2.0))
-        p98 = float(np.nanpercentile(finite, 98.0))
+        p2 = float(np.nanpercentile(valid_values, 2.0))
+        p98 = float(np.nanpercentile(valid_values, 98.0))
         if p98 > p2:
-            stretched = np.clip((arr - p2) / (p98 - p2), 0.0, 1.0)
+            stretched = np.clip(
+                (log_arr - p2) / (p98 - p2), 0.0, 1.0,
+            )
         else:
-            stretched = np.zeros_like(arr)
-        img = (stretched * 255.0).astype("uint8")
-    mpimg.imsave(str(out_path), img, cmap="gray", format="png")
+            stretched = np.zeros_like(log_arr)
+        gray = (stretched * 255.0).astype("uint8")
+        # Stretch only meaningful where the input is valid.
+        gray = np.where(valid_mask, gray, 0)
+        alpha = np.where(valid_mask, 255, 0).astype("uint8")
+
+    # RGBA PNG: R = G = B = grayscale; alpha masks out nodata.  No
+    # colormap, no tint, no per-channel transform — the BitmapLayer
+    # in the dashboard is responsible only for placing this on the
+    # map, never for re-colouring it.
+    rgba = np.stack([gray, gray, gray, alpha], axis=-1)
+    Image.fromarray(rgba, mode="RGBA").save(str(out_path), format="PNG")
     return bounds
 
 
@@ -460,6 +547,7 @@ def _whitsun_overlay_for(
     label_ipr = f", {float(ipr):.2f} m" if ipr else ""
     overlay_id = f"whitsun-umbra-{yyyymmdd}"
     visible_from = WHITSUN_EVENT_ORDINAL.get(yyyymmdd, 0)
+    iso_date = start[:10] if len(start) >= 10 else None
     return {
         "overlay_id": overlay_id,
         "scenario_id": "whitsun",
@@ -475,7 +563,7 @@ def _whitsun_overlay_for(
         "image_kind": "png",
         "bounds": list(bounds),
         "geometry": geometry,
-        "opacity_default": 0.85,
+        "opacity_default": 1.0,
         "visible_from_event_ordinal": visible_from,
         "z_index": 30,
         "confidence_weight": 1.0,
@@ -485,6 +573,12 @@ def _whitsun_overlay_for(
             "real Umbra GEC tile, log-stretched and downsampled for dashboard preview",
         ],
         "missing_asset_reason": None,
+        "collection_time": iso_date,
+        "default_visible": True,
+        "resolution_m": float(ipr) if ipr else None,
+        "cloud_coverage": None,
+        "weak_signal": False,
+        "confirmation_layer": True,
     }
 
 
@@ -509,6 +603,10 @@ def _tennent_overlay_for(
         or scene["metadata"].get("targetIpr")
     )
     label_ipr = f", {float(ipr):.2f} m" if ipr else ""
+    iso_date = start[:10] if len(start) >= 10 else None
+    # Only the earliest Tennent Umbra collect is on by default; the
+    # operator opts in to additional dates via the per-overlay toggle.
+    is_baseline = iso_date == "2023-07-02"
     return {
         "overlay_id": f"tennent-umbra-{yyyymmdd}",
         "scenario_id": "tennent",
@@ -524,7 +622,7 @@ def _tennent_overlay_for(
         "image_kind": "png",
         "bounds": list(bounds),
         "geometry": geometry,
-        "opacity_default": 0.85,
+        "opacity_default": 1.0,
         "visible_from_event_ordinal": 0,
         "z_index": 30,
         "confidence_weight": 1.0,
@@ -534,6 +632,12 @@ def _tennent_overlay_for(
             "real Umbra GEC tile, log-stretched and downsampled for dashboard preview",
         ],
         "missing_asset_reason": None,
+        "collection_time": iso_date,
+        "default_visible": is_baseline,
+        "resolution_m": float(ipr) if ipr else None,
+        "cloud_coverage": None,
+        "weak_signal": False,
+        "confirmation_layer": True,
     }
 
 
@@ -571,7 +675,7 @@ def build_manifest(
             ],
             "caveats": [
                 "deterministic demo manifest, regenerated from raw Umbra inventory",
-                "Umbra previews are log-stretched amplitude PNGs, not science-grade calibrated SAR products",
+                "Umbra previews are log-stretched amplitude grayscale RGBA PNGs (R=G=B, nodata alpha=0), not science-grade calibrated SAR products",
                 "confidence_weight values are demo heuristics, not calibrated reliability",
                 "Sentinel observations are public lower-confidence context, not equivalent to Umbra",
             ],

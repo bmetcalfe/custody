@@ -316,5 +316,7 @@ class TestCallbackCount:
         #   refresh-all-panels + 1 sidebar-block-swap = 3
         # Sidebar collapse: +1 toggle store + 1 apply collapse = 2
         # Map overlays: +1 whitsun map + 1 tennent map = 2
-        # Total: 18
-        assert len(app.callback_map) == 18
+        # Dynamic overlay manager: +1 whitsun overlay-toggle manager = 1
+        # Evidence viewer: +1 whitsun + 1 tennent = 2
+        # Total: 21
+        assert len(app.callback_map) == 21
