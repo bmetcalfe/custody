@@ -1,29 +1,43 @@
-"""Sentinel observation ingestion CLI for the Whitsun AOI.
+"""Sentinel observation ingestion CLI for demo AOIs.
 
 Runs a metadata-only search against the Copernicus Data Space Ecosystem
 (CDSE) STAC v1 endpoint for Sentinel-1 GRD and Sentinel-2 L2A
-observations covering the Whitsun AOI and time window, writes the
+observations covering a demo AOI and time window, writes the
 normalized observations to a JSON cache, and prints a summary.
 
+Two committed demo AOIs are supported:
+
+- ``whitsun`` — maritime custody / reacquisition demo (primary).
+- ``tennent`` — fixed-site monitoring / construction context (secondary).
+
+Both use the same normalized :class:`ObservationArtifact` model.
+Sentinel observations are public lower-confidence context, not
+high-confidence proof on their own.
+
 Live HTTP is **opt-in**.  Without ``--live``, the script runs in
-offline mode and reads the committed demo fixture
-``data/demo/whitsun_sentinel_observations.fixture.json``.  Tests and
-demo flows that should never reach out to CDSE rely on this offline
-default.
+offline mode and reads the committed demo fixture for the chosen AOI.
+Tests and demo flows that should never reach out to CDSE rely on this
+offline default.
 
 This is metadata-only ingestion: no imagery is downloaded, no products
 are fetched, no detection is run, and no tasking is issued.
 
 Run::
 
-    # Offline (default): read the committed fixture
+    # Offline (default): read the committed Whitsun fixture
     python scripts/29_ingest_sentinel_whitsun.py
+    python scripts/29_ingest_sentinel_whitsun.py --aoi whitsun
+
+    # Offline: read the committed Tennent fixture
+    python scripts/29_ingest_sentinel_whitsun.py --aoi tennent
 
     # Live: query CDSE STAC v1 (requires network)
-    python scripts/29_ingest_sentinel_whitsun.py --live \\
+    python scripts/29_ingest_sentinel_whitsun.py --live --aoi whitsun \\
         --start 2023-12-01 --end 2023-12-15 --max-items 20
+    python scripts/29_ingest_sentinel_whitsun.py --live --aoi tennent \\
+        --start 2023-07-01 --end 2023-08-20 --max-items 20
 
-    # Override AOI / output paths
+    # Override AOI / output paths (path form is still accepted)
     python scripts/29_ingest_sentinel_whitsun.py --live \\
         --aoi data/demo/whitsun_aoi.fixture.geojson \\
         --output data/demo/whitsun_sentinel_observations.json
@@ -50,11 +64,54 @@ from custody.ingest.sentinel import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_AOI_PATH = REPO_ROOT / "data" / "demo" / "whitsun_aoi.fixture.geojson"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "data" / "demo" / "whitsun_sentinel_observations.json"
-DEFAULT_FIXTURE_PATH = (
-    REPO_ROOT / "data" / "demo" / "whitsun_sentinel_observations.fixture.json"
-)
+
+
+_AOI_PROFILES: dict[str, dict] = {
+    "whitsun": {
+        "label": "whitsun",
+        "scenario_role": "maritime custody / reacquisition",
+        "aoi_path": REPO_ROOT / "data" / "demo" / "whitsun_aoi.fixture.geojson",
+        "fixture_path": (
+            REPO_ROOT / "data" / "demo"
+            / "whitsun_sentinel_observations.fixture.json"
+        ),
+        "live_output_path": (
+            REPO_ROOT / "data" / "demo"
+            / "whitsun_sentinel_observations.json"
+        ),
+        "default_start": "2023-12-01",
+        "default_end": "2023-12-15",
+    },
+    "tennent": {
+        "label": "tennent",
+        "scenario_role": "fixed-site monitoring / construction context",
+        "aoi_path": REPO_ROOT / "data" / "demo" / "tennent_aoi.fixture.geojson",
+        "fixture_path": (
+            REPO_ROOT / "data" / "demo"
+            / "tennent_sentinel_observations.fixture.json"
+        ),
+        "live_output_path": (
+            REPO_ROOT / "data" / "demo"
+            / "tennent_sentinel_observations.json"
+        ),
+        "default_start": "2023-07-01",
+        "default_end": "2023-08-20",
+    },
+}
+
+DEFAULT_AOI_LABEL = "whitsun"
+
+# Backward-compatible defaults (the original script exposed these).
+DEFAULT_AOI_PATH = _AOI_PROFILES[DEFAULT_AOI_LABEL]["aoi_path"]
+DEFAULT_OUTPUT_PATH = _AOI_PROFILES[DEFAULT_AOI_LABEL]["live_output_path"]
+DEFAULT_FIXTURE_PATH = _AOI_PROFILES[DEFAULT_AOI_LABEL]["fixture_path"]
+
+
+def _resolve_profile(aoi_arg: str) -> dict | None:
+    """Return the profile dict for a known AOI label, or None for paths."""
+    if aoi_arg in _AOI_PROFILES:
+        return _AOI_PROFILES[aoi_arg]
+    return None
 
 
 def _load_aoi_geometry(aoi_path: Path) -> dict:
@@ -144,31 +201,47 @@ def _summary_lines(
 def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Sentinel observation ingestion CLI for the Whitsun AOI.  "
-            "Metadata-only search against the CDSE STAC v1 endpoint.  "
-            "Live HTTP is opt-in via --live; without it, the script "
-            "reads the committed demo fixture."
+            "Sentinel observation ingestion CLI for demo AOIs (Whitsun, "
+            "Tennent).  Metadata-only search against the CDSE STAC v1 "
+            "endpoint.  Live HTTP is opt-in via --live; without it, the "
+            "script reads the committed demo fixture for the chosen AOI."
         ),
     )
     parser.add_argument(
-        "--aoi", default=str(DEFAULT_AOI_PATH),
-        help="Path to a GeoJSON Polygon / Feature / FeatureCollection.",
+        "--aoi", default=DEFAULT_AOI_LABEL,
+        help=(
+            "Demo AOI label ('whitsun' or 'tennent') or a path to a "
+            "GeoJSON Polygon / Feature / FeatureCollection.  Default: "
+            f"'{DEFAULT_AOI_LABEL}'."
+        ),
     )
     parser.add_argument(
-        "--output", default=str(DEFAULT_OUTPUT_PATH),
-        help="Output cache path for the live mode JSON.",
+        "--output", default=None,
+        help=(
+            "Output cache path for the live mode JSON.  If omitted, "
+            "derived from the --aoi profile."
+        ),
     )
     parser.add_argument(
-        "--fixture", default=str(DEFAULT_FIXTURE_PATH),
-        help="Committed demo fixture JSON used when --live is not given.",
+        "--fixture", default=None,
+        help=(
+            "Committed demo fixture JSON used when --live is not given.  "
+            "If omitted, derived from the --aoi profile."
+        ),
     )
     parser.add_argument(
-        "--start", default="2023-12-01",
-        help="Search window start (ISO date or datetime, UTC).",
+        "--start", default=None,
+        help=(
+            "Search window start (ISO date or datetime, UTC).  If "
+            "omitted, derived from the --aoi profile."
+        ),
     )
     parser.add_argument(
-        "--end", default="2023-12-15",
-        help="Search window end (ISO date or datetime, UTC).",
+        "--end", default=None,
+        help=(
+            "Search window end (ISO date or datetime, UTC).  If "
+            "omitted, derived from the --aoi profile."
+        ),
     )
     parser.add_argument(
         "--max-items", dest="max_items", type=int, default=20,
@@ -192,7 +265,25 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
     args = parser.parse_args(argv)
 
     sink = out if out is not None else sys.stdout
-    aoi_path = Path(args.aoi)
+
+    profile = _resolve_profile(args.aoi)
+    if profile is not None:
+        aoi_path = Path(profile["aoi_path"])
+    else:
+        # Path form: keep backward compatibility with --aoi <path>.
+        aoi_path = Path(args.aoi)
+        profile = _AOI_PROFILES[DEFAULT_AOI_LABEL]
+
+    fixture_arg = (
+        Path(args.fixture) if args.fixture is not None
+        else Path(profile["fixture_path"])
+    )
+    output_arg = (
+        Path(args.output) if args.output is not None
+        else Path(profile["live_output_path"])
+    )
+    start_arg = args.start if args.start is not None else profile["default_start"]
+    end_arg = args.end if args.end is not None else profile["default_end"]
 
     if args.live:
         try:
@@ -205,7 +296,7 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         )
         try:
             observations = search_sentinel_observations(
-                geom, args.start, args.end,
+                geom, start_arg, end_arg,
                 collections=collections,
                 max_items=args.max_items,
                 data_mode="real",
@@ -213,14 +304,16 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         except Exception as exc:  # broad: includes requests + parse errors
             sink.write(f"live CDSE STAC query failed: {exc}\n")
             return 1
-        output_path = Path(args.output)
+        output_path = output_arg
         write_observation_cache(
             observations, output_path,
             metadata={
                 "data_mode": "real",
+                "aoi_label": profile["label"],
                 "aoi_path": str(aoi_path),
-                "start": args.start,
-                "end": args.end,
+                "scenario_role": profile["scenario_role"],
+                "start": start_arg,
+                "end": end_arg,
                 "collections": list(collections),
                 "max_items": args.max_items,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -229,7 +322,7 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         mode_label = "live (CDSE STAC v1)"
         cache_path: Path | None = output_path
     else:
-        fixture_path = Path(args.fixture)
+        fixture_path = fixture_arg
         try:
             observations = load_observation_cache(fixture_path)
         except FileNotFoundError:

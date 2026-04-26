@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "name": "tennent-aoi-fixture",
+    "data_mode": "fixture",
+    "description": "Demo placeholder AOI for the Tennent Reef Sentinel ingestion sprint extension. NOT the real operational AOI; replace with the field-defined polygon before any operational use. Center reflects the AMTI-published Tennent Reef coordinates (Đá Tiên Nữ / Pigeon Reef): 8°51'30\" N, 114°39'22\" E (decimal: 8.8583 N, 114.6561 E).",
+    "center_lat_deg": 8.8583,
+    "center_lon_deg": 114.6561,
+    "bbox_lon_west_deg": 114.55,
+    "bbox_lon_east_deg": 114.75,
+    "bbox_lat_south_deg": 8.78,
+    "bbox_lat_north_deg": 8.93,
+    "scenario_role": "fixed-site monitoring / construction context",
+    "caveats": [
+      "demo placeholder AOI; not validated against any operational geometry",
+      "must be replaced with the real Tennent AOI before any non-demo use"
+    ]
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "tennent-aoi-fixture-polygon",
+        "data_mode": "fixture"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [114.55, 8.78],
+            [114.75, 8.78],
+            [114.75, 8.93],
+            [114.55, 8.93],
+            [114.55, 8.78]
+          ]
+        ]
+      }
+    }
+  ]
+}

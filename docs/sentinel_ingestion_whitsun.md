@@ -2,6 +2,8 @@
 
 *Sentinel ingestion sprint. Companion to [docs/positioning.md](positioning.md), [docs/scenario.md](scenario.md), and the existing artifact / availability bridges.*
 
+A bounded extension to this layer adds a second demo AOI (Tennent Reef) for fixed-site monitoring; see [docs/sentinel_ingestion_demo_aois.md](sentinel_ingestion_demo_aois.md) for the AOI label dispatch and the Tennent fixture details. Both AOIs share this normalized model and CLI.
+
 ---
 
 ## What this step does

@@ -28,6 +28,12 @@ STAC_FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "sentinel_stac"
 DEMO_FIXTURE = (
     REPO_ROOT / "data" / "demo" / "whitsun_sentinel_observations.fixture.json"
 )
+TENNENT_AOI_FIXTURE = (
+    REPO_ROOT / "data" / "demo" / "tennent_aoi.fixture.geojson"
+)
+TENNENT_DEMO_FIXTURE = (
+    REPO_ROOT / "data" / "demo" / "tennent_sentinel_observations.fixture.json"
+)
 
 
 def _load_stac(filename: str) -> dict:
@@ -243,3 +249,156 @@ def test_module_does_not_make_network_calls_at_import() -> None:
     import importlib
     import custody.ingest.sentinel as mod
     importlib.reload(mod)
+
+
+# ---------------------------------------------------------------------------
+# Tennent AOI extension
+# ---------------------------------------------------------------------------
+
+
+def test_tennent_aoi_fixture_loads() -> None:
+    blob = json.loads(TENNENT_AOI_FIXTURE.read_text(encoding="utf-8"))
+    assert blob["type"] == "FeatureCollection"
+    assert blob["metadata"]["data_mode"] == "fixture"
+    assert blob["metadata"]["scenario_role"] == (
+        "fixed-site monitoring / construction context"
+    )
+    geom = blob["features"][0]["geometry"]
+    assert geom["type"] == "Polygon"
+
+
+def test_tennent_observation_fixture_loads() -> None:
+    obs = load_observation_cache(TENNENT_DEMO_FIXTURE)
+    assert len(obs) == 3
+    assert all(o.data_mode == "fixture" for o in obs)
+    sources = {o.source for o in obs}
+    assert sources == {"sentinel-1", "sentinel-2"}
+
+
+def test_tennent_fixture_has_expected_record_split() -> None:
+    obs = load_observation_cache(TENNENT_DEMO_FIXTURE)
+    s1 = [o for o in obs if o.source == "sentinel-1"]
+    s2_low = [
+        o for o in obs
+        if o.source == "sentinel-2" and o.cloud_coverage is not None
+        and o.cloud_coverage <= 25.0
+    ]
+    s2_cloudy = [
+        o for o in obs
+        if o.source == "sentinel-2" and o.cloud_coverage is not None
+        and o.cloud_coverage > 25.0
+    ]
+    assert len(s1) == 1
+    assert len(s2_low) == 1
+    assert len(s2_cloudy) == 1
+
+
+def test_normalization_identical_across_aois() -> None:
+    """Tennent and Whitsun normalized records share the same field set."""
+    whitsun = load_observation_cache(DEMO_FIXTURE)
+    tennent = load_observation_cache(TENNENT_DEMO_FIXTURE)
+    # Same dataclass, so __dataclass_fields__ will match by construction.
+    w_fields = sorted(whitsun[0].__dataclass_fields__)
+    t_fields = sorted(tennent[0].__dataclass_fields__)
+    assert w_fields == t_fields
+    # Confidence weight buckets are consistent across AOIs.
+    w_s1 = next(o for o in whitsun if o.source == "sentinel-1")
+    t_s1 = next(o for o in tennent if o.source == "sentinel-1")
+    assert w_s1.confidence_weight == t_s1.confidence_weight
+
+
+def test_tennent_observations_within_aoi_bbox() -> None:
+    """Sanity: every Tennent record's bbox is inside the Tennent AOI bbox."""
+    obs = load_observation_cache(TENNENT_DEMO_FIXTURE)
+    aoi_blob = json.loads(TENNENT_AOI_FIXTURE.read_text(encoding="utf-8"))
+    meta = aoi_blob["metadata"]
+    aoi = (
+        meta["bbox_lon_west_deg"], meta["bbox_lat_south_deg"],
+        meta["bbox_lon_east_deg"], meta["bbox_lat_north_deg"],
+    )
+    for o in obs:
+        assert o.bbox is not None
+        assert o.bbox[0] >= aoi[0]
+        assert o.bbox[1] >= aoi[1]
+        assert o.bbox[2] <= aoi[2]
+        assert o.bbox[3] <= aoi[3]
+
+
+# ---------------------------------------------------------------------------
+# CLI --aoi label dispatch (no live HTTP; offline mode only)
+# ---------------------------------------------------------------------------
+
+
+def _import_script():
+    import importlib.util
+    import sys
+    spec = importlib.util.spec_from_file_location(
+        "script_29_ingest_sentinel_whitsun",
+        REPO_ROOT / "scripts" / "29_ingest_sentinel_whitsun.py",
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["script_29_ingest_sentinel_whitsun"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_cli_default_is_whitsun() -> None:
+    import io
+    mod = _import_script()
+    buf = io.StringIO()
+    rc = mod.main([], out=buf)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "whitsun_sentinel_observations.fixture.json" in out
+    assert "fixture-s2-l2a-whitsun-20231212-low-cloud" in out
+
+
+def test_cli_aoi_whitsun_label() -> None:
+    import io
+    mod = _import_script()
+    buf = io.StringIO()
+    rc = mod.main(["--aoi", "whitsun"], out=buf)
+    assert rc == 0
+    assert "fixture-s2-l2a-whitsun-20231212-low-cloud" in buf.getvalue()
+
+
+def test_cli_aoi_tennent_label() -> None:
+    import io
+    mod = _import_script()
+    buf = io.StringIO()
+    rc = mod.main(["--aoi", "tennent"], out=buf)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "tennent_sentinel_observations.fixture.json" in out
+    assert "fixture-s2-l2a-tennent-20230718-low-cloud" in out
+
+
+def test_cli_aoi_path_form_still_works() -> None:
+    """Backward compatibility: --aoi <path> still accepted."""
+    import io
+    mod = _import_script()
+    buf = io.StringIO()
+    rc = mod.main(
+        [
+            "--aoi", str(TENNENT_AOI_FIXTURE),
+            "--fixture", str(TENNENT_DEMO_FIXTURE),
+        ],
+        out=buf,
+    )
+    assert rc == 0
+    assert "fixture-s2-l2a-tennent-20230718-low-cloud" in buf.getvalue()
+
+
+def test_cli_json_format_for_tennent() -> None:
+    import io
+    mod = _import_script()
+    buf = io.StringIO()
+    rc = mod.main(["--aoi", "tennent", "--format", "json"], out=buf)
+    assert rc == 0
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sentinel_1_count"] == 1
+    assert parsed["sentinel_2_count"] == 2
+    assert parsed["best_low_cloud_sentinel_2"] == (
+        "fixture-s2-l2a-tennent-20230718-low-cloud"
+    )

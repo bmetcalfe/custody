@@ -49,3 +49,4 @@ day0/scratch/*
 # Live Sentinel ingestion output (regenerable). The committed
 # *.fixture.json files are the demo source of truth.
 data/demo/whitsun_sentinel_observations.json
+data/demo/tennent_sentinel_observations.json
