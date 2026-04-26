@@ -105,7 +105,10 @@ REVEAL_ORDINALS: Mapping[str, int] = {
     "options_selected_visible": 10,
     "score_breakdown": 10,
     "policy_rationale": 10,
-    "human_action": 11,
+    # ev-11 = "Operator reviews" surfaces a review-pending banner;
+    # the APPROVE record only renders at ev-12 = "Human approves".
+    "human_action_review": 11,
+    "human_action": 12,
     "outcome": 13,
     "counterfactuals": 14,
     "followup_recommendation": 14,
@@ -362,23 +365,18 @@ def _render_header(event: Mapping[str, Any]) -> html.Div:
 
 
 def _render_event_summary(event: Mapping[str, Any]) -> html.Div:
+    """Decision-inspector body: human-readable summary only.
+
+    Developer-facing fields (event_id, kind, timestamp) live in the
+    JSON and are still surfaced in the event header badge row; we
+    deliberately don't repeat them as labelled rows here so the
+    screen-share audience sees only the narrative summary.
+    """
     if not event:
         return _na()
     return html.Div(
-        [
-            html.Div(
-                event.get("summary", ""),
-                style={"color": _TEXT, "fontSize": "0.85rem"},
-            ),
-            html.Div(
-                [
-                    _kv("event_id", event.get("event_id")),
-                    _kv("kind", event.get("kind")),
-                    _kv("timestamp", event.get("timestamp")),
-                ],
-                style={"marginTop": "6px"},
-            ),
-        ],
+        event.get("summary", ""),
+        style={"color": _TEXT, "fontSize": "0.85rem"},
     )
 
 
@@ -672,11 +670,44 @@ def _render_score_breakdown(
             style={"fontSize": "0.85rem"},
         )
     )
+    # Consolidated audience-facing callout: human-readable option label
+    # + total score + rank.  ASCII separator (``|``) used deliberately
+    # so the line survives any screen-share font fallback.
+    rec_option_id = str(rec.get("tasking_option_id") or "")
+    rec_option_label = next(
+        (
+            str(opt.get("label") or "")
+            for opt in trace.candidate_tasking_options
+            if opt.get("tasking_option_id") == rec_option_id
+        ),
+        rec_option_id,
+    )
+    rec_total = sb.get("total_score")
+    rec_rank = rec.get("rank")
+    callout_parts = [f"Recommendation: {rec_option_label}"]
+    if isinstance(rec_total, (int, float)):
+        callout_parts.append(f"score {rec_total:.2f}")
+    if rec_rank is not None:
+        callout_parts.append(f"rank {rec_rank}")
+    recommendation_callout = html.Div(
+        " | ".join(callout_parts),
+        style={
+            "color": _ACCENT,
+            "fontSize": "0.95rem",
+            "fontWeight": "600",
+            "marginBottom": "6px",
+            "padding": "4px 6px",
+            "border": "1px solid #2d2d2d",
+            "borderRadius": "4px",
+            "backgroundColor": "rgba(94, 234, 212, 0.06)",
+        },
+    )
     return html.Div(
         [
+            recommendation_callout,
             html.Div(
-                f"selected option: {rec.get('tasking_option_id')}",
-                style={"color": _MUTED, "fontSize": "0.75rem"},
+                f"selected option: {rec_option_id}",
+                style={"color": _MUTED, "fontSize": "0.7rem"},
             ),
             html.Table(
                 [html.Tbody(rows)],
@@ -731,8 +762,44 @@ def _render_policy_rationale(
 def _render_human_action(
     trace: DecisionTrace, current_ord: int,
 ) -> html.Div:
-    if current_ord < REVEAL_ORDINALS["human_action"]:
+    """Render the operator's review/approval state for the current event.
+
+    - Before ev-11: not yet revealed.
+    - At ev-11 ("Operator reviews"): a review-pending banner; the
+      APPROVE record stays hidden so the dramatic beat between review
+      and approval is visible to the screen-share audience.
+    - At ev-12 ("Human approves") onward: the full approval record
+      with operator_id, decided_at, reason, and SIMULATED data-mode
+      badge.
+    """
+    review_ord = REVEAL_ORDINALS["human_action_review"]
+    approve_ord = REVEAL_ORDINALS["human_action"]
+    if current_ord < review_ord:
         return _na()
+    if current_ord < approve_ord:
+        return html.Div(
+            [
+                dbc.Badge(
+                    "REVIEW IN PROGRESS",
+                    color="info", className="me-2",
+                ),
+                html.Span(
+                    "Awaiting operator approval. The recommendation, "
+                    "score breakdown, and policy rationale are on screen "
+                    "for review.",
+                    style={
+                        "color": _MUTED, "fontSize": "0.8rem",
+                        "fontStyle": "italic",
+                    },
+                ),
+            ],
+            style={
+                "padding": "8px 10px",
+                "border": "1px solid #2d2d2d",
+                "borderRadius": "4px",
+                "backgroundColor": "rgba(94, 234, 212, 0.06)",
+            },
+        )
     ha = trace.human_action
     if not ha:
         return _na()
@@ -1002,8 +1069,10 @@ def register(app: Dash) -> None:
     def _refresh_all_panels(event_id):
         event = _TRACE.get_event(event_id) if event_id else {}
         ord_ = _ord_for(event)
+        # ASCII fallback (``Step -- / 14``) so the placeholder reads
+        # cleanly even on screen-share fonts that mishandle U+2014.
         step_counter = (
-            f"Step {ord_:02d} / 14" if ord_ > 0 else "Step — / 14"
+            f"Step {ord_:02d} / 14" if ord_ > 0 else "Step -- / 14"
         )
         return (
             _render_header(event or {}),

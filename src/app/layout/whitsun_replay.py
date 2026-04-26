@@ -292,7 +292,7 @@ def build_whitsun_replay_layout() -> html.Div:
         [
             html.Span("Event timeline (14 steps)"),
             html.Span(
-                "Step — / 14",
+                "Step 01 / 14",
                 id=WHITSUN_TIMELINE_STEP_COUNTER,
                 style={
                     "color": _ACCENT,

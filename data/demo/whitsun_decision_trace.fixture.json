@@ -80,9 +80,9 @@
       "event_id": "ev-04",
       "ordinal": 4,
       "label": "Candidate tracks initialized",
-      "timestamp": "2023-12-10T22:30:00+00:00",
+      "timestamp": "2023-12-06T10:40:00+00:00",
       "kind": "tracks_initialized",
-      "summary": "Three candidate vessel tracks initialized from VLM detections + Sentinel context association.",
+      "summary": "Three candidate vessel tracks initialized from the VLM-derived vessel detections over the Umbra tile.",
       "data_mode": "simulated",
       "refs": {
         "track_ids": [
