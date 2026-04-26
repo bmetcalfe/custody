@@ -230,15 +230,19 @@ def _date_only(timestamp: str | None) -> str | None:
 def overlay_kind_label(overlay: OverlayArtifact) -> str:
     """Audience-facing kind tag used in checklist labels and badges.
 
-    - ``image overlay`` for committed rasters
-    - ``weak-signal image/footprint`` for Sentinel sources without raster
-    - ``footprint`` for any other footprint-only entry
+    - Sentinel + raster present  → ``weak-signal image``
+    - Sentinel + footprint only  → ``weak-signal footprint``
+    - Non-Sentinel + raster      → ``image overlay``
+    - Non-Sentinel + footprint   → ``footprint``
+
+    Sentinel imagery is always tagged as a weak signal, never as a
+    confirmation/evidence layer; the ``image overlay`` term is reserved
+    for the high-confidence Umbra previews.
     """
+    is_sentinel = overlay.source in ("sentinel-1", "sentinel-2")
     if has_image_asset(overlay):
-        return "image overlay"
-    if overlay.source in ("sentinel-1", "sentinel-2"):
-        return "weak-signal image/footprint"
-    return "footprint"
+        return "weak-signal image" if is_sentinel else "image overlay"
+    return "weak-signal footprint" if is_sentinel else "footprint"
 
 
 def format_overlay_label(overlay: OverlayArtifact) -> str:

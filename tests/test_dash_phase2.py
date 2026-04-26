@@ -318,5 +318,6 @@ class TestCallbackCount:
         # Map overlays: +1 whitsun map + 1 tennent map = 2
         # Dynamic overlay manager: +1 whitsun overlay-toggle manager = 1
         # Evidence viewer: +1 whitsun + 1 tennent = 2
-        # Total: 21
-        assert len(app.callback_map) == 21
+        # Sentinel cueing context: +1 whitsun + 1 tennent = 2
+        # Total: 23
+        assert len(app.callback_map) == 23

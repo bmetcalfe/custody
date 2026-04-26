@@ -25,7 +25,12 @@ from dataclasses import dataclass
 from dash import dcc, html
 import dash_bootstrap_components as dbc
 
-from custody.demo import EvidenceScene
+from custody.demo import EvidenceScene, OverlayArtifact
+from custody.demo.map_overlays import (
+    format_overlay_label,
+    has_image_asset,
+    is_observation_overlay,
+)
 
 
 _PANEL_BG = "#1a1a1a"
@@ -48,6 +53,7 @@ WHITSUN_EVIDENCE_IMAGE = "whitsun-evidence-image"
 WHITSUN_EVIDENCE_TOGGLES = "whitsun-evidence-toggles"
 WHITSUN_EVIDENCE_DETECTIONS = "whitsun-evidence-detections"
 WHITSUN_EVIDENCE_FOOTER = "whitsun-evidence-footer"
+WHITSUN_SENTINEL_CUEING = "whitsun-sentinel-cueing"
 
 # Tennent monitoring
 TENNENT_EVIDENCE_PANEL = "tennent-evidence-panel"
@@ -57,6 +63,107 @@ TENNENT_EVIDENCE_IMAGE = "tennent-evidence-image"
 TENNENT_EVIDENCE_TOGGLES = "tennent-evidence-toggles"
 TENNENT_EVIDENCE_DETECTIONS = "tennent-evidence-detections"
 TENNENT_EVIDENCE_FOOTER = "tennent-evidence-footer"
+TENNENT_SENTINEL_CUEING = "tennent-sentinel-cueing"
+
+
+SENTINEL_CUEING_COPY = (
+    "Weak-signal cueing image. Use to identify possible change/context; "
+    "confirm with higher-resolution tasking."
+)
+
+
+def _render_sentinel_overlay_row(o: OverlayArtifact) -> html.Div:
+    """One row per Sentinel overlay: header + thumbnail (or placeholder)."""
+    label = format_overlay_label(o)
+    if has_image_asset(o):
+        media: object = html.Img(
+            src=o.asset_url,
+            alt=label,
+            style={
+                "maxWidth": "260px", "width": "100%",
+                "border": "1px solid #2d2d2d",
+                "borderRadius": "4px",
+                "display": "block",
+            },
+        )
+    else:
+        reason = o.missing_asset_reason or "preview not committed; footprint-only"
+        media = html.Div(
+            reason,
+            style={
+                "color": _MUTED, "fontSize": "0.7rem",
+                "fontStyle": "italic",
+                "padding": "12px",
+                "border": "1px dashed #2d2d2d",
+                "borderRadius": "4px",
+                "maxWidth": "260px",
+            },
+        )
+    return html.Div(
+        [
+            html.Div(
+                label,
+                style={
+                    "color": _TEXT, "fontSize": "0.78rem",
+                    "marginBottom": "4px",
+                },
+            ),
+            media,
+        ],
+        style={
+            "padding": "6px 0",
+            "borderBottom": "1px solid #2d2d2d",
+        },
+    )
+
+
+def _render_sentinel_cueing_section(
+    overlays: Iterable[OverlayArtifact],
+) -> html.Div:
+    """Return the Sentinel cueing block (disclaimer copy + rows).
+
+    Caller is responsible for filtering overlays — pass only Sentinel
+    overlays that are revealed at the current step (Whitsun) or the
+    static set (Tennent).
+    """
+    sentinel_overlays = [
+        o for o in overlays
+        if is_observation_overlay(o)
+        and o.source in ("sentinel-1", "sentinel-2")
+    ]
+    if not sentinel_overlays:
+        return html.Div(
+            "No Sentinel cueing context available at this step.",
+            style={
+                "color": _MUTED, "fontSize": "0.78rem",
+                "fontStyle": "italic", "padding": "8px",
+            },
+        )
+    return html.Div(
+        [
+            html.Div(
+                [
+                    dbc.Badge(
+                        "WEAK-SIGNAL CUE",
+                        color="warning", className="me-2",
+                    ),
+                    html.Span(
+                        SENTINEL_CUEING_COPY,
+                        style={
+                            "color": _MUTED, "fontSize": "0.75rem",
+                            "fontStyle": "italic",
+                        },
+                    ),
+                ],
+                style={
+                    "padding": "6px 8px", "marginBottom": "8px",
+                    "border": "1px solid #2d2d2d",
+                    "borderRadius": "4px",
+                    "backgroundColor": "rgba(251, 191, 36, 0.06)",
+                },
+            ),
+        ] + [_render_sentinel_overlay_row(o) for o in sentinel_overlays],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +322,15 @@ def build_whitsun_evidence_panel() -> dbc.Card:
                     "fontStyle": "italic",
                 },
             ),
+            html.Hr(style={"borderColor": _PANEL_BORDER, "margin": "10px 0"}),
+            html.Div(
+                "Sentinel cueing context",
+                style={
+                    "color": _TEXT, "fontSize": "0.85rem",
+                    "fontWeight": "600", "marginBottom": "4px",
+                },
+            ),
+            html.Div(id=WHITSUN_SENTINEL_CUEING),
         ],
         id=WHITSUN_EVIDENCE_PANEL,
     )
@@ -348,6 +464,15 @@ def build_tennent_evidence_panel(scenes: Iterable[EvidenceScene]) -> dbc.Card:
                     "fontStyle": "italic",
                 },
             ),
+            html.Hr(style={"borderColor": _PANEL_BORDER, "margin": "10px 0"}),
+            html.Div(
+                "Sentinel cueing context",
+                style={
+                    "color": _TEXT, "fontSize": "0.85rem",
+                    "fontWeight": "600", "marginBottom": "4px",
+                },
+            ),
+            html.Div(id=TENNENT_SENTINEL_CUEING),
         ],
         id=TENNENT_EVIDENCE_PANEL,
     )

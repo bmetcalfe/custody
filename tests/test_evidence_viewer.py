@@ -359,3 +359,171 @@ def test_tennent_layout_still_has_map() -> None:
     layout = mod.build_tennent_monitoring_layout()
     ids = _walk_ids(layout)
     assert "tennent-monitoring-map-deck" in ids
+
+
+# ---------------------------------------------------------------------------
+# Sentinel cueing context — separate from VLM detection evidence
+# ---------------------------------------------------------------------------
+
+
+def test_sentinel_cueing_div_mounted_on_both_panels() -> None:
+    whit = _import_layout("layout.whitsun_replay")
+    ids_w = _walk_ids(whit.build_whitsun_replay_layout())
+    assert "whitsun-sentinel-cueing" in ids_w
+
+    tenn = _import_layout("layout.tennent_monitoring")
+    ids_t = _walk_ids(tenn.build_tennent_monitoring_layout())
+    assert "tennent-sentinel-cueing" in ids_t
+
+
+def test_sentinel_cueing_section_carries_required_disclaimer() -> None:
+    """The dispatch-mandated cueing copy must be in the rendered output."""
+    from custody.demo import load_map_overlays
+    from custody.demo.map_overlays import overlays_for_scenario
+    from layout.evidence_viewer import (
+        _render_sentinel_cueing_section, SENTINEL_CUEING_COPY,
+    )
+    overlays = overlays_for_scenario(load_map_overlays(), "tennent")
+    rendered = str(_render_sentinel_cueing_section(overlays))
+    # Verbatim disclaimer.
+    assert SENTINEL_CUEING_COPY in rendered
+    # Honest framing markers.
+    lower = rendered.lower()
+    assert "weak-signal cue" in lower
+    # Sentinel must NOT be advertised as confirmation evidence.
+    assert "high-confidence confirmation" not in lower
+    assert "definitive change" not in lower
+    assert "sentinel proves" not in lower
+
+
+def test_sentinel_label_says_image_when_preview_present() -> None:
+    """``overlay_kind_label`` must distinguish Sentinel-with-preview
+    from Sentinel-footprint-only."""
+    from custody.demo.map_overlays import OverlayArtifact, overlay_kind_label
+
+    with_preview = OverlayArtifact(
+        overlay_id="x", scenario_id="whitsun", observation_id="o",
+        source="sentinel-2", sensor_type="optical", display_name="S2",
+        data_mode="fixture",
+        image_path="src/app/assets/evidence/sentinel/whitsun/o/preview.png",
+        asset_url="/assets/evidence/sentinel/whitsun/o/preview.png",
+        image_kind="sentinel_preview",
+        bounds=(114.45, 9.75, 114.85, 10.25),
+        geometry=None,
+        opacity_default=0.55, visible_from_event_ordinal=4, z_index=25,
+        confidence_weight=0.30, usable_for_detection=True,
+        usable_for_context=True,
+        caveats=("weak-signal cueing layer; not high-confidence proof",),
+        missing_asset_reason=None,
+    )
+    without_preview = OverlayArtifact(
+        **{**with_preview.__dict__,
+           "image_path": None, "asset_url": None,
+           "image_kind": "footprint-only"},
+    )
+    assert overlay_kind_label(with_preview) == "weak-signal image"
+    assert overlay_kind_label(without_preview) == "weak-signal footprint"
+    # Neither must say "image overlay" — that term is reserved for
+    # high-confidence Umbra previews.
+    assert overlay_kind_label(with_preview) != "image overlay"
+
+
+def test_sentinel_render_uses_thumbnail_when_preview_exists(tmp_path) -> None:
+    """When an overlay has image_path/asset_url, the row renders a
+    thumbnail; otherwise it renders a footprint-only placeholder."""
+    from custody.demo.map_overlays import OverlayArtifact
+    from layout.evidence_viewer import _render_sentinel_overlay_row
+
+    with_preview = OverlayArtifact(
+        overlay_id="x", scenario_id="tennent", observation_id="o",
+        source="sentinel-2", sensor_type="optical",
+        display_name="Sentinel-2 L2A 2023-07-18 (12% cloud)",
+        data_mode="fixture",
+        image_path="src/app/assets/evidence/sentinel/tennent/o/preview.png",
+        asset_url="/assets/evidence/sentinel/tennent/o/preview.png",
+        image_kind="sentinel_preview",
+        bounds=(114.55, 8.78, 114.75, 8.93),
+        geometry=None,
+        opacity_default=0.55, visible_from_event_ordinal=0, z_index=25,
+        confidence_weight=0.30, usable_for_detection=True,
+        usable_for_context=True,
+        caveats=("weak-signal cueing layer; not high-confidence proof",),
+        missing_asset_reason=None,
+    )
+    rendered_with = str(_render_sentinel_overlay_row(with_preview))
+    assert "/assets/evidence/sentinel/tennent/o/preview.png" in rendered_with
+
+    without = OverlayArtifact(
+        **{**with_preview.__dict__,
+           "image_path": None, "asset_url": None,
+           "image_kind": "footprint-only",
+           "missing_asset_reason": "no committed Sentinel-2 RGB preview"},
+    )
+    rendered_without = str(_render_sentinel_overlay_row(without))
+    assert "/assets/evidence/sentinel/" not in rendered_without
+    # No raster: the row carries the missing_asset_reason text and
+    # the kind label demotes to "weak-signal footprint".
+    assert "no committed Sentinel-2 RGB preview" in rendered_without
+    assert "weak-signal footprint" in rendered_without.lower()
+
+
+def test_sentinel_cueing_section_empty_when_no_sentinel_overlays() -> None:
+    """An empty / Umbra-only overlay list renders the honest 'none
+    available' message, not a thumbnail grid."""
+    from layout.evidence_viewer import _render_sentinel_cueing_section
+    from custody.demo.map_overlays import OverlayArtifact
+
+    umbra_only = (
+        OverlayArtifact(
+            overlay_id="u", scenario_id="whitsun", observation_id="o",
+            source="umbra", sensor_type="sar", display_name="Umbra",
+            data_mode="real", image_path="src/app/assets/x.png",
+            asset_url="/assets/x.png", image_kind="png",
+            bounds=(0.0, 0.0, 1.0, 1.0), geometry=None,
+            opacity_default=1.0, visible_from_event_ordinal=0,
+            z_index=30, confidence_weight=1.0,
+            usable_for_detection=True, usable_for_context=True,
+            caveats=(), missing_asset_reason=None,
+        ),
+    )
+    rendered = str(_render_sentinel_cueing_section(umbra_only)).lower()
+    assert "no sentinel cueing context available" in rendered
+
+
+def test_sentinel_overlays_never_advertise_high_confidence_evidence() -> None:
+    """Cross-cutting honesty guard: Sentinel overlays in the manifest
+    must never carry confirmation-grade language."""
+    from custody.demo import load_map_overlays
+    overlays = load_map_overlays()
+    sentinel = [
+        o for o in overlays
+        if o.source in ("sentinel-1", "sentinel-2")
+    ]
+    assert sentinel, "expected committed Sentinel overlays"
+    for o in sentinel:
+        # confirmation_layer flag must be False.
+        assert o.confirmation_layer is False, o.overlay_id
+        # weak_signal flag must be True.
+        assert o.weak_signal is True, o.overlay_id
+        # The existing caveats legitimately use the phrase
+        # ``not high-confidence proof`` to disclaim Sentinel; the guard
+        # we want is that no Sentinel overlay AFFIRMS high confidence.
+        blob = (
+            (o.display_name or "")
+            + " "
+            + " ".join(o.caveats or ())
+        ).lower()
+        assert "confirmed detection" not in blob, o.overlay_id
+        assert "definitive change" not in blob, o.overlay_id
+        assert "sentinel proves" not in blob, o.overlay_id
+        # Affirmative high-confidence framing is forbidden; the
+        # negative form ("not high-confidence ...") is allowed.
+        for affirmative in (
+            "is high-confidence",
+            "high-confidence confirmation",
+            "high-confidence detection",
+        ):
+            assert affirmative not in blob, (
+                f"{o.overlay_id} carries forbidden affirmative "
+                f"high-confidence framing: {affirmative}"
+            )

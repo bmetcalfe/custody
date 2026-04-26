@@ -9,9 +9,12 @@ import dash_bootstrap_components as dbc
 
 from custody.demo import (
     EvidenceScene,
+    available_overlays_for,
     evidence_scene_for_whitsun_event_ordinal,
     evidence_scenes_for_scenario,
     load_evidence_manifest,
+    load_map_overlays,
+    overlays_for_scenario,
 )
 from custody.demo.decision_trace import DecisionTrace
 from custody.demo import load_whitsun_decision_trace
@@ -23,11 +26,14 @@ from layout.evidence_viewer import (
     TENNENT_EVIDENCE_HEADER,
     TENNENT_EVIDENCE_IMAGE,
     TENNENT_EVIDENCE_TOGGLES,
+    TENNENT_SENTINEL_CUEING,
     WHITSUN_EVIDENCE_DETECTIONS,
     WHITSUN_EVIDENCE_FOOTER,
     WHITSUN_EVIDENCE_HEADER,
     WHITSUN_EVIDENCE_IMAGE,
     WHITSUN_EVIDENCE_TOGGLES,
+    WHITSUN_SENTINEL_CUEING,
+    _render_sentinel_cueing_section,
 )
 from layout.whitsun_replay import WHITSUN_SELECTED_EVENT_STORE
 
@@ -40,6 +46,7 @@ _ACCENT = "#5eead4"
 # Module-level cache: manifest + decision trace loaded once at import.
 _SCENES: tuple[EvidenceScene, ...] = load_evidence_manifest()
 _TRACE: DecisionTrace = load_whitsun_decision_trace()
+_OVERLAYS = load_map_overlays()
 
 
 # ---------------------------------------------------------------------------
@@ -397,3 +404,29 @@ def register(app: Dash) -> None:
             _detection_list(scene),
             _scene_footer(scene),
         )
+
+    @app.callback(
+        Output(WHITSUN_SENTINEL_CUEING, "children"),
+        Input(WHITSUN_SELECTED_EVENT_STORE, "data"),
+    )
+    def _refresh_whitsun_sentinel_cueing(event_id):
+        event = _TRACE.get_event(event_id) if event_id else {}
+        ord_ = int((event or {}).get("ordinal") or 0)
+        available = available_overlays_for(
+            _OVERLAYS, scenario_id="whitsun", current_ordinal=ord_,
+        )
+        return _render_sentinel_cueing_section(available)
+
+    @app.callback(
+        Output(TENNENT_SENTINEL_CUEING, "children"),
+        # Tennent has no event timeline; this callback is fired once on
+        # page load by virtue of being driven off the date selector,
+        # which already exists in the layout.  We intentionally don't
+        # filter by date — the Sentinel cues in this scenario are the
+        # whole observation set, regardless of which Umbra collect the
+        # operator is looking at.
+        Input(TENNENT_EVIDENCE_DATE_SELECT, "value"),
+    )
+    def _refresh_tennent_sentinel_cueing(_unused):
+        tennent_overlays = overlays_for_scenario(_OVERLAYS, "tennent")
+        return _render_sentinel_cueing_section(tennent_overlays)
