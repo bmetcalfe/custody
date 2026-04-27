@@ -723,6 +723,151 @@ def test_aoi_layer_present_for_whitsun_at_event_one() -> None:
     assert polygon_layers[0].get("filled") is False
 
 
+def test_imagery_overlay_polygon_is_stroke_only_no_fill() -> None:
+    """Overlays that carry a raster image (BitmapLayer) must have their
+    matching PolygonLayer rendered stroke-only — no fill — so the
+    source-colour outline never tints the imagery pixels.  ``filled``
+    must be ``False`` and ``getFillColor`` must be fully transparent
+    as a belt-and-suspenders backstop."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    # Sanity: this scenario must include at least one imagery overlay,
+    # otherwise the imagery-outline layer never renders and the test
+    # is vacuous.
+    imagery_overlays = tuple(
+        o for o in avail
+        if o.observation_id is not None and has_image_asset(o)
+    )
+    assert imagery_overlays, "tennent fixture must include imagery overlays"
+
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    polygon_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "PolygonLayer"
+    ]
+    # Layer 0 is the AOI outline; layer 1 (the first PolygonLayer above
+    # the BitmapLayer rasters) is the imagery-outline layer.
+    assert len(polygon_layers) >= 2, polygon_layers
+    imagery_outline = polygon_layers[1]
+    assert imagery_outline.get("filled") is False, (
+        "imagery-outline PolygonLayer must be stroke-only"
+    )
+    fill = imagery_outline.get("getFillColor")
+    assert isinstance(fill, list) and len(fill) == 4, fill
+    assert fill[3] == 0, (
+        f"imagery-outline fill must have alpha 0; got {fill}"
+    )
+    line_min = imagery_outline.get("lineWidthMinPixels")
+    line_max = imagery_outline.get("lineWidthMaxPixels")
+    assert line_min is not None and 1 <= line_min <= 2, line_min
+    assert line_max is not None and line_max <= 2, line_max
+
+
+def test_footprint_only_overlay_keeps_source_colored_fill() -> None:
+    """Overlays without a raster image keep the existing semi-
+    transparent source-colour fill — the polygon *is* the visual
+    signal in that case, so suppressing the fill would drop
+    information."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    footprint_only = tuple(
+        o for o in avail
+        if o.observation_id is not None and not has_image_asset(o)
+    )
+    assert footprint_only, (
+        "tennent fixture must include footprint-only overlays"
+    )
+
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    polygon_layers = [
+        l for l in spec.get("layers", [])
+        if l.get("@@type") == "PolygonLayer"
+    ]
+    # AOI = layer 0, imagery-outline = layer 1, footprint-only-fill =
+    # layer 2 in the canonical z-order.
+    assert len(polygon_layers) >= 3, polygon_layers
+    fill_layer = polygon_layers[2]
+    assert fill_layer.get("filled") is True, (
+        "footprint-only PolygonLayer must keep its filled state"
+    )
+    rows = fill_layer.get("data") or []
+    assert rows, "footprint-only PolygonLayer must carry data rows"
+    expected_palette = {
+        tuple(rgba): src
+        for src, rgba in helpers._SOURCE_FILL.items()
+    }
+    for row in rows:
+        rgba = row.get("fill_color")
+        assert isinstance(rgba, list) and len(rgba) == 4, rgba
+        # Alpha must be > 0 (we keep a visible fill) and <= the
+        # palette base alpha (we should not exceed the configured
+        # tint strength).
+        assert rgba[3] > 0, (
+            f"footprint-only fill must have non-zero alpha; got {rgba}"
+        )
+        # The RGB triple must match one of the configured source
+        # palettes.
+        assert any(
+            list(rgba[:3]) == list(palette[:3])
+            for palette in helpers._SOURCE_FILL.values()
+        ), f"row fill {rgba} not in {expected_palette}"
+
+
+def test_no_filled_polygon_above_bitmap_for_imagery_overlays() -> None:
+    """Regression guard: no PolygonLayer above a BitmapLayer may carry
+    a filled row whose label matches an imagery overlay's display
+    name.  This is the test that catches the original bug — a single
+    filled PolygonLayer carrying *all* observation overlays sat above
+    the bitmaps and tinted them."""
+    helpers = _import_helpers()
+    overlays = load_map_overlays()
+    avail = overlays_for_scenario(overlays, "tennent")
+    imagery_labels = {
+        o.display_name for o in avail
+        if o.observation_id is not None and has_image_asset(o)
+    }
+    assert imagery_labels, "no imagery overlays — test would be vacuous"
+
+    spec = json.loads(helpers.build_deck_json(
+        overlays=avail,
+        base_visibility=helpers.default_base_visibility(),
+        opacity=0.6,
+        center_lat=8.86, center_lon=114.66,
+    ))
+    layers = spec.get("layers", [])
+    first_bitmap_idx = next(
+        (i for i, l in enumerate(layers) if l.get("@@type") == "BitmapLayer"),
+        None,
+    )
+    assert first_bitmap_idx is not None, "no BitmapLayer rendered"
+
+    for layer in layers[first_bitmap_idx + 1:]:
+        if layer.get("@@type") != "PolygonLayer":
+            continue
+        if layer.get("filled") is not True:
+            continue
+        # A filled PolygonLayer above the bitmaps must NOT carry rows
+        # corresponding to imagery overlays.
+        for row in layer.get("data") or []:
+            assert row.get("label") not in imagery_labels, (
+                f"filled PolygonLayer above BitmapLayer carries imagery "
+                f"overlay {row.get('label')!r}; this re-introduces the "
+                f"raster-tinting bug"
+            )
+
+
 def test_base_visibility_from_checked_excludes_unchecked_keys() -> None:
     helpers = _import_helpers()
     vis = helpers.base_visibility_from_checked(["aoi"])

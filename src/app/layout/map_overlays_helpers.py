@@ -46,6 +46,10 @@ _AOI_STROKE = [255, 255, 255]
 # fallback can never wash out the evidence.
 _AOI_FILL_ZERO = [255, 255, 255, 0]
 _AOI_MAX_FALLBACK_FILL_ALPHA = int(round(0.05 * 255))
+# Fully transparent fill for stroke-only PolygonLayers that sit above a
+# BitmapLayer raster.  Keeping ``filled=False`` is the primary guard;
+# a transparent ``getFillColor`` is the belt-and-suspenders backstop.
+_OVERLAY_FILL_ZERO = [0, 0, 0, 0]
 _TRACK_FILL = [251, 191, 36, 200]
 _TRACK_STROKE = [255, 255, 255]
 
@@ -135,17 +139,80 @@ def _build_aoi_layer(
     )
 
 
-def _build_footprint_layer(
-    overlays: Iterable[OverlayArtifact], opacity: float,
+def _build_imagery_outline_layer(
+    overlays: Iterable[OverlayArtifact],
 ) -> pdk.Layer | None:
-    footprints = [
+    """Stroke-only PolygonLayer for observation overlays that carry a
+    raster (BitmapLayer) image.
+
+    The imagery is the visual signal; a coloured fill on top of the
+    raster would tint the pixels.  This layer renders only a subtle
+    source-coloured outline so the operator can still see *which*
+    sensor the imagery came from without the fill washing the SAR /
+    optical pixels out.
+    """
+    candidates = [
         o for o in overlays
-        if o.observation_id is not None and o.geometry
+        if o.observation_id is not None
+        and o.geometry
+        and has_image_asset(o)
     ]
-    if not footprints:
+    if not candidates:
         return None
     data = []
-    for o in footprints:
+    for o in candidates:
+        coords = o.geometry.get("coordinates") if o.geometry else None
+        if not coords:
+            continue
+        stroke = _SOURCE_STROKE.get(o.source, [156, 163, 175])
+        data.append({
+            "polygon": coords[0],
+            "label": o.display_name,
+            "line_color": stroke,
+            "data_mode": o.data_mode,
+            "tooltip": (
+                f"{o.display_name} · {o.source} · "
+                f"{o.image_kind} · {o.data_mode}"
+            ),
+        })
+    if not data:
+        return None
+    return pdk.Layer(
+        "PolygonLayer",
+        data=data,
+        get_polygon="polygon",
+        get_line_color="line_color",
+        stroked=True,
+        filled=False,
+        # Belt-and-suspenders: even with ``filled=False``, pin the fill
+        # colour to fully transparent so deck.gl cannot fall back to a
+        # default tint that would wash out the BitmapLayer below.
+        get_fill_color=_OVERLAY_FILL_ZERO,
+        line_width_min_pixels=1,
+        line_width_max_pixels=2,
+        pickable=True,
+    )
+
+
+def _build_footprint_only_fill_layer(
+    overlays: Iterable[OverlayArtifact], opacity: float,
+) -> pdk.Layer | None:
+    """Filled PolygonLayer for observation overlays that have no raster
+    image asset (footprint-only).
+
+    For these overlays the polygon *is* the visual signal, so the
+    semi-transparent source-coloured fill is preserved.
+    """
+    candidates = [
+        o for o in overlays
+        if o.observation_id is not None
+        and o.geometry
+        and not has_image_asset(o)
+    ]
+    if not candidates:
+        return None
+    data = []
+    for o in candidates:
         coords = o.geometry.get("coordinates") if o.geometry else None
         if not coords:
             continue
@@ -273,21 +340,30 @@ def build_deck_json(
     )
     bitmap_specs = _bitmap_layer_specs(observation_overlays, opacity)
 
-    # Build pydeck layers in two buckets so we can splice the raw
-    # bitmap specs in between.  Final z-order (bottom to top):
-    #   basemap, AOI outline, imagery overlays (BitmapLayers),
-    #   footprints, tracks, custody label.
+    # Build pydeck layers in three buckets so we can splice the raw
+    # bitmap specs into the correct slot.  Final z-order (bottom to
+    # top):
+    #   basemap, AOI outline, imagery rasters (BitmapLayers),
+    #   imagery stroke-only outlines, footprint-only filled polygons,
+    #   tracks, custody label.
     aoi_layers: list[pdk.Layer] = []
     if bv.get("aoi", True):
         l = _build_aoi_layer(overlays)
         if l is not None:
             aoi_layers.append(l)
 
-    upper_layers: list[pdk.Layer] = []
-    l = _build_footprint_layer(observation_overlays, opacity)
+    # ``mid_layers`` sit directly above the BitmapLayer rasters: the
+    # stroke-only outline for imagery overlays, then the
+    # source-coloured fill for footprint-only overlays.
+    mid_layers: list[pdk.Layer] = []
+    l = _build_imagery_outline_layer(observation_overlays)
     if l is not None:
-        upper_layers.append(l)
+        mid_layers.append(l)
+    l = _build_footprint_only_fill_layer(observation_overlays, opacity)
+    if l is not None:
+        mid_layers.append(l)
 
+    upper_layers: list[pdk.Layer] = []
     if bv.get("tracks", True):
         l = _build_track_layer(tracks)
         if l is not None:
@@ -303,15 +379,15 @@ def build_deck_json(
         initial_view_state=pdk.ViewState(
             latitude=center_lat, longitude=center_lon, zoom=zoom,
         ),
-        layers=aoi_layers + upper_layers,
+        layers=aoi_layers + mid_layers + upper_layers,
     )
     spec = _json.loads(deck.to_json())
     serialized_layers = list(spec.get("layers") or [])
     if bitmap_specs:
         # Insert bitmap rasters between the AOI outline and the
-        # footprint / track / custody layers so the AOI sits beneath
-        # the imagery (no fill muddying) while operator-relevant
-        # markers stay drawn on top of the imagery.
+        # mid_layers (imagery outlines + footprint-only fills) so the
+        # AOI sits beneath the imagery and the imagery sits beneath the
+        # outlines / footprint-only fills / tracks / custody label.
         aoi_count = len(aoi_layers)
         serialized_layers = (
             serialized_layers[:aoi_count]
