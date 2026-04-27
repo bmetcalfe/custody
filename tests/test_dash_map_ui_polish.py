@@ -242,23 +242,30 @@ def test_whitsun_overlay_options_are_event_aware() -> None:
     ord2 = _option_ids_at_ordinal(2)
     assert any("umbra" in oid and "20231206" in oid for oid in ord2), ord2
     assert not any("sentinel" in oid for oid in ord2)
-    # Event 04: Sentinel-2 weak-signal layer arrives.
+    # Event 04 (Candidate tracks initialized): no Sentinel yet — they
+    # arrive at ordinals 5 / 6 in the dispatch-ordered trace.
     ord4 = _option_ids_at_ordinal(4)
-    assert any("sentinel-2" in oid for oid in ord4), ord4
-    assert not any("sentinel-1" in oid for oid in ord4), (
-        f"Sentinel-1 should not appear before event 5; got {ord4}"
+    assert not any("sentinel" in oid for oid in ord4), (
+        f"Sentinel should not appear at event 4 (Candidate tracks); got {ord4}"
     )
-    # Event 05: Sentinel-1 weak-signal layer arrives.
+    # Event 05: Sentinel-2 context observation arrives.
     ord5 = _option_ids_at_ordinal(5)
-    assert any("sentinel-1" in oid for oid in ord5), ord5
-    # Event 11: follow-up Umbra (ordinal 12) must NOT appear early.
-    ord11 = _option_ids_at_ordinal(11)
-    assert not any(
-        "umbra-followup-20231213" in oid for oid in ord11
-    ), f"future follow-up Umbra leaked at ord 11; got {ord11}"
-    # Event 12: follow-up Umbra appears.
+    assert any("sentinel-2" in oid for oid in ord5), ord5
+    assert not any("sentinel-1" in oid for oid in ord5), (
+        f"Sentinel-1 should not appear before event 6; got {ord5}"
+    )
+    # Event 06: Sentinel-1 context observation arrives.
+    ord6 = _option_ids_at_ordinal(6)
+    assert any("sentinel-1" in oid for oid in ord6), ord6
+    # Event 12 (Human approves): follow-up Umbra (ordinal 13) must NOT
+    # appear early.
     ord12 = _option_ids_at_ordinal(12)
-    assert any("umbra-followup-20231213" in oid for oid in ord12), ord12
+    assert not any(
+        "umbra-followup-20231213" in oid for oid in ord12
+    ), f"future follow-up Umbra leaked at ord 12; got {ord12}"
+    # Event 13: follow-up Umbra appears alongside outcome.
+    ord13 = _option_ids_at_ordinal(13)
+    assert any("umbra-followup-20231213" in oid for oid in ord13), ord13
 
 
 def test_default_visible_drives_initial_selection() -> None:

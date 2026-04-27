@@ -148,10 +148,15 @@ def test_decision_trace_operational_hierarchy_uses_framing() -> None:
 
 
 def test_decision_trace_sentinel_event_summaries_use_framing() -> None:
+    """Sentinel cues sit at trace ordinals 5 (Sentinel-2) and 6
+    (Sentinel-1) in the dispatch-ordered trace.  Their summaries must
+    carry weak-signal framing; their labels may use either the
+    "weak-signal cue" or "context observation" wording — both are
+    cueing-only language and neither implies confirmation."""
     payload = _load_json(TRACE_PATH)
     sentinel_events = [
         ev for ev in payload.get("events", [])
-        if ev.get("ordinal") in (4, 5)
+        if ev.get("ordinal") in (5, 6)
     ]
     assert len(sentinel_events) == 2
     for ev in sentinel_events:
@@ -160,8 +165,13 @@ def test_decision_trace_sentinel_event_summaries_use_framing() -> None:
         assert "weak-signal" in summary or "weak signal" in summary, (
             f"event {ev.get('event_id')} summary missing weak-signal framing"
         )
-        assert "weak-signal" in label or "weak signal" in label, (
-            f"event {ev.get('event_id')} label missing weak-signal framing"
+        assert (
+            "weak-signal" in label
+            or "weak signal" in label
+            or "context observation" in label
+        ), (
+            f"event {ev.get('event_id')} label missing weak-signal / "
+            f"context-observation framing"
         )
 
 
@@ -183,10 +193,12 @@ def _import_whitsun_callbacks():
     return mod
 
 
-def test_weak_signal_cue_note_absent_before_umbra() -> None:
+def test_weak_signal_cue_note_absent_before_sentinel_2() -> None:
+    """Sentinel-2 first appears at trace ordinal 5; before that
+    there's no weak-signal cue to surface (events 1-4 are scenario
+    init / Umbra / VLM / track init)."""
     rep = _import_whitsun_callbacks()
-    # Pre-Umbra steps: no Sentinel after Umbra yet → no cue note.
-    for ord_ in (1, 2, 3):
+    for ord_ in (1, 2, 3, 4):
         note = rep._weak_signal_cue_note(rep._TRACE, ord_)
         assert note is None, (
             f"weak-signal cue note must not appear at ordinal {ord_}"
@@ -195,7 +207,7 @@ def test_weak_signal_cue_note_absent_before_umbra() -> None:
 
 def test_weak_signal_cue_note_present_after_sentinel_2_arrives() -> None:
     rep = _import_whitsun_callbacks()
-    note = rep._weak_signal_cue_note(rep._TRACE, 4)
+    note = rep._weak_signal_cue_note(rep._TRACE, 5)
     assert note is not None
     rendered = str(note).lower()
     assert "weak-signal cue" in rendered
@@ -206,7 +218,7 @@ def test_weak_signal_cue_note_present_after_sentinel_2_arrives() -> None:
 
 def test_weak_signal_cue_note_persists_through_remaining_steps() -> None:
     rep = _import_whitsun_callbacks()
-    for ord_ in (4, 5, 6, 7, 14):
+    for ord_ in (5, 6, 7, 8, 14):
         note = rep._weak_signal_cue_note(rep._TRACE, ord_)
         assert note is not None, (
             f"cue note must persist at ordinal {ord_}"

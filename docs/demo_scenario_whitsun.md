@@ -41,26 +41,37 @@ The trace explicitly distinguishes four classes of record so the future replay U
 
 This is the same hierarchy used by `src/custody/ingest/sentinel.py` and by the Sentinel ingestion fixtures.
 
+## Multi-source pipeline proof, not Sentinel detection equivalence
+
+The intent of the Sentinel layer in this scenario is to demonstrate that the system **handles multiple imagery / source pipelines according to quality and trust level**, not that Sentinel can substitute for Umbra:
+
+- **Umbra** — high-confidence tasked SAR imagery; the confirmation / evidence layer.  Driven by `scripts/30_prepare_demo_overlays.py` over real Umbra GEC tiles.
+- **Sentinel-2** — public optical context imagery when a valid preview exists.  Process API previews are fetched by `scripts/32_fetch_sentinel_previews.py` and rendered on the map at the Sentinel-2 reveal step.
+- **Sentinel-1** — public SAR observation pipeline with graceful fallback.  When Sentinel Hub returns an empty placeholder for an acquisition window, the overlay stays footprint-only and the dashboard surfaces the reason verbatim.  Sentinel-1 imagery is **not** forced when no valid preview is returned.
+- **Invalid / duplicate previews** — caught by quality gates in the fetcher (size < 5 KB, near-zero pixel variance, repeated sha256 within a run) and explicitly **not promoted**; the manifest stays footprint-only with a clear `missing_asset_reason`.
+
+The committed `data/demo/map_overlays.fixture.json` typically lands in **mixed state** after a real fetch: some Sentinel-2 overlays promoted with `image_kind: "sentinel_preview"`, Sentinel-1 overlays footprint-only because the live API returned empty, and any duplicate Sentinel-2 acquisition footprint-only with `"Duplicate preview of <obs_id>; ..."`.  That mixed state is the proof of pipeline-aware handling.
+
 ## Event sequence (14 events)
 
 Stable IDs `ev-01` … `ev-14`. Each event has a `kind`, a `summary`, a `timestamp`, a `data_mode`, and a `refs` block whose IDs are guaranteed to resolve into one of the normalized sections of the trace.
 
-| ID    | Label                                              | Kind                              |
-| ----- | -------------------------------------------------- | --------------------------------- |
-| ev-01 | Scenario initialized                               | `scenario_init`                   |
-| ev-02 | Umbra SAR tile received                            | `observation_received`            |
-| ev-03 | VLM analysis complete                              | `evidence_artifact_produced`      |
-| ev-04 | Sentinel-2 context observation available           | `context_observation_available`   |
-| ev-05 | Sentinel-1 context observation available           | `context_observation_available`   |
-| ev-06 | Candidate tracks initialized                       | `tracks_initialized`              |
-| ev-07 | Custody risk increases                             | `custody_risk_increase`           |
-| ev-08 | Planner generates options                          | `options_generated`               |
-| ev-09 | Options scored                                     | `options_scored`                  |
-| ev-10 | Policy recommends SAT-B                            | `policy_recommendation`           |
-| ev-11 | Operator reviews and approves                      | `human_action`                    |
-| ev-12 | Follow-up collection occurs                        | `followup_collection`             |
-| ev-13 | Outcome recorded                                   | `outcome_recorded`                |
-| ev-14 | Counterfactual and follow-up recommendation shown  | `counterfactual_and_followup`     |
+| ID    | Label                                              | Kind                                  |
+| ----- | -------------------------------------------------- | ------------------------------------- |
+| ev-01 | Scenario initialized                               | `scenario_init`                       |
+| ev-02 | Umbra SAR tile received                            | `observation_received`                |
+| ev-03 | VLM analysis complete                              | `evidence_artifact_produced`          |
+| ev-04 | Candidate tracks initialized                       | `tracks_initialized`                  |
+| ev-05 | Sentinel-2 context observation available           | `context_observation_available`       |
+| ev-06 | Sentinel-1 context observation available           | `context_observation_available`       |
+| ev-07 | Custody risk increases                             | `custody_risk_increase`               |
+| ev-08 | Planner generates options                          | `options_generated`                   |
+| ev-09 | Options scored                                     | `options_scored`                      |
+| ev-10 | Policy recommends SAT-B                            | `policy_recommendation`               |
+| ev-11 | Operator reviews                                   | `human_review`                        |
+| ev-12 | Human approves                                     | `human_action`                        |
+| ev-13 | Follow-up collection / outcome recorded            | `followup_collection_and_outcome`     |
+| ev-14 | Counterfactual and follow-up recommendation shown  | `counterfactual_and_followup`         |
 
 ## Normalized sections
 

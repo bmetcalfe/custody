@@ -51,6 +51,7 @@ WHITSUN_TIMELINE_STEP_COUNTER = "whitsun-replay-step-counter"
 
 WHITSUN_HEADER = "whitsun-replay-header"
 WHITSUN_EVENT_SUMMARY = "whitsun-replay-event-summary"
+WHITSUN_CUSTODY_STATE = "whitsun-replay-custody-state"
 WHITSUN_OBSERVATIONS_PANEL = "whitsun-replay-observations"
 WHITSUN_OPTIONS_TABLE = "whitsun-replay-options-table"
 WHITSUN_SCORE_BREAKDOWN = "whitsun-replay-score-breakdown"
@@ -292,7 +293,7 @@ def build_whitsun_replay_layout() -> html.Div:
         [
             html.Span("Event timeline (14 steps)"),
             html.Span(
-                "Step — / 14",
+                "Step 01 / 14",
                 id=WHITSUN_TIMELINE_STEP_COUNTER,
                 style={
                     "color": _ACCENT,
@@ -508,6 +509,10 @@ def build_whitsun_replay_layout() -> html.Div:
                             _panel(
                                 "Decision inspector",
                                 html.Div(id=WHITSUN_EVENT_SUMMARY),
+                            ),
+                            _panel(
+                                "Custody state",
+                                html.Div(id=WHITSUN_CUSTODY_STATE),
                             ),
                             _panel(
                                 "Observations and evidence",

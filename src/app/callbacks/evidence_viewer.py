@@ -56,10 +56,12 @@ _OVERLAYS = load_map_overlays()
 
 # Event 02: raw SAR evidence (no detections)
 # Event 03+: SAR + detections (the VLM-analysis step in the trace)
-# Event 12/13: simulated follow-up Umbra — no committed raster
+# Event 13: merged follow-up collection / outcome — simulated, no
+# committed raster, so the evidence panel surfaces an honesty banner
+# alongside the most-recent real Umbra evidence.
 WHITSUN_RAW_FROM_ORDINAL = 2
 WHITSUN_DETECTIONS_FROM_ORDINAL = 3
-WHITSUN_FOLLOWUP_FROM_ORDINAL = 12
+WHITSUN_FOLLOWUP_FROM_ORDINAL = 13
 
 
 # ---------------------------------------------------------------------------
@@ -348,9 +350,33 @@ def register(app: Dash) -> None:
                 "(starts at event 03)."
             )
         else:
-            detection_block = _detection_list(scene)
+            # Reconcile the two detection counts that the audience sees
+            # at ev-03+: the evidence chip's annotated overlay shows
+            # every VLM detection (115 here), while the trace pins three
+            # of them as candidate-track seeds (det-vsl-001 / 002 / 003)
+            # used by the custody-planning logic.  This note makes the
+            # split explicit so the presenter doesn't have to disclaim
+            # it verbally.
+            promoted_count = len(_TRACE.detections or ())
+            promotion_note = html.Div(
+                f"{int(scene.detection_count)} raw VLM detections; "
+                f"{promoted_count} promoted to candidate tracks for "
+                f"custody planning.",
+                style={
+                    "color": _MUTED, "fontSize": "0.72rem",
+                    "fontStyle": "italic",
+                    "padding": "4px 6px",
+                    "marginBottom": "6px",
+                    "border": "1px solid #2d2d2d",
+                    "borderRadius": "4px",
+                    "backgroundColor": "rgba(94, 234, 212, 0.04)",
+                },
+            )
+            detection_block = html.Div(
+                [promotion_note, _detection_list(scene)],
+            )
 
-        # Event 12/13: surface the simulated-follow-up note alongside
+        # Event 13/14: surface the simulated-follow-up note alongside
         # the original collect's evidence (we still show the 2023-12-06
         # evidence as the most-recent committed real raster).
         if ord_ >= WHITSUN_FOLLOWUP_FROM_ORDINAL:

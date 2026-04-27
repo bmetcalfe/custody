@@ -104,32 +104,41 @@ def test_whitsun_umbra_overlay_appears_at_ordinal_2() -> None:
     assert "whitsun-sentinel-2-low-cloud-20231212" not in ids
 
 
-def test_whitsun_sentinel_2_overlays_appear_at_ordinal_4() -> None:
-    overlays = load_map_overlays()
-    avail = available_overlays_for(
-        overlays, scenario_id="whitsun", current_ordinal=4,
-    )
-    ids = _ids(avail)
-    assert "whitsun-sentinel-2-low-cloud-20231212" in ids
-    assert "whitsun-sentinel-2-cloudy-20231215" in ids
-    # Sentinel-1 still gated until ordinal 5.
-    assert "whitsun-sentinel-1-grd-20231210" not in ids
-
-
-def test_whitsun_sentinel_1_overlay_appears_at_ordinal_5() -> None:
+def test_whitsun_sentinel_2_overlays_appear_at_ordinal_5() -> None:
+    """Sentinel-2 cue arrives at trace ordinal 5 (after Candidate
+    tracks initialise at ordinal 4 in the dispatch-ordered trace)."""
     overlays = load_map_overlays()
     avail = available_overlays_for(
         overlays, scenario_id="whitsun", current_ordinal=5,
     )
+    ids = _ids(avail)
+    assert "whitsun-sentinel-2-low-cloud-20231212" in ids
+    assert "whitsun-sentinel-2-cloudy-20231215" in ids
+    # Sentinel-1 still gated until ordinal 6.
+    assert "whitsun-sentinel-1-grd-20231210" not in ids
+
+
+def test_whitsun_sentinel_1_overlay_appears_at_ordinal_6() -> None:
+    """Sentinel-1 cue arrives at trace ordinal 6, immediately after S2."""
+    overlays = load_map_overlays()
+    avail = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=6,
+    )
     assert "whitsun-sentinel-1-grd-20231210" in _ids(avail)
 
 
-def test_whitsun_followup_overlay_appears_at_ordinal_12() -> None:
+def test_whitsun_followup_overlay_appears_at_ordinal_13() -> None:
+    """Follow-up Umbra collect + outcome are merged at trace ordinal 13."""
     overlays = load_map_overlays()
     avail = available_overlays_for(
-        overlays, scenario_id="whitsun", current_ordinal=12,
+        overlays, scenario_id="whitsun", current_ordinal=13,
     )
     assert "whitsun-umbra-followup-20231213" in _ids(avail)
+    # Pre-merge step (ordinal 12 = "Human approves") must NOT include it.
+    avail_12 = available_overlays_for(
+        overlays, scenario_id="whitsun", current_ordinal=12,
+    )
+    assert "whitsun-umbra-followup-20231213" not in _ids(avail_12)
 
 
 def test_whitsun_ordinal_14_includes_all_whitsun_overlays() -> None:
@@ -293,16 +302,60 @@ def test_simulated_followup_stays_footprint_only() -> None:
     assert not has_image_asset(fu[0])
 
 
-def test_sentinel_overlays_stay_footprint_only() -> None:
-    """No Sentinel imagery is committed yet — every Sentinel entry
-    must remain footprint-only with an explicit missing_asset_reason."""
+def test_sentinel_overlays_in_mixed_state() -> None:
+    """The canonical manifest reflects a real Sentinel Hub run with
+    quality gates applied:
+
+      * Sentinel-2 entries with valid unique previews are promoted
+        (image_kind=sentinel_preview, asset_url set).
+      * Sentinel-1 entries kept footprint-only because Sentinel Hub
+        returned empty placeholders for those acquisitions.
+      * Sentinel-2 duplicates kept footprint-only with a clear
+        "Duplicate preview of <obs>" reason.
+
+    Every Sentinel overlay — promoted or footprint-only — preserves
+    weak_signal=True / confirmation_layer=False.  The intent is to
+    prove multi-source pipeline handling + graceful fallback, not
+    coverage perfection."""
     overlays = load_map_overlays()
-    sentinel = [o for o in overlays if o.source in ("sentinel-1", "sentinel-2")]
+    sentinel = [
+        o for o in overlays if o.source in ("sentinel-1", "sentinel-2")
+    ]
     assert sentinel
+
+    promoted = [o for o in sentinel if o.image_kind == "sentinel_preview"]
+    footprint_only = [
+        o for o in sentinel if o.image_kind == "footprint-only"
+    ]
+    # Mixed state: at least one of each, proving both pipelines.
+    assert promoted, "expected at least one promoted Sentinel preview"
+    assert footprint_only, (
+        "expected at least one footprint-only Sentinel overlay"
+    )
+
+    # Promoted overlays must carry an asset url and have no
+    # missing_asset_reason left over from their pre-fetch state.
+    for o in promoted:
+        assert has_image_asset(o), o.overlay_id
+        assert o.asset_url and o.asset_url.startswith(
+            "/assets/evidence/sentinel/"
+        )
+        assert not o.missing_asset_reason
+        # Promoted Sentinel-2 only — Sentinel-1 returned empty
+        # placeholders this run and was rejected by the quality gate.
+        assert o.source == "sentinel-2", o.overlay_id
+
+    # Footprint-only overlays must declare WHY (empty placeholder or
+    # duplicate); the dashboard surfaces this verbatim.
+    for o in footprint_only:
+        assert not has_image_asset(o), o.overlay_id
+        reason = o.missing_asset_reason or ""
+        assert reason, o.overlay_id
+
+    # Honesty markers preserved across both groups.
     for o in sentinel:
-        assert o.image_kind == "footprint-only"
-        assert not has_image_asset(o)
-        assert o.missing_asset_reason
+        assert o.weak_signal is True, o.overlay_id
+        assert o.confirmation_layer is False, o.overlay_id
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +364,11 @@ def test_sentinel_overlays_stay_footprint_only() -> None:
 
 
 def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
+    """Tennent renders BitmapLayers from two distinct asset trees:
+    Umbra GEC previews under ``/assets/overlays/`` and quality-gated
+    Sentinel-2 Process API previews under
+    ``/assets/evidence/sentinel/...``.  Both are valid raster
+    sources; the test pins the union, not Umbra alone."""
     helpers = _import_helpers()
     overlays = load_map_overlays()
     avail = overlays_for_scenario(overlays, "tennent")
@@ -325,16 +383,35 @@ def test_deck_json_includes_bitmap_layer_for_real_overlays() -> None:
         if l.get("@@type") == "BitmapLayer"
     ]
     assert bitmap_layers, "expected at least one BitmapLayer for Tennent"
+    # At least one Umbra GEC preview is always present; that's the
+    # tasked confirmation imagery the demo can't function without.
+    umbra_bitmaps = [
+        l for l in bitmap_layers
+        if l.get("image", "").startswith("/assets/overlays/")
+    ]
+    assert umbra_bitmaps, (
+        "expected at least one Umbra BitmapLayer under /assets/overlays/"
+    )
     for l in bitmap_layers:
-        assert l.get("image", "").startswith("/assets/overlays/")
+        url = l.get("image", "")
+        assert (
+            url.startswith("/assets/overlays/")
+            or url.startswith("/assets/evidence/sentinel/")
+        ), f"BitmapLayer image {url!r} not from a known asset tree"
         assert isinstance(l.get("bounds"), list)
         assert len(l["bounds"]) == 4
 
 
 def test_umbra_overlay_omitted_drops_its_bitmap_layer() -> None:
     """The dynamic overlay manager controls visibility by filtering
-    overlays before they reach build_deck_json; Umbra rasters should
-    disappear when no Umbra overlays are passed in."""
+    overlays before they reach build_deck_json; the resulting deck
+    spec should never contain an Umbra BitmapLayer when no Umbra
+    overlays are passed in.
+
+    Sentinel-2 previews under /assets/evidence/sentinel/ remain
+    valid raster sources independently and may still render — that's
+    the multi-source pipeline working as designed.
+    """
     helpers = _import_helpers()
     overlays = load_map_overlays()
     avail_no_umbra = tuple(
@@ -351,8 +428,13 @@ def test_umbra_overlay_omitted_drops_its_bitmap_layer() -> None:
         l for l in spec.get("layers", [])
         if l.get("@@type") == "BitmapLayer"
     ]
-    assert not bitmap_layers, (
-        "BitmapLayers should be absent when no Umbra overlays are passed"
+    umbra_bitmaps = [
+        l for l in bitmap_layers
+        if l.get("image", "").startswith("/assets/overlays/")
+    ]
+    assert not umbra_bitmaps, (
+        "Umbra BitmapLayers should be absent when no Umbra overlays "
+        "are passed"
     )
 
 

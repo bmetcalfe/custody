@@ -153,11 +153,20 @@ def test_cache_round_trip(tmp_path: Path) -> None:
 
 
 def test_cache_load_demo_fixture() -> None:
+    """The Whitsun demo fixture must include enough Sentinel
+    observations to demonstrate in-between coverage between Umbra
+    collects (per the tightened-scope dispatch).  The exact count is
+    pinned so an accidental shrink shows up in CI."""
     obs = load_observation_cache(DEMO_FIXTURE)
-    assert len(obs) == 3
+    assert len(obs) == 7
     assert all(o.data_mode == "fixture" for o in obs)
     sources = {o.source for o in obs}
     assert sources == {"sentinel-1", "sentinel-2"}
+    # Mix is meaningful: at least 2 Sentinel-1 and 3 Sentinel-2 records.
+    s1 = [o for o in obs if o.source == "sentinel-1"]
+    s2 = [o for o in obs if o.source == "sentinel-2"]
+    assert len(s1) >= 2
+    assert len(s2) >= 3
 
 
 # ---------------------------------------------------------------------------

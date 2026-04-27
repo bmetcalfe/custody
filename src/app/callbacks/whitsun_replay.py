@@ -60,6 +60,7 @@ from layout.whitsun_replay import (
     CUSTODY_MAIN_TABS,
     WHITSUN_CONTEXT_MAP,
     WHITSUN_COUNTERFACTUALS,
+    WHITSUN_CUSTODY_STATE,
     WHITSUN_EVENT_SUMMARY,
     WHITSUN_FOLLOWUP,
     WHITSUN_HEADER,
@@ -105,7 +106,10 @@ REVEAL_ORDINALS: Mapping[str, int] = {
     "options_selected_visible": 10,
     "score_breakdown": 10,
     "policy_rationale": 10,
-    "human_action": 11,
+    # ev-11 = "Operator reviews" surfaces a review-pending banner;
+    # the APPROVE record only renders at ev-12 = "Human approves".
+    "human_action_review": 11,
+    "human_action": 12,
     "outcome": 13,
     "counterfactuals": 14,
     "followup_recommendation": 14,
@@ -325,12 +329,48 @@ def _revealed(artifact_id: str | None, current_ord: int) -> bool:
     return o is not None and o <= current_ord
 
 
+def _format_friendly_utc(timestamp_iso: str | None) -> str:
+    """ISO timestamp -> ``DD MMM YYYY | HH:MM UTC`` for screen-share use.
+
+    Returns the empty string for falsy input; falls back to the raw
+    string if ISO parsing fails.
+    """
+    if not timestamp_iso:
+        return ""
+    try:
+        from datetime import datetime
+        normalised = str(timestamp_iso).replace("Z", "+00:00")
+        return datetime.fromisoformat(normalised).strftime(
+            "%d %b %Y | %H:%M UTC",
+        )
+    except (TypeError, ValueError):
+        return str(timestamp_iso)
+
+
+def _option_label_for(
+    trace: DecisionTrace, tasking_option_id: str | None,
+) -> str:
+    """Return the audience-facing option label (``SAT-B``) for an
+    internal ``tasking_option_id`` (``opt-sat-b``), falling back to
+    the id itself if no match is found."""
+    if not tasking_option_id:
+        return ""
+    for opt in trace.candidate_tasking_options:
+        if opt.get("tasking_option_id") == tasking_option_id:
+            return str(opt.get("label") or tasking_option_id)
+    return str(tasking_option_id)
+
+
 # ---------------------------------------------------------------------------
 # Renderers
 # ---------------------------------------------------------------------------
 
 
 def _render_header(event: Mapping[str, Any]) -> html.Div:
+    """Audience-friendly header: ordinal + label, friendly UTC stamp,
+    and the data-mode badge.  The internal ``kind`` enum is no longer
+    rendered — it's still present in the JSON, just not in the
+    operator-facing UI."""
     if not event:
         return _na()
     return html.Div(
@@ -342,7 +382,7 @@ def _render_header(event: Mapping[str, Any]) -> html.Div:
                         style={"color": _ACCENT, "fontSize": "0.95rem"},
                     ),
                     html.Span(
-                        f"  ·  {event.get('timestamp', '')}",
+                        f"  |  {_format_friendly_utc(event.get('timestamp'))}",
                         style={"color": _MUTED, "fontSize": "0.78rem"},
                     ),
                 ],
@@ -350,10 +390,6 @@ def _render_header(event: Mapping[str, Any]) -> html.Div:
             html.Div(
                 [
                     data_mode_badge(event.get("data_mode")),
-                    html.Span(
-                        f"kind: {event.get('kind', '(unknown)')}",
-                        style={"color": _MUTED, "fontSize": "0.75rem"},
-                    ),
                 ],
                 style={"marginTop": "4px"},
             ),
@@ -362,24 +398,87 @@ def _render_header(event: Mapping[str, Any]) -> html.Div:
 
 
 def _render_event_summary(event: Mapping[str, Any]) -> html.Div:
+    """Decision-inspector body: human-readable summary only.
+
+    Developer-facing fields (event_id, kind, timestamp) live in the
+    JSON and are still surfaced in the event header badge row; we
+    deliberately don't repeat them as labelled rows here so the
+    screen-share audience sees only the narrative summary.
+    """
     if not event:
         return _na()
     return html.Div(
-        [
-            html.Div(
-                event.get("summary", ""),
-                style={"color": _TEXT, "fontSize": "0.85rem"},
-            ),
+        event.get("summary", ""),
+        style={"color": _TEXT, "fontSize": "0.85rem"},
+    )
+
+
+_CUSTODY_BADGE_COLOR = {
+    "healthy": "success",
+    "ambiguous": "warning",
+    "lost": "danger",
+}
+
+
+def _render_custody_state(
+    trace: DecisionTrace, current_ord: int,
+) -> html.Div:
+    """Show the custody arc as a list of revealed snapshots:
+    status badge | score | delta vs previous | one-line summary.
+
+    Renders the placeholder until the first snapshot reveals (cs-snap-001
+    at ev-03 in the dispatch-ordered trace).  Subsequent snapshots
+    append as they're revealed; the most-recent snapshot's status badge
+    surfaces as the panel's headline at-a-glance state.
+    """
+    visible = [
+        cs for cs in trace.custody_state_snapshots
+        if _revealed(cs.get("custody_state_id"), current_ord)
+    ]
+    if not visible:
+        return _na("Custody state has not been observed yet.")
+
+    rows: list[html.Div] = []
+    prev_score: float | None = None
+    for cs in visible:
+        status = str(cs.get("status") or "?").lower()
+        score = float(cs.get("score") or 0.0)
+        badge_color = _CUSTODY_BADGE_COLOR.get(status, "secondary")
+        delta_text = ""
+        if prev_score is not None:
+            delta = score - prev_score
+            delta_text = f"  Δ {delta:+.2f}"
+        prev_score = score
+        rows.append(
             html.Div(
                 [
-                    _kv("event_id", event.get("event_id")),
-                    _kv("kind", event.get("kind")),
-                    _kv("timestamp", event.get("timestamp")),
+                    dbc.Badge(
+                        status.upper(),
+                        color=badge_color, className="me-2",
+                    ),
+                    html.Span(
+                        f"{score:.2f}{delta_text}",
+                        style={
+                            "color": _ACCENT,
+                            "fontSize": "0.95rem",
+                            "fontWeight": "600",
+                        },
+                    ),
+                    html.Div(
+                        cs.get("summary", ""),
+                        style={
+                            "color": _MUTED, "fontSize": "0.75rem",
+                            "marginTop": "2px",
+                        },
+                    ),
                 ],
-                style={"marginTop": "6px"},
+                style={
+                    "padding": "6px 8px",
+                    "borderBottom": "1px solid #2d2d2d",
+                },
             ),
-        ],
-    )
+        )
+    return html.Div(rows)
 
 
 def _weak_signal_cue_note(
@@ -396,7 +495,7 @@ def _weak_signal_cue_note(
       - recommends higher-resolution tasking if mission priority warrants
       - reminds that Umbra remains the high-confidence confirmation layer
     """
-    if current_ord < 4:
+    if current_ord < 5:
         return None
     saw_umbra_before_sentinel = False
     last_sentinel_label: str | None = None
@@ -672,12 +771,41 @@ def _render_score_breakdown(
             style={"fontSize": "0.85rem"},
         )
     )
+    # Consolidated audience-facing callout: human-readable option label
+    # + total score + rank.  ASCII separator (``|``) used deliberately
+    # so the line survives any screen-share font fallback.
+    rec_option_id = str(rec.get("tasking_option_id") or "")
+    rec_option_label = next(
+        (
+            str(opt.get("label") or "")
+            for opt in trace.candidate_tasking_options
+            if opt.get("tasking_option_id") == rec_option_id
+        ),
+        rec_option_id,
+    )
+    rec_total = sb.get("total_score")
+    rec_rank = rec.get("rank")
+    callout_parts = [f"Recommendation: {rec_option_label}"]
+    if isinstance(rec_total, (int, float)):
+        callout_parts.append(f"score {rec_total:.2f}")
+    if rec_rank is not None:
+        callout_parts.append(f"rank {rec_rank}")
+    recommendation_callout = html.Div(
+        " | ".join(callout_parts),
+        style={
+            "color": _ACCENT,
+            "fontSize": "0.95rem",
+            "fontWeight": "600",
+            "marginBottom": "6px",
+            "padding": "4px 6px",
+            "border": "1px solid #2d2d2d",
+            "borderRadius": "4px",
+            "backgroundColor": "rgba(94, 234, 212, 0.06)",
+        },
+    )
     return html.Div(
         [
-            html.Div(
-                f"selected option: {rec.get('tasking_option_id')}",
-                style={"color": _MUTED, "fontSize": "0.75rem"},
-            ),
+            recommendation_callout,
             html.Table(
                 [html.Tbody(rows)],
                 style={"width": "100%", "borderCollapse": "collapse"},
@@ -731,11 +859,56 @@ def _render_policy_rationale(
 def _render_human_action(
     trace: DecisionTrace, current_ord: int,
 ) -> html.Div:
-    if current_ord < REVEAL_ORDINALS["human_action"]:
+    """Render the operator's review/approval state for the current event.
+
+    - Before ev-11: not yet revealed.
+    - At ev-11 ("Operator reviews"): a review-pending banner; the
+      APPROVE record stays hidden so the dramatic beat between review
+      and approval is visible to the screen-share audience.
+    - At ev-12 ("Human approves") onward: the full approval record
+      with operator_id, decided_at, reason, and SIMULATED data-mode
+      badge.
+    """
+    review_ord = REVEAL_ORDINALS["human_action_review"]
+    approve_ord = REVEAL_ORDINALS["human_action"]
+    if current_ord < review_ord:
         return _na()
+    if current_ord < approve_ord:
+        return html.Div(
+            [
+                dbc.Badge(
+                    "REVIEW IN PROGRESS",
+                    color="info", className="me-2",
+                ),
+                html.Span(
+                    "Awaiting operator approval. The recommendation, "
+                    "score breakdown, and policy rationale are on screen "
+                    "for review.",
+                    style={
+                        "color": _MUTED, "fontSize": "0.8rem",
+                        "fontStyle": "italic",
+                    },
+                ),
+            ],
+            style={
+                "padding": "8px 10px",
+                "border": "1px solid #2d2d2d",
+                "borderRadius": "4px",
+                "backgroundColor": "rgba(94, 234, 212, 0.06)",
+            },
+        )
     ha = trace.human_action
     if not ha:
         return _na()
+    operator_id = str(ha.get("operator_id") or "operator")
+    option_label = _option_label_for(trace, ha.get("tasking_option_id"))
+    decided_when = _format_friendly_utc(ha.get("decided_at"))
+    sentence = (
+        f"Operator {operator_id} approves {option_label} "
+        f"at {decided_when}."
+    ) if option_label and decided_when else (
+        ha.get("summary", "Operator approves the recommendation.")
+    )
     return html.Div(
         [
             html.Div(
@@ -751,14 +924,18 @@ def _render_human_action(
                     data_mode_badge(ha.get("data_mode")),
                 ],
             ),
-            _kv("operator_id", ha.get("operator_id")),
-            _kv("decided_at", ha.get("decided_at")),
-            _kv("tasking_option_id", ha.get("tasking_option_id")),
+            html.Div(
+                sentence,
+                style={
+                    "color": _TEXT, "fontSize": "0.85rem",
+                    "marginTop": "6px",
+                },
+            ),
             html.Div(
                 ha.get("reason", ""),
                 style={
-                    "color": _TEXT, "fontSize": "0.8rem",
-                    "marginTop": "6px",
+                    "color": _MUTED, "fontSize": "0.75rem",
+                    "fontStyle": "italic", "marginTop": "4px",
                 },
             ),
             _caveats_block(ha.get("caveats")),
@@ -774,6 +951,32 @@ def _render_outcome(
     out = trace.outcome
     if not out:
         return _na()
+    track_id = str(out.get("track_id") or "the target track")
+    delta = out.get("custody_score_delta")
+    # Pull the before / after custody scores from the surrounding
+    # snapshots so the headline reads as a custody arc.
+    snaps = trace.custody_state_snapshots or []
+    before_score: float | None = None
+    after_score: float | None = None
+    if len(snaps) >= 2:
+        before_score = float(snaps[-2].get("score") or 0.0)
+        after_score = float(snaps[-1].get("score") or 0.0)
+    if (
+        out.get("result") == "reacquired"
+        and before_score is not None
+        and after_score is not None
+    ):
+        sentence = (
+            f"Follow-up Umbra collection reacquires {track_id}; "
+            f"custody improves from {before_score:.2f} to "
+            f"{after_score:.2f}"
+        )
+        if isinstance(delta, (int, float)):
+            sentence += f" (Δ {delta:+.2f})."
+        else:
+            sentence += "."
+    else:
+        sentence = out.get("summary") or "Outcome recorded."
     return html.Div(
         [
             html.Div(
@@ -785,16 +988,10 @@ def _render_outcome(
                     data_mode_badge(out.get("data_mode")),
                 ],
             ),
-            _kv("track_id", out.get("track_id")),
-            _kv("recorded_at", out.get("recorded_at")),
-            _kv(
-                "custody_score_delta",
-                f"{out.get('custody_score_delta', 0):+.2f}",
-            ),
             html.Div(
-                out.get("summary", ""),
+                sentence,
                 style={
-                    "color": _TEXT, "fontSize": "0.8rem",
+                    "color": _TEXT, "fontSize": "0.85rem",
                     "marginTop": "6px",
                 },
             ),
@@ -812,12 +1009,61 @@ def _render_counterfactuals(
     if not cfs:
         return _na()
     rows = []
-    for cf in cfs:
+
+    # Top row: realised SAT-B outcome so the audience can compare the
+    # chosen option's actual delta to the rejected alternatives'
+    # expected deltas without panel-hopping.
+    rec = trace.selected_recommendation or {}
+    out = trace.outcome or {}
+    chosen_label = _option_label_for(trace, rec.get("tasking_option_id"))
+    realised_delta = out.get("custody_score_delta")
+    realised_result = (out.get("result") or "").replace("_", " ").lower()
+    if chosen_label and realised_delta is not None:
         rows.append(
             html.Tr(
                 [
-                    html.Td(cf.get("alternative_tasking_option_id")),
-                    html.Td(cf.get("expected_result")),
+                    html.Td(
+                        [
+                            dbc.Badge(
+                                "CHOSEN", color="success",
+                                className="me-2",
+                            ),
+                            html.Span(chosen_label),
+                        ],
+                    ),
+                    html.Td(realised_result or "—"),
+                    html.Td(
+                        f"{float(realised_delta):+.2f}",
+                        style={"textAlign": "right", "color": _ACCENT},
+                    ),
+                    html.Td(
+                        f"Realised SAT-B outcome (custody arc "
+                        f"closes at +{float(realised_delta):.2f})"
+                        if realised_delta else "Realised outcome",
+                        style={"fontSize": "0.74rem", "color": _MUTED},
+                    ),
+                ],
+                style={
+                    "color": _TEXT, "fontSize": "0.82rem",
+                    "fontWeight": "600",
+                    "borderBottom": "1px solid #2d2d2d",
+                    "backgroundColor": "rgba(94, 234, 212, 0.06)",
+                },
+            ),
+        )
+
+    for cf in cfs:
+        cf_label = _option_label_for(
+            trace, cf.get("alternative_tasking_option_id"),
+        )
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(cf_label),
+                    html.Td(
+                        str(cf.get("expected_result") or "")
+                        .replace("_", " "),
+                    ),
                     html.Td(
                         f"{cf.get('expected_custody_score_delta', 0):+.2f}",
                         style={"textAlign": "right"},
@@ -835,15 +1081,18 @@ def _render_counterfactuals(
         )
     header = html.Tr(
         [
-            html.Th("alternative"), html.Th("expected"),
-            html.Th("impact vs baseline (Δ score)"), html.Th("summary"),
+            html.Th("option"),
+            html.Th("expected / realised"),
+            html.Th("impact vs baseline (Δ score)"),
+            html.Th("summary"),
         ],
         style={"color": _MUTED, "fontSize": "0.75rem"},
     )
     caption = html.Div(
-        "Δ score is the expected custody-score delta for the alternative "
-        "option, relative to the pre-decision baseline (cs-snap-002), "
-        "not relative to the realised SAT-B outcome.",
+        "Δ score for rejected alternatives is the expected custody-score "
+        "delta relative to the pre-decision baseline (cs-snap-002).  The "
+        "CHOSEN row shows the realised SAT-B custody-score delta for "
+        "direct comparison.",
         style={
             "color": _MUTED, "fontSize": "0.7rem",
             "fontStyle": "italic", "marginBottom": "4px",
@@ -863,34 +1112,34 @@ def _render_counterfactuals(
 def _render_followup(
     trace: DecisionTrace, current_ord: int,
 ) -> html.Div:
+    """Audience-facing follow-up recommendation: a single sentence
+    prefixed with "Recommended next step:".  The committed
+    ``followup_recommendation.summary`` already reads as plain English
+    ("monitor with Sentinel for 72 hours; re-task Umbra if custody
+    drops below 0.55"), so we surface it directly rather than
+    splitting the thresholds into key:value rows."""
     if current_ord < REVEAL_ORDINALS["followup_recommendation"]:
         return _na()
     fr = trace.followup_recommendation
     if not fr:
         return _na()
-    thresholds = fr.get("next_candidate_review_thresholds") or {}
+    summary = (fr.get("summary") or "").strip()
+    sentence = (
+        f"Recommended next step: {summary}"
+        if summary else
+        "Recommended next step is not yet defined."
+    )
     return html.Div(
         [
             html.Div(
-                [
-                    data_mode_badge(fr.get("data_mode")),
-                    html.Span(
-                        fr.get("next_candidate_collect_type", ""),
-                        style={"color": _ACCENT, "fontSize": "0.85rem"},
-                    ),
-                ],
+                [data_mode_badge(fr.get("data_mode"))],
             ),
             html.Div(
-                fr.get("summary", ""),
+                sentence,
                 style={
-                    "color": _TEXT, "fontSize": "0.82rem",
-                    "marginTop": "4px",
+                    "color": _TEXT, "fontSize": "0.85rem",
+                    "marginTop": "6px",
                 },
-            ),
-            _kv(
-                "review thresholds",
-                ", ".join(f"{k}={v}" for k, v in thresholds.items())
-                or "n/a",
             ),
             _caveats_block(fr.get("caveats")),
         ],
@@ -987,6 +1236,7 @@ def register(app: Dash) -> None:
     @app.callback(
         Output(WHITSUN_HEADER, "children"),
         Output(WHITSUN_EVENT_SUMMARY, "children"),
+        Output(WHITSUN_CUSTODY_STATE, "children"),
         Output(WHITSUN_OBSERVATIONS_PANEL, "children"),
         Output(WHITSUN_CONTEXT_MAP, "children"),
         Output(WHITSUN_OPTIONS_TABLE, "children"),
@@ -1002,12 +1252,15 @@ def register(app: Dash) -> None:
     def _refresh_all_panels(event_id):
         event = _TRACE.get_event(event_id) if event_id else {}
         ord_ = _ord_for(event)
+        # ASCII fallback (``Step -- / 14``) so the placeholder reads
+        # cleanly even on screen-share fonts that mishandle U+2014.
         step_counter = (
-            f"Step {ord_:02d} / 14" if ord_ > 0 else "Step — / 14"
+            f"Step {ord_:02d} / 14" if ord_ > 0 else "Step -- / 14"
         )
         return (
             _render_header(event or {}),
             _render_event_summary(event or {}),
+            _render_custody_state(_TRACE, ord_),
             _render_observations(_TRACE, ord_),
             _render_context_map(_TRACE, ord_),
             _render_options_table(_TRACE, ord_),

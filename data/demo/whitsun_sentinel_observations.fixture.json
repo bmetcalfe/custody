@@ -2,42 +2,71 @@
   "metadata": {
     "schema": "custody.ingest.sentinel.v1",
     "data_mode": "fixture",
-    "description": "Committed deterministic demo fixture of normalized Sentinel observations around the Whitsun AOI. Used by the ingestion CLI offline default and by future Whitsun decision-trace demos when live CDSE STAC is unavailable. Not a real query result.",
+    "description": "Committed deterministic demo fixture of normalized Sentinel observations covering the small Whitsun interest zone (114.45/9.75 \u2192 114.85/10.25).  Captures Sentinel-1 / Sentinel-2 acquisitions across the demo window 2023-12-04 \u2192 2023-12-15 so the dashboard can answer 'what public observations covered the Whitsun interest zone between Umbra collects?'.  Metadata-only \u2014 no imagery is downloaded by this fixture; image previews are produced separately by scripts/32_fetch_sentinel_previews.py when SENTINEL_HUB_* credentials are present.  Not a real STAC query result.",
     "aoi_fixture_path": "data/demo/whitsun_aoi.fixture.geojson",
-    "count": 3,
+    "count": 7,
     "generated_at": "2026-04-25T00:00:00+00:00",
     "caveats": [
       "deterministic demo fixture; no live STAC query was performed",
+      "AOI is a small placeholder (114.45/9.75 \u2192 114.85/10.25); not the operational geometry",
       "confidence weights are demo heuristics, not calibrated reliability values",
-      "Sentinel observations are public lower-confidence context, not tasked Umbra collections"
+      "Sentinel observations are public lower-confidence context, not tasked Umbra collections",
+      "in-between coverage records illustrate Sentinel revisit availability, not detection equivalence"
     ]
   },
   "observations": [
     {
-      "observation_id": "fixture-s1-grd-whitsun-20231210",
+      "observation_id": "fixture-s1-grd-whitsun-20231204",
       "source": "sentinel-1",
       "provider": "fixture",
       "collection": "sentinel-1-grd",
-      "product_id": "S1A_IW_GRDH_1SDV_FIXTURE_20231210T220000_20231210T220030_FIX001_FIX002_FIX003",
-      "timestamp": "2023-12-10T22:00:00+00:00",
-      "datetime_start": "2023-12-10T22:00:00+00:00",
-      "datetime_end": "2023-12-10T22:00:30+00:00",
+      "product_id": "S1A_IW_GRDH_1SDV_FIXTURE_20231204T220000_FIXTURE",
+      "timestamp": "2023-12-04T22:00:00+00:00",
+      "datetime_start": "2023-12-04T22:00:00+00:00",
+      "datetime_end": "2023-12-04T22:00:00+00:00",
       "sensor_type": "sar",
       "platform": "sentinel-1a",
       "instrument": "c-sar",
       "resolution_m": 10.0,
       "cloud_coverage": null,
-      "polarization": ["VV", "VH"],
+      "polarization": [
+        "VV",
+        "VH"
+      ],
       "orbit_direction": "ascending",
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
-      "bbox": [114.45, 9.75, 114.85, 10.25],
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "asset_links": {},
       "thumbnail_url": null,
       "product_url": null,
@@ -54,8 +83,240 @@
       ],
       "raw_properties": {
         "platform": "sentinel-1a",
-        "instruments": ["c-sar"],
-        "sar:polarizations": ["VV", "VH"],
+        "instruments": [
+          "c-sar"
+        ],
+        "sar:polarizations": [
+          "VV",
+          "VH"
+        ],
+        "sat:orbit_state": "ascending"
+      }
+    },
+    {
+      "observation_id": "fixture-s2-l2a-whitsun-20231207-mid-cloud",
+      "source": "sentinel-2",
+      "provider": "fixture",
+      "collection": "sentinel-2-l2a",
+      "product_id": "S2A_MSIL2A_FIXTURE_20231207T030000_FIXTURE",
+      "timestamp": "2023-12-07T03:00:00+00:00",
+      "datetime_start": "2023-12-07T03:00:00+00:00",
+      "datetime_end": "2023-12-07T03:00:00+00:00",
+      "sensor_type": "optical",
+      "platform": "sentinel-2a",
+      "instrument": "msi",
+      "resolution_m": 10.0,
+      "cloud_coverage": 45.0,
+      "polarization": [],
+      "orbit_direction": null,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "asset_links": {},
+      "thumbnail_url": null,
+      "product_url": null,
+      "confidence_weight": 0.2,
+      "usable_for_detection": false,
+      "usable_for_context": true,
+      "data_mode": "fixture",
+      "caveats": [
+        "metadata-only ingestion; no imagery is downloaded",
+        "confidence weights are demo heuristics, not calibrated sensor reliability values",
+        "Sentinel observations are public lower-confidence context, not tasked Umbra collections",
+        "confidence weight bucket: sentinel-2-mid-cloud",
+        "fixture record; not a live STAC query result"
+      ],
+      "raw_properties": {
+        "platform": "sentinel-2a",
+        "instruments": [
+          "msi"
+        ],
+        "eo:cloud_cover": 45.0
+      }
+    },
+    {
+      "observation_id": "fixture-s1-grd-whitsun-20231209",
+      "source": "sentinel-1",
+      "provider": "fixture",
+      "collection": "sentinel-1-grd",
+      "product_id": "S1A_IW_GRDH_1SDV_FIXTURE_20231209T100000_FIXTURE",
+      "timestamp": "2023-12-09T10:00:00+00:00",
+      "datetime_start": "2023-12-09T10:00:00+00:00",
+      "datetime_end": "2023-12-09T10:00:00+00:00",
+      "sensor_type": "sar",
+      "platform": "sentinel-1a",
+      "instrument": "c-sar",
+      "resolution_m": 10.0,
+      "cloud_coverage": null,
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "orbit_direction": "descending",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "asset_links": {},
+      "thumbnail_url": null,
+      "product_url": null,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "data_mode": "fixture",
+      "caveats": [
+        "metadata-only ingestion; no imagery is downloaded",
+        "confidence weights are demo heuristics, not calibrated sensor reliability values",
+        "Sentinel observations are public lower-confidence context, not tasked Umbra collections",
+        "confidence weight bucket: sentinel-1",
+        "fixture record; not a live STAC query result"
+      ],
+      "raw_properties": {
+        "platform": "sentinel-1a",
+        "instruments": [
+          "c-sar"
+        ],
+        "sar:polarizations": [
+          "VV",
+          "VH"
+        ],
+        "sat:orbit_state": "descending"
+      }
+    },
+    {
+      "observation_id": "fixture-s1-grd-whitsun-20231210",
+      "source": "sentinel-1",
+      "provider": "fixture",
+      "collection": "sentinel-1-grd",
+      "product_id": "S1A_IW_GRDH_1SDV_FIXTURE_20231210T220000_20231210T220030_FIX001_FIX002_FIX003",
+      "timestamp": "2023-12-10T22:00:00+00:00",
+      "datetime_start": "2023-12-10T22:00:00+00:00",
+      "datetime_end": "2023-12-10T22:00:30+00:00",
+      "sensor_type": "sar",
+      "platform": "sentinel-1a",
+      "instrument": "c-sar",
+      "resolution_m": 10.0,
+      "cloud_coverage": null,
+      "polarization": [
+        "VV",
+        "VH"
+      ],
+      "orbit_direction": "ascending",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "asset_links": {},
+      "thumbnail_url": null,
+      "product_url": null,
+      "confidence_weight": 0.45,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "data_mode": "fixture",
+      "caveats": [
+        "metadata-only ingestion; no imagery is downloaded",
+        "confidence weights are demo heuristics, not calibrated sensor reliability values",
+        "Sentinel observations are public lower-confidence context, not tasked Umbra collections",
+        "confidence weight bucket: sentinel-1",
+        "fixture record; not a live STAC query result"
+      ],
+      "raw_properties": {
+        "platform": "sentinel-1a",
+        "instruments": [
+          "c-sar"
+        ],
+        "sar:polarizations": [
+          "VV",
+          "VH"
+        ],
         "sat:orbit_state": "ascending"
       }
     },
@@ -77,17 +338,41 @@
       "orbit_direction": null,
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
-      "bbox": [114.45, 9.75, 114.85, 10.25],
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "asset_links": {},
       "thumbnail_url": null,
       "product_url": null,
-      "confidence_weight": 0.30,
+      "confidence_weight": 0.3,
       "usable_for_detection": true,
       "usable_for_context": true,
       "data_mode": "fixture",
@@ -100,8 +385,81 @@
       ],
       "raw_properties": {
         "platform": "sentinel-2a",
-        "instruments": ["msi"],
+        "instruments": [
+          "msi"
+        ],
         "eo:cloud_cover": 8.0
+      }
+    },
+    {
+      "observation_id": "fixture-s2-l2a-whitsun-20231214-low-cloud",
+      "source": "sentinel-2",
+      "provider": "fixture",
+      "collection": "sentinel-2-l2a",
+      "product_id": "S2A_MSIL2A_FIXTURE_20231214T030000_FIXTURE",
+      "timestamp": "2023-12-14T03:00:00+00:00",
+      "datetime_start": "2023-12-14T03:00:00+00:00",
+      "datetime_end": "2023-12-14T03:00:00+00:00",
+      "sensor_type": "optical",
+      "platform": "sentinel-2a",
+      "instrument": "msi",
+      "resolution_m": 10.0,
+      "cloud_coverage": 15.0,
+      "polarization": [],
+      "orbit_direction": null,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
+      },
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
+      "asset_links": {},
+      "thumbnail_url": null,
+      "product_url": null,
+      "confidence_weight": 0.3,
+      "usable_for_detection": true,
+      "usable_for_context": true,
+      "data_mode": "fixture",
+      "caveats": [
+        "metadata-only ingestion; no imagery is downloaded",
+        "confidence weights are demo heuristics, not calibrated sensor reliability values",
+        "Sentinel observations are public lower-confidence context, not tasked Umbra collections",
+        "confidence weight bucket: sentinel-2-low-cloud",
+        "fixture record; not a live STAC query result"
+      ],
+      "raw_properties": {
+        "platform": "sentinel-2a",
+        "instruments": [
+          "msi"
+        ],
+        "eo:cloud_cover": 15.0
       }
     },
     {
@@ -122,17 +480,41 @@
       "orbit_direction": null,
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[
-          [114.45, 9.75], [114.85, 9.75],
-          [114.85, 10.25], [114.45, 10.25],
-          [114.45, 9.75]
-        ]]
+        "coordinates": [
+          [
+            [
+              114.45,
+              9.75
+            ],
+            [
+              114.85,
+              9.75
+            ],
+            [
+              114.85,
+              10.25
+            ],
+            [
+              114.45,
+              10.25
+            ],
+            [
+              114.45,
+              9.75
+            ]
+          ]
+        ]
       },
-      "bbox": [114.45, 9.75, 114.85, 10.25],
+      "bbox": [
+        114.45,
+        9.75,
+        114.85,
+        10.25
+      ],
       "asset_links": {},
       "thumbnail_url": null,
       "product_url": null,
-      "confidence_weight": 0.10,
+      "confidence_weight": 0.1,
       "usable_for_detection": false,
       "usable_for_context": true,
       "data_mode": "fixture",
@@ -146,7 +528,9 @@
       ],
       "raw_properties": {
         "platform": "sentinel-2b",
-        "instruments": ["msi"],
+        "instruments": [
+          "msi"
+        ],
         "eo:cloud_cover": 72.0
       }
     }
